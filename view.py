@@ -20,7 +20,7 @@ def index():
         df = pd.read_sql(query, conn)
         total_rows = len(df)
         table_html = df.to_html(classes='table table-striped table-hover', index=False)
-        return render_template("view.html",table=table, table_html=table_html, total_rows=total_rows)     
+        return render_template("index.html",table=table, table_html=table_html, total_rows=total_rows)     
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
