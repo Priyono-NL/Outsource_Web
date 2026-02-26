@@ -1,18 +1,18 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
-from model.subCompany import SubCompany
+from model.training import training_m
 
-subCom_bp = Blueprint('subCom_bp', __name__)
+train_bp = Blueprint('train_bp', __name__)
 
-@subCom_bp.route('/subcom')
+@train_bp.route('/training')
 def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = SubCompany.query.paginate(page=page, per_page=pageSize, error_out=False)
+        pagination = training_m.query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
-            "data": [sub.to_dict() for sub in pagination.items],
+            "data": [train.to_dict() for train in pagination.items],
             "total_page": pagination.pages,
             "current_page": pagination.page,
             "total_item": pagination.total
@@ -23,32 +23,25 @@ def index():
             "message": str(e)
         }), 500
 
-@subCom_bp.route('/subcom/submit', methods=['POST'])
+@train_bp.route('/training/submit', methods=['POST'])
 def add():
     try:
         data = request.json if request.is_json else request.form
-        sub_name = data.get('sub_company_name')
-        sub_type = data.get('type_company')
-
-        last_company = SubCompany.query.order_by(SubCompany.sub_company_id.desc()).first()
-        if last_company and last_company.sub_company_id.startswith('sub'):
-            last_number = int(last_company.sub_company_id[3:])
-            new_number = last_number + 1
-        else:
-            new_number = 1
-        new_sub_id = f"sub{new_number:05d}"
+        training_id = data.get('training_id')
+        training_name = data.get('training_name')
+        organizer = data.get('organizer')
         
-        new_company = SubCompany(
-            sub_company_id=new_sub_id,
-            sub_company_name=sub_name,
-            type_company=sub_type
+        new_training = training_m(
+            training_id=training_id,
+            training_name=training_name,
+            organizer=organizer
         )
-        db.session.add(new_company)
+        db.session.add(new_training)
         db.session.commit()
 
         return jsonify({
             "status": "success",
-            "message": f"Data berhasil disimpan dengan ID {new_sub_id}!"
+            "message": f"Data berhasil disimpan!"
         }), 201     
     except Exception as e:
         db.session.rollback()
@@ -57,23 +50,24 @@ def add():
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
 
-@subCom_bp.route('/subcom/<string:id>', methods=['PUT'])
+@train_bp.route('/training/<string:id>', methods=['PUT'])
 def update(id):
     try:
-        company = SubCompany.query.filter_by(sub_company_id=id).first()
+        train = training_m.query.filter_by(training_id=id).first()
         data = request.json
-        company.sub_company_name = data.get('sub_company_name', company.sub_company_name)
-        company.type_company = data.get('type_company', company.type_company)
+        train.training_id = data.get('training_id', train.training_id)
+        train.training_name = data.get('training_name', train.training_name)
+        train.organizer = data.get('organizer', train.organizer)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@subCom_bp.route('/subcom/<string:id>', methods=['DELETE'])
+@train_bp.route('/training/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        company = SubCompany.query.filter_by(sub_company_id=id).first()
+        company = training_m.query.filter_by(training_id=id).first()
         db.session.delete(company)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200

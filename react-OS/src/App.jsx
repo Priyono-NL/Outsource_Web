@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 
 import Dashboard from './pages/Dashboard';
 import SubCompany from './pages/SubCompany';
+import Training_m from './pages/Training_m';
 
 function App() {
   const api_url = 'http://127.0.0.1:5000';
@@ -16,6 +17,7 @@ function App() {
             <div className="me-auto ms-4 d-flex gap-3">
               <Link to="/" className="text-white text-decoration-none">Dashboard</Link>
               <Link to="/sub-company" className="text-white text-decoration-none">Sub Company</Link>
+              <Link to="/training-m" className="text-white text-decoration-none">Training</Link>
             </div>
 
             <div className="text-white-50 small">User</div>
@@ -25,6 +27,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard api={api_url} />} />
           <Route path="/sub-company" element={<SubCompany api={api_url} />} />
+          <Route path="/training-m" element={<Training_m api={api_url} />} />
         </Routes>
       </div>
     </BrowserRouter>
