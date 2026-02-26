@@ -24,3 +24,61 @@ def index():
             "status": "error",
             "message": str(e)
         }), 500
+
+@subCom_bp.route('/subcom/submit', methods=['POST'])
+def add():
+    try:
+        data = request.json if request.is_json else request.form
+        sub_name = data.get('sub_company_name')
+        sub_type = data.get('type_company')
+
+        last_company = SubCompany.query.order_by(SubCompany.sub_company_id.desc()).first()
+        if last_company and last_company.sub_company_id.startswith('sub'):
+            last_number = int(last_company.sub_company_id[3:])
+            new_number = last_number + 1
+        else:
+            new_number = 1
+        new_sub_id = f"sub{new_number:05d}"
+        
+        new_company = SubCompany(
+            sub_company_id=new_sub_id,
+            sub_company_name=sub_name,
+            type_company=sub_type
+        )
+        db.session.add(new_company)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"Data berhasil disimpan dengan ID {new_sub_id}!"
+        }), 201     
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "Terjadi kesalahan pada server: " + str(e)
+        }), 500
+
+@subCom_bp.route('/subcom/<string:id>', methods=['PUT'])
+def update(id):
+    try:
+        company = SubCompany.query.filter_by(sub_company_id=id).first()
+        data = request.json
+        company.sub_company_name = data.get('sub_company_name', company.sub_company_name)
+        company.type_company = data.get('type_company', company.type_company)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@subCom_bp.route('/subcom/<string:id>', methods=['DELETE'])
+def delete(id):
+    try:
+        company = SubCompany.query.filter_by(sub_company_id=id).first()
+        db.session.delete(company)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
