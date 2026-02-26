@@ -1,0 +1,85 @@
+import React, { useState } from 'react';
+import PersonelTab from './PersonalTab';
+import EmployTab from './EmployTab';
+import AsetTab from './AsetTab';
+
+function Dataform({ onClose }) {
+  const [activeTab, setActiveTab] = useState('pribadi');
+
+  return (
+    <>
+      <div 
+        className="modal-backdrop fade show" 
+        style={{ zIndex: 1050 }}
+        onClick={onClose}
+      ></div>
+
+      <div 
+        className="modal fade show d-block" 
+        tabIndex="-1" 
+        style={{ zIndex: 1055 }}
+      >
+        <div className="modal-dialog modal-xl">
+          <div className="modal-content border-0 shadow-lg">
+            
+            <div className="card shadow-sm border-0">
+              <div className="card-header bg-white pt-3 border-bottom-0">
+                <div className="d-flex justify-content-between align-items-center mb-3 px-2">
+                  <h5 className="fw-bold mb-0">Form Input Data</h5>
+                  <button type="button" className="btn-close" onClick={onClose}></button>
+                </div>
+                
+                <ul className="nav nav-tabs card-header-tabs" role="tablist">
+                  <li className="nav-item">
+                    <button 
+                      className={`nav-link fw-bold ${activeTab === 'pribadi' ? 'active text-primary' : 'text-secondary'}`}
+                      onClick={() => setActiveTab('pribadi')}
+                    >
+                      Data Pribadi
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button 
+                      className={`nav-link fw-bold ${activeTab === 'pekerjaan' ? 'active text-primary' : 'text-secondary'}`}
+                      onClick={() => setActiveTab('pekerjaan')}
+                    >
+                      Data Pekerjaan
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button 
+                      className={`nav-link fw-bold ${activeTab === 'aset' ? 'active text-primary' : 'text-secondary'}`}
+                      onClick={() => setActiveTab('aset')}
+                    >
+                      Data Aset
+                    </button>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="card-body border-top">
+                <div className="tab-content py-3">
+                  {activeTab === 'pribadi' && <PersonelTab />}
+                  {activeTab === 'pekerjaan' && <EmployTab />}
+                  {activeTab === 'aset' && <AsetTab />}
+                </div>
+              </div>
+
+              <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
+                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>
+                  Batal
+                </button>
+                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold">
+                  <i className="bi bi-check-lg me-1"></i> Simpan Data
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default Dataform;
