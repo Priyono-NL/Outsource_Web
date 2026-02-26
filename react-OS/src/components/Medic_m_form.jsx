@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import api from '../api/api';
 
-function Train_m_form({ onClose, onSuccess, initialData }) {
+function Medic_m_form({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
 
   useEffect(() => {
         if (initialData && formRef.current) {
-            formRef.current.training_id.value = initialData.training_id;
-            formRef.current.training_name.value = initialData.training_name;
-            formRef.current.organizer.value = initialData.organizer;
+            formRef.current.medical_id.value = initialData.medical_id;
+            formRef.current.medical_name.value = initialData.medical_name;
+            formRef.current.faskes.value = initialData.faskes;
         }
     }, [initialData]);
 
@@ -18,8 +18,8 @@ function Train_m_form({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/training/${initialData.training_id}`, data) 
-            : await api.post('/training/submit', data);
+            ? await api.put(`/medical/${initialData.medical_id}`, data) 
+            : await api.post('/medical/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
         alert(response.data.message);
@@ -62,16 +62,16 @@ function Train_m_form({ onClose, onSuccess, initialData }) {
                 <div className="card-body border-top">
                   <div className="row g-3">
                     <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Training ID</label>
-                        <input type="text" name="training_id" className="form-control" />
+                        <label className="form-label small fw-bold">Medical ID</label>
+                        <input type="text" name="medical_id" className="form-control" />
                     </div>
                     <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Training Name</label>
-                        <input type="text" name="training_name" className="form-control" />
+                        <label className="form-label small fw-bold">Medical Name</label>
+                        <input type="text" name="medical_name" className="form-control" />
                     </div>
                     <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Organizer</label>
-                        <input type="text" name="organizer" className="form-control" />
+                        <label className="form-label small fw-bold">faskes</label>
+                        <input type="text" name="faskes" className="form-control" />
                     </div>
                   </div>
                 </div>              
@@ -91,4 +91,4 @@ function Train_m_form({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default Train_m_form;
+export default Medic_m_form;

@@ -1,0 +1,76 @@
+from flask import Blueprint, request, jsonify
+from extensions import db
+from model.medical import medical
+
+medical_bp = Blueprint('medical_bp', __name__)
+
+@medical_bp.route('/medical')
+def index():
+    try:
+        page = request.args.get('page', 1, type=int)
+        pageSize = request.args.get('pageSize', 10, type=int)
+        pagination = medical.query.paginate(page=page, per_page=pageSize, error_out=False)
+        return jsonify({
+            "status": "success",
+            "data": [train.to_dict() for train in pagination.items],
+            "total_page": pagination.pages,
+            "current_page": pagination.page,
+            "total_item": pagination.total
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@medical_bp.route('/medical/submit', methods=['POST'])
+def add():
+    try:
+        data = request.json if request.is_json else request.form
+        medical_id = data.get('medical_id')
+        medical_name = data.get('medical_name')
+        faskes = data.get('faskes')
+        
+        new_training = medical(
+            medical_id=medical_id,
+            medical_name=medical_name,
+            faskes=faskes
+        )
+        db.session.add(new_training)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"Data berhasil disimpan!"
+        }), 201     
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "Terjadi kesalahan pada server: " + str(e)
+        }), 500
+
+@medical_bp.route('/medical/<string:id>', methods=['PUT'])
+def update(id):
+    try:
+        train = medical.query.filter_by(medical_id=id).first()
+        data = request.json
+        train.medical_id = data.get('medical_id', train.medical_id)
+        train.medical_name = data.get('medical_name', train.medical_name)
+        train.faskes = data.get('faskes', train.faskes)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@medical_bp.route('/medical/<string:id>', methods=['DELETE'])
+def delete(id):
+    try:
+        company = medical.query.filter_by(medical_id=id).first()
+        db.session.delete(company)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import Train_m_table from '../components/Train_m_table';
-import Train_m_form from '../components/Train_m_form';
+import Medic_m_form from '../components/Medic_m_form';
+import Medic_m_table from '../components/Medic_m_table';
 
-const Training_m = ({ api }) => {
+const Medical_m = ({ api }) => {
     const [showForm, setShowForm] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [editingData, setEditingData] = useState(null);
@@ -20,7 +20,7 @@ const Training_m = ({ api }) => {
      return (
         <div className="container-fluid px-4">
         <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="text-dark mb-0">Master Training</h3>
+          <h3 className="text-dark mb-0">Master Medical</h3>
           <button 
             className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold`}
             onClick={handleAdd}
@@ -29,7 +29,7 @@ const Training_m = ({ api }) => {
           </button>          
         </div>
         {showForm && (
-          <Train_m_form 
+          <Medic_m_form 
             onClose={() => setShowForm(false)} 
             onSuccess={handleRefresh} 
             initialData={editingData}
@@ -37,7 +37,7 @@ const Training_m = ({ api }) => {
         )}
         <div className="card border-0 shadow-sm">
           <div className="card-body p-0">
-              <Train_m_table 
+              <Medic_m_table 
                 refreshTrigger={refreshKey} 
                 onEditClick={handleEdit}
               />
@@ -47,4 +47,4 @@ const Training_m = ({ api }) => {
       </div>
      );
 }
-export default Training_m;
+export default Medical_m;

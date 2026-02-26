@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import api from '../api/api';
 
 function SubComForm({ onClose, onSuccess, initialData }) {
-  const [activeTab, setActiveTab] = useState('pribadi');
   const formRef = useRef(null);
 
   useEffect(() => {
