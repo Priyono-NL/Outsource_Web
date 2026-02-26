@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import PersonelTab from './PersonalTab';
 import EmployTab from './EmployTab';
 import AsetTab from './AsetTab';
 
 function Dataform({ onClose }) {
   const [activeTab, setActiveTab] = useState('pribadi');
+  const formRef = useRef(null);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(formRef.current);
+    const data = Object.fromEntries(formData.entries());
+    console.log("Data yang akan dikirim:", data);
+};
 
   return (
     <>
@@ -56,23 +64,27 @@ function Dataform({ onClose }) {
                   </li>
                 </ul>
               </div>
-
-              <div className="card-body border-top">
-                <div className="tab-content py-3">
-                  {activeTab === 'pribadi' && <PersonelTab />}
-                  {activeTab === 'pekerjaan' && <EmployTab />}
-                  {activeTab === 'aset' && <AsetTab />}
-                </div>
-              </div>
-
+              <form ref={formRef} onSubmit={handleSave}>
+                <div className="card-body border-top">
+                  <div className="tab-content py-3">
+                    <div className={activeTab === 'pribadi' ? '' : 'd-none'}>
+                      <PersonelTab />
+                    </div>
+                    <div className={activeTab === 'pekerjaan' ? '' : 'd-none'}>
+                      <EmployTab />
+                    </div>
+                    <div className={activeTab === 'aset' ? '' : 'd-none'}>
+                      <AsetTab />
+                    </div>                    
+                  </div>
+                </div>              
               <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
-                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>
-                  Batal
-                </button>
+                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
                 <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold">
                   <i className="bi bi-check-lg me-1"></i> Simpan Data
                 </button>
               </div>
+              </form>
             </div>
 
           </div>

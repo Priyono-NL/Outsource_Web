@@ -53,8 +53,8 @@ const Datatable = ({api}) => {
                     <tr key={`row-${index+1}`} className="border-bottom">
                     <td>{emp.employee_id}</td>
                     <td>{emp.nik}</td>
-                    <td>{emp.person_id}</td>
-                    <td>{emp.sub_company_id}</td>
+                    <td>{emp.person_name}</td>
+                    <td>{emp.sub_con_name}</td>
                     <td>{emp.valid_from ? emp.valid_from : '-'}</td>
                     <td>{emp.valid_to ? emp.valid_to : '-'}</td>
                     </tr>
