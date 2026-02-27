@@ -7,6 +7,7 @@ import Training_m from './pages/Training_m';
 import Medical_m from './pages/Medical_m';
 import Canteen from './pages/Canteen';
 import Alokasi from './pages/Alokasi'
+import OsMedical from './pages/OsMedical';
 
 function App() {
   const api_url = 'http://127.0.0.1:5000';
@@ -28,14 +29,15 @@ function App() {
           
           <div className="flex-grow-1 overflow-auto p-4">
             <Routes>
-              <Route path="/" element={<Dashboard api={api_url} />} />
-              <Route path="/sub-company" element={<SubCompany api={api_url} />} />
-              <Route path="/training-m" element={<Training_m api={api_url} />} />
-              <Route path="/medical-m" element={<Medical_m api={api_url} />} />
-              <Route path="/canteen" element={<Canteen api={api_url} />} />
-              <Route path="/alokasi" element={<Alokasi api={api_url} />} />
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/sub-company" element={<SubCompany />} />
+              <Route path="/training-m" element={<Training_m />} />
+              <Route path="/medical-m" element={<Medical_m />} />
+              <Route path="/canteen" element={<Canteen />} />
+              <Route path="/alokasi" element={<Alokasi />} />
+              <Route path="/os-medical" element={<OsMedical />} />
                             
-              <Route path="*" element={<Dashboard api={api_url} />} />
+              <Route path="*" element={<Dashboard />} />
             </Routes>
           </div>
 

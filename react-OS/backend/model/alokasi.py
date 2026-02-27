@@ -1,14 +1,17 @@
 from extensions import db
 from datetime import datetime, timedelta, timezone
 
+def get_wib_now():
+    return datetime.now(timezone(timedelta(hours=7)))
+
 class Alokasi(db.Model):
     __tablename__ = 'os_employee_canteen'
     id = db.Column(db.Integer, primary_key=True)
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)
 
-    created_date = db.Column(db.DateTime, default=datetime.now(timezone(timedelta(hours=7)))) 
-    modified_date = db.Column(db.DateTime, default=datetime.now(timezone(timedelta(hours=7))), onupdate=datetime.now(timezone(timedelta(hours=7))))
+    created_date = db.Column(db.DateTime, default=get_wib_now) 
+    modified_date = db.Column(db.DateTime, onupdate=get_wib_now)
     created_by = db.Column(db.String(50))
     modified_by = db.Column(db.String(50))
 

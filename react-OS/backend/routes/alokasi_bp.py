@@ -1,6 +1,4 @@
 from flask import Blueprint, request, jsonify
-import pandas as pd
-import io
 from extensions import db
 from model.alokasi import Alokasi
 
