@@ -1,33 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import api from '../api/api';
+import api from '../../api/api';
 
-function AlokasiForm({ onClose, onSuccess, initialData }) {
-  const [canteens, setCanteens] = useState([]);
+function Medic_m_form({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
 
-  // get canteen select
   useEffect(() => {
-    const fetchCanteens = async () => {
-      try {        
-        const response = await api.get('/canteen?page=1&pageSize=100'); 
-        if (response.data.status === 'success') {
-          setCanteens(response.data.data);
+        if (initialData && formRef.current) {
+            formRef.current.medical_id.value = initialData.medical_id;
+            formRef.current.medical_name.value = initialData.medical_name;
+            formRef.current.faskes.value = initialData.faskes;
         }
-      } catch (error) {
-        console.error("Gagal mengambil data kantin:", error);
-      }
-    };
-    fetchCanteens();
-  }, [])
-
-  useEffect(() => {
-        if (initialData && formRef.current && canteens.length > 0) {
-            formRef.current.employee_id.value = initialData.employee_id;
-            formRef.current.canteen_id.value = initialData.canteen_id;
-            formRef.current.valid_from.value = initialData.valid_from;
-            formRef.current.valid_to.value = initialData.valid_to;
-        }
-    }, [initialData, , canteens]);
+    }, [initialData]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -35,8 +18,8 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/alokasi/${initialData.alokasi_id}`, data) 
-            : await api.post('/alokasi/submit', data);
+            ? await api.put(`/medical/${initialData.medical_id}`, data) 
+            : await api.post('/medical/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
         alert(response.data.message);
@@ -78,27 +61,17 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
               <form ref={formRef} onSubmit={handleSave}>
                 <div className="card-body border-top">
                   <div className="row g-3">
-                    <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Employee ID</label>
-                        <input type="text" name="employee_id" className="form-control" />
+                    <div className="mb-3 col-4">
+                        <label className="form-label small fw-bold">Medical ID</label>
+                        <input type="text" name="medical_id" className="form-control" />
                     </div>
-                    <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Canteen Name</label>
-                        <select name="canteen_id" className="form-select">
-                            {canteens.map((canteen) => (
-                                <option key={canteen.canteen_id} value={canteen.canteen_id}>
-                                    {canteen.canteen_name}
-                                </option>
-                            ))}
-                        </select>
+                    <div className="mb-3 col-4">
+                        <label className="form-label small fw-bold">Medical Name</label>
+                        <input type="text" name="medical_name" className="form-control" />
                     </div>
-                    <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Valid From</label>
-                        <input type="date" name="valid_from" className="form-control" />
-                    </div>
-                    <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Valid To</label>
-                        <input type="date" name="valid_to" className="form-control" />
+                    <div className="mb-3 col-4">
+                        <label className="form-label small fw-bold">faskes</label>
+                        <input type="text" name="faskes" className="form-control" />
                     </div>
                   </div>
                 </div>              
@@ -118,4 +91,4 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default AlokasiForm;
+export default Medic_m_form;

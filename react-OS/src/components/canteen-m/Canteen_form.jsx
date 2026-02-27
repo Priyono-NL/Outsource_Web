@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import api from '../api/api';
+import api from '../../api/api';
 
 function CanteenForm({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);

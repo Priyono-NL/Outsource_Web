@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import api from '../api/api';
+import api from '../../api/api';
 
-function Medic_m_form({ onClose, onSuccess, initialData }) {
+function SubComForm({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
 
   useEffect(() => {
         if (initialData && formRef.current) {
-            formRef.current.medical_id.value = initialData.medical_id;
-            formRef.current.medical_name.value = initialData.medical_name;
-            formRef.current.faskes.value = initialData.faskes;
+            formRef.current.sub_company_name.value = initialData.sub_company_name;
+            formRef.current.type_company.value = initialData.type_company;
         }
     }, [initialData]);
 
@@ -18,8 +17,8 @@ function Medic_m_form({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/medical/${initialData.medical_id}`, data) 
-            : await api.post('/medical/submit', data);
+            ? await api.put(`/subcom/${initialData.sub_company_id}`, data) 
+            : await api.post('/subcom/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
         alert(response.data.message);
@@ -61,17 +60,16 @@ function Medic_m_form({ onClose, onSuccess, initialData }) {
               <form ref={formRef} onSubmit={handleSave}>
                 <div className="card-body border-top">
                   <div className="row g-3">
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Medical ID</label>
-                        <input type="text" name="medical_id" className="form-control" />
+                    <div className="mb-3 col-6">
+                        <label className="form-label small fw-bold">Sub Company Name</label>
+                        <input type="text" name="sub_company_name" className="form-control" />
                     </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Medical Name</label>
-                        <input type="text" name="medical_name" className="form-control" />
-                    </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">faskes</label>
-                        <input type="text" name="faskes" className="form-control" />
+                    <div className="mb-3 col-6">
+                        <label className="form-label small fw-bold">Tipe Sub Company</label>
+                        <select name="type_company" className="form-select">
+                            <option value="OS">OS</option>
+                            <option value="Vendor">Vendor</option>
+                        </select>
                     </div>
                   </div>
                 </div>              
@@ -91,4 +89,4 @@ function Medic_m_form({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default Medic_m_form;
+export default SubComForm;

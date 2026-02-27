@@ -1,16 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
-import api from '../api/api';
+import api from '../../api/api';
 
-function Train_m_form({ onClose, onSuccess, initialData }) {
+function AlokasiForm({ onClose, onSuccess, initialData }) {
+  const [canteens, setCanteens] = useState([]);
   const formRef = useRef(null);
 
+  // get canteen select
   useEffect(() => {
-        if (initialData && formRef.current) {
-            formRef.current.training_id.value = initialData.training_id;
-            formRef.current.training_name.value = initialData.training_name;
-            formRef.current.organizer.value = initialData.organizer;
+    const fetchCanteens = async () => {
+      try {        
+        const response = await api.get('/canteen?page=1&pageSize=100'); 
+        if (response.data.status === 'success') {
+          setCanteens(response.data.data);
         }
-    }, [initialData]);
+      } catch (error) {
+        console.error("Gagal mengambil data kantin:", error);
+      }
+    };
+    fetchCanteens();
+  }, [])
+
+  useEffect(() => {
+        if (initialData && formRef.current && canteens.length > 0) {
+            formRef.current.employee_id.value = initialData.employee_id;
+            formRef.current.canteen_id.value = initialData.canteen_id;
+            formRef.current.valid_from.value = initialData.valid_from;
+            formRef.current.valid_to.value = initialData.valid_to;
+        }
+    }, [initialData, , canteens]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -18,8 +35,8 @@ function Train_m_form({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/training/${initialData.training_id}`, data) 
-            : await api.post('/training/submit', data);
+            ? await api.put(`/alokasi/${initialData.alokasi_id}`, data) 
+            : await api.post('/alokasi/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
         alert(response.data.message);
@@ -61,17 +78,27 @@ function Train_m_form({ onClose, onSuccess, initialData }) {
               <form ref={formRef} onSubmit={handleSave}>
                 <div className="card-body border-top">
                   <div className="row g-3">
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Training ID</label>
-                        <input type="text" name="training_id" className="form-control" />
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Employee ID</label>
+                        <input type="text" name="employee_id" className="form-control" />
                     </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Training Name</label>
-                        <input type="text" name="training_name" className="form-control" />
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Canteen Name</label>
+                        <select name="canteen_id" className="form-select">
+                            {canteens.map((canteen) => (
+                                <option key={canteen.canteen_id} value={canteen.canteen_id}>
+                                    {canteen.canteen_name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Organizer</label>
-                        <input type="text" name="organizer" className="form-control" />
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Valid From</label>
+                        <input type="date" name="valid_from" className="form-control" />
+                    </div>
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Valid To</label>
+                        <input type="date" name="valid_to" className="form-control" />
                     </div>
                   </div>
                 </div>              
@@ -91,4 +118,4 @@ function Train_m_form({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default Train_m_form;
+export default AlokasiForm;

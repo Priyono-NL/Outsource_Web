@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Train_m_table from '../components/Train_m_table';
-import Train_m_form from '../components/Train_m_form';
+import Train_m_table from '../components/training-m/Train_m_table';
+import Train_m_form from '../components/training-m/Train_m_form';
 
 const Training_m = () => {
     const [showForm, setShowForm] = useState(false);

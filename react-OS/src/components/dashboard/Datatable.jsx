@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/api';
-import PageNav from './PageNav';
+import api from '../../api/api';
+import PageNav from '../PageNav';
 
-const AlokasiTable = ({ refreshTrigger, onEditClick }) => { 
+const Datatable = () => { 
        
-    const [alokasi, setAlokasi] = useState([]);   
+    const [employees, setEmployees] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -12,11 +12,11 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}`);
-            const result = await response.data;
+            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}`);
+            const result = await response.data;      
             if (result.status === 'success') { 
-            setAlokasi(result.data);
-            setTotalPages(result.total_page);
+                setEmployees(result.data);
+                setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
         } catch (err) {
@@ -26,7 +26,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger]);
+    }, [currentPage, itemsPerPage]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -34,25 +34,23 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">Employee Name</th>
-                    <th className="py-3">Canteen</th>
-                    <th className="py-3">Valid From</th>
-                    <th className="py-3">Valid To</th>
-                    <th className='py-3'>Aksi</th>
+                <th className="py-3">employee_id</th>
+                <th className="py-3">NIK</th>
+                <th className="py-3">person_id</th>
+                <th className="py-3">sub_company_id</th>
+                <th className="py-3">valid_from</th>
+                <th className="py-3 text-center">valid_to</th>
                 </tr>
             </thead>
             <tbody>{                  
-                alokasi.map((emp, index) => (
+                employees.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{emp.employee_name}</td>
-                        <td>{emp.canteen_name}</td>
-                        <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.v_valid_to ? emp.v_valid_from : '-'}</td>
-                        <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
-                                Edit
-                            </button>
-                        </td>
+                    <td>{emp.employee_id}</td>
+                    <td>{emp.nik}</td>
+                    <td>{emp.person_name}</td>
+                    <td>{emp.sub_con_name}</td>
+                    <td>{emp.valid_from ? emp.valid_from : '-'}</td>
+                    <td>{emp.valid_to ? emp.valid_to : '-'}</td>
                     </tr>
                 ))}
             </tbody>
@@ -65,4 +63,4 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
         </div>        
     </>)
 };
-export default AlokasiTable;
+export default Datatable;

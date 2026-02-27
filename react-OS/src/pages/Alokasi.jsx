@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import AlokasiForm from '../components/AlokasiForm';
-import AlokasiTable from '../components/AlokasiTable';
+import AlokasiForm from '../components/alokasi/AlokasiForm';
+import AlokasiTable from '../components/alokasi/AlokasiTable';
 
 const Alokasi = () => {
     const [showForm, setShowForm] = useState(false);

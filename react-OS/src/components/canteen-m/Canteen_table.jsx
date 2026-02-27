@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/api';
-import PageNav from './PageNav';
+import api from '../../api/api';
+import PageNav from '../PageNav';
 
-const SubComTable = ({ refreshTrigger, onEditClick }) => { 
+const CanteenTable = ({ refreshTrigger, onEditClick }) => { 
        
-    const [SubCom, setSubCom] = useState([]);   
+    const [Canteen, setCanteen] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -12,10 +12,10 @@ const SubComTable = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/subcom?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/canteen?page=${currentPage}&pageSize=${itemsPerPage}`);
         const result = await response.data;
         if (result.status === 'success') { 
-            setSubCom(result.data);
+            setCanteen(result.data);
             setTotalPages(result.total_page);
         } 
         else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
@@ -27,7 +27,7 @@ const SubComTable = ({ refreshTrigger, onEditClick }) => {
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/subcom/${id}`);
+                const response = await api.delete(`/canteen/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -39,33 +39,31 @@ const SubComTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
-    fetchData();
+        fetchData();
     }, [currentPage, refreshTrigger]);
 
     return (<>
-        {error && <div className="alert alert-danger">{error}</div>}        
+        {error && <div className="alert alert-danger">{error}</div>}
         <div className="table-responsive">
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">Sub Company Id</th>
-                    <th className="py-3">Sub Company Name</th>
-                    <th className="py-3">tipe Company</th>
+                    <th className="py-3">KantinID</th>
+                    <th className="py-3">Nama Kantin</th>
                     <th className='py-3'>Aksi</th>
                 </tr>
             </thead>
             <tbody>{                  
-                SubCom.map((sub, index) => (
+                Canteen.map((can, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{sub.sub_company_id}</td>
-                        <td>{sub.sub_company_name}</td>
-                        <td>{sub.type_company}</td>
+                        <td>{can.canteen_id}</td>
+                        <td>{can.canteen_name}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(sub)}>
+                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(can)}>
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(sub.sub_company_id, sub.sub_company_name)}
+                                onClick={() => handleDelete(can.Canteen_id, can.Canteen_name)}
                             >
                                 Hapus
                             </button>
@@ -82,4 +80,4 @@ const SubComTable = ({ refreshTrigger, onEditClick }) => {
         </div>        
     </>)
 };
-export default SubComTable;
+export default CanteenTable;

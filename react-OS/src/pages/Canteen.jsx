@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import CanteenTable from '../components/Canteen_table';
-import CanteenForm from '../components/Canteen_form';
+import CanteenTable from '../components/canteen-m/Canteen_table';
+import CanteenForm from '../components/canteen-m/Canteen_form';
 
 const Canteen = () => {
     const [showForm, setShowForm] = useState(false);

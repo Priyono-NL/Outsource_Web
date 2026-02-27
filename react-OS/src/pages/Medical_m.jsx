@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Medic_m_form from '../components/Medic_m_form';
-import Medic_m_table from '../components/Medic_m_table';
+import Medic_m_form from '../components/medical-m/Medic_m_form';
+import Medic_m_table from '../components/medical-m/Medic_m_table';
 
 const Medical_m = () => {
     const [showForm, setShowForm] = useState(false);

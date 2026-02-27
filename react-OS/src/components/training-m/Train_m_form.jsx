@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import api from '../api/api';
+import api from '../../api/api';
 
-function SubComForm({ onClose, onSuccess, initialData }) {
+function Train_m_form({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
 
   useEffect(() => {
         if (initialData && formRef.current) {
-            formRef.current.sub_company_name.value = initialData.sub_company_name;
-            formRef.current.type_company.value = initialData.type_company;
+            formRef.current.training_id.value = initialData.training_id;
+            formRef.current.training_name.value = initialData.training_name;
+            formRef.current.organizer.value = initialData.organizer;
         }
     }, [initialData]);
 
@@ -17,8 +18,8 @@ function SubComForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/subcom/${initialData.sub_company_id}`, data) 
-            : await api.post('/subcom/submit', data);
+            ? await api.put(`/training/${initialData.training_id}`, data) 
+            : await api.post('/training/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
         alert(response.data.message);
@@ -60,16 +61,17 @@ function SubComForm({ onClose, onSuccess, initialData }) {
               <form ref={formRef} onSubmit={handleSave}>
                 <div className="card-body border-top">
                   <div className="row g-3">
-                    <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Sub Company Name</label>
-                        <input type="text" name="sub_company_name" className="form-control" />
+                    <div className="mb-3 col-4">
+                        <label className="form-label small fw-bold">Training ID</label>
+                        <input type="text" name="training_id" className="form-control" />
                     </div>
-                    <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Tipe Sub Company</label>
-                        <select name="type_company" className="form-select">
-                            <option value="OS">OS</option>
-                            <option value="Vendor">Vendor</option>
-                        </select>
+                    <div className="mb-3 col-4">
+                        <label className="form-label small fw-bold">Training Name</label>
+                        <input type="text" name="training_name" className="form-control" />
+                    </div>
+                    <div className="mb-3 col-4">
+                        <label className="form-label small fw-bold">Organizer</label>
+                        <input type="text" name="organizer" className="form-control" />
                     </div>
                   </div>
                 </div>              
@@ -89,4 +91,4 @@ function SubComForm({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default SubComForm;
+export default Train_m_form;

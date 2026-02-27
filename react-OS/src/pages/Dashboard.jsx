@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Datatable from '../components/Datatable';
-import Dataform from '../components/Dataform';
+import Datatable from '../components/dashboard/Datatable';
+import Dataform from '../components/dashboard/Dataform';
 
 const Dashboard = ({ api }) => {
     const [showForm, setShowForm] = useState(false);

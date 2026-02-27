@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/api';
-import PageNav from './PageNav';
+import api from '../../api/api';
+import PageNav from '../PageNav';
 
-const CanteenTable = ({ refreshTrigger, onEditClick }) => { 
+const Train_m_table = ({ refreshTrigger, onEditClick }) => { 
        
-    const [Canteen, setCanteen] = useState([]);   
+    const [Training, setTraining] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -12,10 +12,10 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/canteen?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/training?page=${currentPage}&pageSize=${itemsPerPage}`);
         const result = await response.data;
         if (result.status === 'success') { 
-            setCanteen(result.data);
+            setTraining(result.data);
             setTotalPages(result.total_page);
         } 
         else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
@@ -27,7 +27,7 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/canteen/${id}`);
+                const response = await api.delete(`/training/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -39,7 +39,7 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
-        fetchData();
+    fetchData();
     }, [currentPage, refreshTrigger]);
 
     return (<>
@@ -48,22 +48,24 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">KantinID</th>
-                    <th className="py-3">Nama Kantin</th>
+                    <th className="py-3">Training Id</th>
+                    <th className="py-3">Training Name</th>
+                    <th className="py-3">Organizer</th>
                     <th className='py-3'>Aksi</th>
                 </tr>
             </thead>
             <tbody>{                  
-                Canteen.map((can, index) => (
+                Training.map((sub, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{can.canteen_id}</td>
-                        <td>{can.canteen_name}</td>
+                        <td>{sub.training_id}</td>
+                        <td>{sub.training_name}</td>
+                        <td>{sub.organizer}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(can)}>
+                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(sub)}>
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(can.Canteen_id, can.Canteen_name)}
+                                onClick={() => handleDelete(sub.training_id, sub.training_name)}
                             >
                                 Hapus
                             </button>
@@ -80,4 +82,4 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
         </div>        
     </>)
 };
-export default CanteenTable;
+export default Train_m_table;

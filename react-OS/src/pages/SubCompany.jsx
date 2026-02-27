@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import SubComTable from '../components/SubComTable';
-import SubComForm from '../components/SubComForm';
+import SubComTable from '../components/subCom/SubComTable';
+import SubComForm from '../components/subCom/SubComForm';
 
 const SubCompany = () => {
     const [showForm, setShowForm] = useState(false);

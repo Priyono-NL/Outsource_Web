@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/api';
-import PageNav from './PageNav';
+import api from '../../api/api';
+import PageNav from '../PageNav';
 
-const Medic_m_table = ({ refreshTrigger, onEditClick }) => { 
+const SubComTable = ({ refreshTrigger, onEditClick }) => { 
        
-    const [Medical, setMedical] = useState([]);   
+    const [SubCom, setSubCom] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -12,10 +12,10 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/medical?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/subcom?page=${currentPage}&pageSize=${itemsPerPage}`);
         const result = await response.data;
         if (result.status === 'success') { 
-            setMedical(result.data);
+            setSubCom(result.data);
             setTotalPages(result.total_page);
         } 
         else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
@@ -27,7 +27,7 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/medical/${id}`);
+                const response = await api.delete(`/subcom/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -43,29 +43,29 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
     }, [currentPage, refreshTrigger]);
 
     return (<>
-        {error && <div className="alert alert-danger">{error}</div>}
+        {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">Medical Id</th>
-                    <th className="py-3">Medical Name</th>
-                    <th className="py-3">Fasilitas Kesehatan</th>
+                    <th className="py-3">Sub Company Id</th>
+                    <th className="py-3">Sub Company Name</th>
+                    <th className="py-3">tipe Company</th>
                     <th className='py-3'>Aksi</th>
                 </tr>
             </thead>
             <tbody>{                  
-                Medical.map((sub, index) => (
+                SubCom.map((sub, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{sub.medical_id}</td>
-                        <td>{sub.medical_name}</td>
-                        <td>{sub.faskes}</td>
+                        <td>{sub.sub_company_id}</td>
+                        <td>{sub.sub_company_name}</td>
+                        <td>{sub.type_company}</td>
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(sub)}>
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(sub.medical_id, sub.medical_name)}
+                                onClick={() => handleDelete(sub.sub_company_id, sub.sub_company_name)}
                             >
                                 Hapus
                             </button>
@@ -82,4 +82,4 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
         </div>        
     </>)
 };
-export default Medic_m_table;
+export default SubComTable;
