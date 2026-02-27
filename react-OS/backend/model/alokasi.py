@@ -27,7 +27,7 @@ class Alokasi(db.Model):
             "canteen_id": self.canteen_id,
             "employee_id": self.employee_id,
             'valid_from': self.valid_from.strftime('%Y-%m-%d'),
-            'valid_to': self.valid_to.strftime('%Y-%m-%d'),
+            'valid_to': self.valid_to.strftime('%Y-%m-%d') if self.valid_to else None,
 
             "canteen_name": self.canteen_master.canteen_name,
             "employee_name": self.employement.person_detail.name,            

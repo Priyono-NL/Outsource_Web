@@ -3,6 +3,7 @@ import api from '../../api/api';
 
 function AlokasiForm({ onClose, onSuccess, initialData }) {
   const [canteens, setCanteens] = useState([]);
+  const [isNoLimit, setIsNoLimit] = useState(false);
   const formRef = useRef(null);
 
   // get canteen select
@@ -19,6 +20,12 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     };
     fetchCanteens();
   }, [])
+
+  useEffect(() => {
+    if (initialData) {
+      setIsNoLimit(!initialData.valid_to);
+    }
+  }, [initialData]);
 
   useEffect(() => {
         if (initialData && formRef.current && canteens.length > 0) {
@@ -97,9 +104,25 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
                         <input type="date" name="valid_from" className="form-control" />
                     </div>
                     <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Valid To</label> <input type="checkbox" name="" id="" /> Masih Bekerja
-                        <input type="date" name="valid_to" className="form-control" />
-                        
+                        <label className="form-label small fw-bold">Valid To</label>                        
+                        <input 
+                          type="date" 
+                          name="valid_to" 
+                          id="valid_to" 
+                          className="form-control" 
+                          disabled={isNoLimit}
+                          defaultValue={initialData?.valid_to}
+                        />
+                        <input 
+                          type="checkbox" 
+                          id="no_limit" 
+                          className="form-check-input"
+                          checked={isNoLimit}
+                          onChange={(e) => setIsNoLimit(e.target.checked)}
+                        />
+                        <label className="form-check-label" htmlFor="no_limit">
+                          No Limit
+                        </label> 
                     </div>
                   </div>
                 </div>              
