@@ -20,7 +20,7 @@ class osTraining(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
     training_id = db.Column(db.String(10), db.ForeignKey('training_master.training_id'))
     
-    employement = db.relationship('OsEmployment', backref='tr_training', lazy=True)
+    employement = db.relationship('OsEmployment', backref='training_records', lazy=True)
     training_m = db.relationship('training_m', backref='tr_training', lazy=True)
 
     def to_dict(self):

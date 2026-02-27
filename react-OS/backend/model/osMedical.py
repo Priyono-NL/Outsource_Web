@@ -19,7 +19,7 @@ class osMedical(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
     medical_id = db.Column(db.String(10), db.ForeignKey('medical_master.medical_id'))
     
-    employement = db.relationship('OsEmployment', backref='tr_medical', lazy=True)
+    employement = db.relationship('OsEmployment', backref='medical_records', lazy=True)
     medical_m = db.relationship('medical', backref='tr_medical', lazy=True)
 
     def to_dict(self):

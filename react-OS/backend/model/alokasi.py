@@ -18,7 +18,7 @@ class Alokasi(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
     canteen_id = db.Column(db.String(10), db.ForeignKey('canteen_master.canteen_id'))
     
-    employement = db.relationship('OsEmployment', backref='tr_kantin', lazy=True)
+    employement = db.relationship('OsEmployment', backref='alokasi_kantin', lazy=True)
     canteen_master = db.relationship('canteen', backref='tr_kantin', lazy=True)
 
     def to_dict(self):

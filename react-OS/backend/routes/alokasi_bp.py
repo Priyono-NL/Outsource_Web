@@ -1,6 +1,10 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy import or_, join
 from extensions import db
+
 from model.alokasi import Alokasi
+from model.employment import OsEmployment
+from model.person import OsPerson
 
 alokasi_bp = Blueprint('alokasi_bp', __name__)
 
@@ -8,8 +12,20 @@ alokasi_bp = Blueprint('alokasi_bp', __name__)
 def index():
     try:
         page = request.args.get('page', 1, type=int)
-        pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = Alokasi.query.paginate(page=page, per_page=pageSize, error_out=False)
+        pageSize = request.args.get('pageSize', 100, type=int)
+        search = request.args.get('search', '', type=str)
+        query = Alokasi.query
+        if search:
+            query = query.join(OsEmployment, Alokasi.employee_id == OsEmployment.employee_id) \
+                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                     
+            query = query.filter(
+                or_(
+                    Alokasi.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsPerson.name.ilike(f"%{search}%"),                    
+                )
+            )
+        pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
             "data": [emp.to_dict() for emp in pagination.items],

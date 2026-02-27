@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AlokasiTable = ({ refreshTrigger, onEditClick }) => { 
+const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
     const [alokasi, setAlokasi] = useState([]);   
-    const [error, setError] = useState(null); 
+    const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(100);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}`);
+            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
             const result = await response.data;
             if (result.status === 'success') { 
-            setAlokasi(result.data);
-            setTotalPages(result.total_page);
+                setAlokasi(result.data);
+                setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
         } catch (err) {
@@ -39,8 +39,12 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
-        fetchData();
-    }, [currentPage, refreshTrigger]);
+        setCurrentPage(1);
+    }, [searchTerm]);
+    
+    useEffect(() => {
+        fetchData(1);
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -63,7 +67,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
                         <td>{emp.employee_name}</td>
                         <td>{emp.canteen_name}</td>
                         <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.v_valid_to ? emp.v_valid_from : '-'}</td>
+                        <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
                                 Edit
