@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsMedicTable = ({ refreshTrigger, onEditClick }) => { 
+const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => { 
        
     const [osmedical, setOsMedical] = useState([]);   
     const [error, setError] = useState(null); 
@@ -12,7 +12,7 @@ const OsMedicTable = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/osmedical?page=${currentPage}&pageSize=${itemsPerPage}`);
+            const response = await api.get(`/osmedical?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
             const result = await response.data;
             if (result.status === 'success') { 
             setOsMedical(result.data);
@@ -39,8 +39,12 @@ const OsMedicTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger]);
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        

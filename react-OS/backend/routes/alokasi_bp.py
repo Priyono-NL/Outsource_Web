@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from sqlalchemy import or_, join
+from sqlalchemy import or_
 from extensions import db
 
 from model.alokasi import Alokasi
@@ -17,8 +17,7 @@ def index():
         query = Alokasi.query
         if search:
             query = query.join(OsEmployment, Alokasi.employee_id == OsEmployment.employee_id) \
-                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
-                     
+                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
                     Alokasi.employee_id.cast(db.String).ilike(f"%{search}%"),

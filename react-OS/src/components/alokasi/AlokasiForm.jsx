@@ -97,8 +97,9 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
                         <input type="date" name="valid_from" className="form-control" />
                     </div>
                     <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Valid To</label>
+                        <label className="form-label small fw-bold">Valid To</label> <input type="checkbox" name="" id="" /> Masih Bekerja
                         <input type="date" name="valid_to" className="form-control" />
+                        
                     </div>
                   </div>
                 </div>              

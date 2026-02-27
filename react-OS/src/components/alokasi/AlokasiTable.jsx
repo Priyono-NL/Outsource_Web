@@ -41,9 +41,9 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm]);
-    
+
     useEffect(() => {
-        fetchData(1);
+        fetchData();
     }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>

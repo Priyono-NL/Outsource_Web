@@ -1,6 +1,10 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy import or_
 from extensions import db
+
 from model.osTraining import osTraining
+from model.employment import OsEmployment
+from model.person import OsPerson
 
 osTraining_bp = Blueprint('osTraining_bp', __name__)
 
@@ -9,7 +13,18 @@ def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = osTraining.query.paginate(page=page, per_page=pageSize, error_out=False)
+        search = request.args.get('search', '', type=str)
+        query = osTraining.query
+        if search:
+            query = query.join(OsEmployment, osTraining.employee_id == OsEmployment.employee_id) \
+                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            query = query.filter(
+                or_(
+                    osTraining.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsPerson.name.ilike(f"%{search}%"),                    
+                )
+            )
+        pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
             "data": [emp.to_dict() for emp in pagination.items],
