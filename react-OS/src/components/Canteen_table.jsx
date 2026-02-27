@@ -39,7 +39,7 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
-    fetchData();
+        fetchData();
     }, [currentPage, refreshTrigger]);
 
     return (<>

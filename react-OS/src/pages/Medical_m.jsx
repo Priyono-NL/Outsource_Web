@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Medic_m_form from '../components/Medic_m_form';
 import Medic_m_table from '../components/Medic_m_table';
 
-const Medical_m = ({ api }) => {
+const Medical_m = () => {
     const [showForm, setShowForm] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [editingData, setEditingData] = useState(null);

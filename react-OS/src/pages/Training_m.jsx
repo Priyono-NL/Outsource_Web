@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Train_m_table from '../components/Train_m_table';
 import Train_m_form from '../components/Train_m_form';
 
-const Training_m = ({ api }) => {
+const Training_m = () => {
     const [showForm, setShowForm] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [editingData, setEditingData] = useState(null);

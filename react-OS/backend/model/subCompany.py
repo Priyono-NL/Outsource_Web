@@ -1,5 +1,5 @@
 from extensions import db
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 class SubCompany(db.Model):
     __tablename__ = 'sub_company'
@@ -7,8 +7,8 @@ class SubCompany(db.Model):
     sub_company_name = db.Column(db.String(200))
     type_company = db.Column(db.Enum('OS', 'Vendor'))
 
-    created_date = db.Column(db.DateTime, default=datetime.now)
-    modified_date = db.Column(db.DateTime, onupdate=datetime.now)
+    created_date = db.Column(db.DateTime, default=datetime.now(timezone(timedelta(hours=7)))) 
+    modified_date = db.Column(db.DateTime, default=datetime.now(timezone(timedelta(hours=7))), onupdate=datetime.now(timezone(timedelta(hours=7))))
     created_by = db.Column(db.String(50))
     modified_by = db.Column(db.String(50))
 

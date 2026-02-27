@@ -6,6 +6,7 @@ import SubCompany from './pages/SubCompany';
 import Training_m from './pages/Training_m';
 import Medical_m from './pages/Medical_m';
 import Canteen from './pages/Canteen';
+import Alokasi from './pages/Alokasi'
 
 function App() {
   const api_url = 'http://127.0.0.1:5000';
@@ -32,6 +33,7 @@ function App() {
               <Route path="/training-m" element={<Training_m api={api_url} />} />
               <Route path="/medical-m" element={<Medical_m api={api_url} />} />
               <Route path="/canteen" element={<Canteen api={api_url} />} />
+              <Route path="/alokasi" element={<Alokasi api={api_url} />} />
                             
               <Route path="*" element={<Dashboard api={api_url} />} />
             </Routes>

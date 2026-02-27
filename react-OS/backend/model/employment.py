@@ -1,5 +1,5 @@
 from extensions import db
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 class OsEmployment(db.Model):
     __tablename__ = 'os_employment'
@@ -7,8 +7,9 @@ class OsEmployment(db.Model):
     nik = db.Column(db.Integer)
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)
-    created_date = db.Column(db.DateTime, default=datetime.now)
-    modified_date = db.Column(db.DateTime, onupdate=datetime.now)
+    
+    created_date = db.Column(db.DateTime, default=datetime.now(timezone(timedelta(hours=7)))) 
+    modified_date = db.Column(db.DateTime, default=datetime.now(timezone(timedelta(hours=7))), onupdate=datetime.now(timezone(timedelta(hours=7))))
     created_by = db.Column(db.String(50))
     modified_by = db.Column(db.String(50))
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import SubComTable from '../components/SubComTable';
 import SubComForm from '../components/SubComForm';
 
-const SubCompany = ({ api }) => {
+const SubCompany = () => {
     const [showForm, setShowForm] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [editingData, setEditingData] = useState(null);

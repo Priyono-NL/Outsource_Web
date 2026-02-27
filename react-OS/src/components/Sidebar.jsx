@@ -17,7 +17,7 @@ const Sidebar = () => {
       </ul>
       <hr />
       <ul className="nav nav-pills flex-column gap-1">
-        <li>
+        <li className="nav-item">
           <button 
             onClick={() => setIsMasterOpen(!isMasterOpen)}
             className="nav-link text-white w-100 text-start d-flex justify-content-between align-items-center"
@@ -51,6 +51,21 @@ const Sidebar = () => {
               </li>
             </ul>
           )}
+        </li>
+        <li className="nav-item">
+          <NavLink to="/alokasi" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Alokasi Kantin
+          </NavLink>
+        </li>
+        <li className="nav-item">
+          <NavLink to="/os-medical" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Medical OS
+          </NavLink>
+        </li>
+        <li className="nav-item">
+          <NavLink to="/os-training" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Training OS
+          </NavLink>
         </li>
       </ul>
     </div>
