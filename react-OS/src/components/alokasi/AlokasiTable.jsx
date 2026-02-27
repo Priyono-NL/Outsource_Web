@@ -7,7 +7,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
     const [alokasi, setAlokasi] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [itemsPerPage, setItemsPerPage] = useState(100);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async() => {
@@ -23,6 +23,20 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
             setError(err.message);
         }
     }
+
+    const handleDelete = async (id, name) => {
+        if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
+            try {
+                const response = await api.delete(`/osmedical/${id}`);
+                if (response.data.status === 'success') {
+                    alert(response.data.message);                
+                    fetchData(); 
+                }
+            } catch (error) {
+                alert("Gagal menghapus data: " + (error.response?.data?.message || error.message));
+            }
+        }
+    };
 
     useEffect(() => {
         fetchData();
@@ -53,6 +67,11 @@ const AlokasiTable = ({ refreshTrigger, onEditClick }) => {
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
                                 Edit
+                            </button>
+                            <button className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleDelete(emp.alokasi_id, emp.employee_name)}
+                            >
+                                Hapus
                             </button>
                         </td>
                     </tr>

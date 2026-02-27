@@ -1,34 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
 import api from '../../api/api';
 
-function OsMedicForm({ onClose, onSuccess, initialData }) {
-  const [medical, setMedical] = useState([]);
+function OsTrainingForm({ onClose, onSuccess, initialData }) {
+  const [training, setTraining] = useState([]);
   const formRef = useRef(null);
 
-  // get medical select
+  // get training select
   useEffect(() => {
-    const fetchOsMedical = async () => {
+    const fetchTraining = async () => {
       try {        
-        const response = await api.get('/medical?page=1&pageSize=50'); 
+        const response = await api.get('/training?page=1&pageSize=50'); 
         if (response.data.status === 'success') {
-          setMedical(response.data.data);
+          setTraining(response.data.data);
         }
       } catch (error) {
         console.error("Gagal mengambil data kantin:", error);
       }
     };
-    fetchOsMedical();
+    fetchTraining();
   }, [])
 
   useEffect(() => {
-        if (initialData && formRef.current && medical.length > 0) {
+        if (initialData && formRef.current && training.length > 0) {
             formRef.current.employee_id.value = initialData.employee_id;
-            formRef.current.medical_id.value = initialData.medical_id;
-            formRef.current.medical_date.value = initialData.medical_date;
-            formRef.current.medical_result.value = initialData.medical_result;
-            formRef.current.medical_notes.value = initialData.medical_notes;
+            formRef.current.training_id.value = initialData.training_id;
+            formRef.current.training_date_from.value = initialData.training_date_from;
+            formRef.current.training_date_to.value = initialData.training_date_to;
+            formRef.current.training_result.value = initialData.training_result;
+            formRef.current.training_score.value = initialData.training_score;
         }
-    }, [initialData, , medical]);
+    }, [initialData, , training]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -36,8 +37,8 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/osmedical/${initialData.osMedical_id}`, data) 
-            : await api.post('/osmedical/submit', data);
+            ? await api.put(`/ostraining/${initialData.osTraining_id}`, data) 
+            : await api.post('/ostraining/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
         alert(response.data.message);
@@ -79,31 +80,40 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
               <form ref={formRef} onSubmit={handleSave}>
                 <div className="card-body border-top">
                   <div className="row g-3">
-                    <div className="mb-3 col-4">
+                    <div className="mb-3 col-3">
                         <label className="form-label small fw-bold">Employee ID</label>
                         <input type="text" name="employee_id" className="form-control" />
                     </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Medical Check Name</label>
-                        <select name="medical_id" className="form-select">
-                            {medical.map((medical) => (
-                                <option key={medical.medical_id} value={medical.medical_id}>
-                                    {medical.medical_name}
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Training Name</label>
+                        <select name="training_id" className="form-select">
+                            {training.map((training) => (
+                                <option key={training.training_id} value={training.training_id}>
+                                    {training.training_name}
                                 </option>
                             ))}
                         </select>
                     </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Date</label>
-                        <input type="date" name="medical_date" className="form-control" />
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Date From</label>
+                        <input type="date" name="training_date_from" className="form-control" />
+                    </div>
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Date To</label>
+                        <input type="date" name="training_date_to" className="form-control" />
                     </div>
                     <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Result</label>
-                        <input type="text" name="medical_result" className="form-control" />
+                        <select name="training_result" className='form-control' 
+                          defaultValue={initialData ? initialData.training_result : ""}
+                        >
+                          <option value="0">Tidak Lulus</option>
+                          <option value="1">Lulus</option>
+                        </select>
                     </div>
                     <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Notes</label>
-                        <input type="text" name="medical_notes" className="form-control" />
+                        <label className="form-label small fw-bold">Score</label>
+                        <input type="number" name="training_score" className="form-control" />
                     </div>
                   </div>
                 </div>              
@@ -123,4 +133,4 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default OsMedicForm;
+export default OsTrainingForm;

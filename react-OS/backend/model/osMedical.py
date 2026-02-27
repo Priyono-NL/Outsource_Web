@@ -19,8 +19,8 @@ class osMedical(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
     medical_id = db.Column(db.String(10), db.ForeignKey('medical_master.medical_id'))
     
-    employement = db.relationship('OsEmployment', backref='transaksi_medical', lazy=True)
-    canteen_master = db.relationship('medical', backref='transaksi_medical', lazy=True)
+    employement = db.relationship('OsEmployment', backref='tr_medical', lazy=True)
+    medical_m = db.relationship('medical', backref='tr_medical', lazy=True)
 
     def to_dict(self):
         return {
@@ -31,7 +31,7 @@ class osMedical(db.Model):
             'medical_result': self.medical_result,
             'medical_notes': self.medical_notes,
 
-            "medical_name": self.canteen_master.medical_name,
+            "medical_name": self.medical_m.medical_name,
             "employee_name": self.employement.person_detail.name,            
             'v_medical_date': self.medical_date.strftime('%d %b %Y') if hasattr(self.medical_date, 'strftime') else None
         }

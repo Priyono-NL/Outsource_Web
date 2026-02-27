@@ -8,6 +8,7 @@ import Medical_m from './pages/Medical_m';
 import Canteen from './pages/Canteen';
 import Alokasi from './pages/Alokasi'
 import OsMedical from './pages/OsMedical';
+import OsTraining from './pages/OsTraining';
 
 function App() {
   const api_url = 'http://127.0.0.1:5000';
@@ -36,6 +37,7 @@ function App() {
               <Route path="/canteen" element={<Canteen />} />
               <Route path="/alokasi" element={<Alokasi />} />
               <Route path="/os-medical" element={<OsMedical />} />
+              <Route path="/os-training" element={<OsTraining />} />
                             
               <Route path="*" element={<Dashboard />} />
             </Routes>

@@ -1,0 +1,85 @@
+from flask import Blueprint, request, jsonify
+from extensions import db
+from model.osTraining import osTraining
+
+osTraining_bp = Blueprint('osTraining_bp', __name__)
+
+@osTraining_bp.route('/ostraining')
+def index():
+    try:
+        page = request.args.get('page', 1, type=int)
+        pageSize = request.args.get('pageSize', 10, type=int)
+        pagination = osTraining.query.paginate(page=page, per_page=pageSize, error_out=False)
+        return jsonify({
+            "status": "success",
+            "data": [emp.to_dict() for emp in pagination.items],
+            "total_page": pagination.pages,
+            "current_page": pagination.page,
+            "total_item": pagination.total
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@osTraining_bp.route('/ostraining/submit', methods=['POST'])
+def add():
+    try:
+        data = request.json if request.is_json else request.form
+        employee_id = data.get('employee_id')
+        training_id = data.get('training_id')
+        training_date_from = data.get('training_date_from')
+        training_date_to = data.get('training_date_to')
+        training_result = data.get('training_result')
+        training_score = data.get('training_score')
+        
+        new_osTraining = osTraining(
+            employee_id=employee_id,
+            training_id=training_id,
+            training_date_from=training_date_from,
+            training_date_to=training_date_to,
+            training_result=training_result,
+            training_score=training_score
+        )
+        db.session.add(new_osTraining)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"Data berhasil disimpan!"
+        }), 201     
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "Terjadi kesalahan pada server: " + str(e)
+        }), 500
+
+@osTraining_bp.route('/ostraining/<string:id>', methods=['PUT'])
+def update(id):
+    try:
+        osTraining_data = osTraining.query.filter_by(id=id).first()
+        data = request.json
+        osTraining_data.employee_id = data.get('employee_id', osTraining_data.employee_id)
+        osTraining_data.training_id = data.get('training_id', osTraining_data.training_id)
+        osTraining_data.training_date_from = data.get('training_date_from', osTraining_data.training_date_from)
+        osTraining_data.training_date_to = data.get('training_date_to', osTraining_data.training_date_to)
+        osTraining_data.training_result = data.get('training_result', osTraining_data.training_result)
+        osTraining_data.training_score = data.get('training_score', osTraining_data.training_score)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@osTraining_bp.route('/ostraining/<string:id>', methods=['DELETE'])
+def delete(id):
+    try:
+        osTraining_data = osTraining.query.filter_by(id=id).first()
+        db.session.delete(osTraining_data)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500

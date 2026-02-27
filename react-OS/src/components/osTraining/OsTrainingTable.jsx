@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsMedicTable = ({ refreshTrigger, onEditClick }) => { 
+const OsTrainingTable = ({ refreshTrigger, onEditClick }) => { 
        
-    const [osmedical, setOsMedical] = useState([]);   
+    const [osTraining, setOsTraining] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(100);
@@ -12,10 +12,10 @@ const OsMedicTable = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/osmedical?page=${currentPage}&pageSize=${itemsPerPage}`);
+            const response = await api.get(`/ostraining?page=${currentPage}&pageSize=${itemsPerPage}`);
             const result = await response.data;
             if (result.status === 'success') { 
-            setOsMedical(result.data);
+            setOsTraining(result.data);
             setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
@@ -27,7 +27,7 @@ const OsMedicTable = ({ refreshTrigger, onEditClick }) => {
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/osmedical/${id}`);
+                const response = await api.delete(`/ostraining/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -50,28 +50,35 @@ const OsMedicTable = ({ refreshTrigger, onEditClick }) => {
                 <tr>
                     <th className="py-3">Employee ID</th>
                     <th className="py-3">Employee Name</th>
-                    <th className="py-3">Medical Check</th>
-                    <th className="py-3">Date</th>
+                    <th className="py-3">Training Name</th>
+                    <th className="py-3">Date From</th>
+                    <th className="py-3">Date To</th>
                     <th className="py-3">Result</th>
-                    <th className="py-3">Notes</th>
+                    <th className="py-3">Score</th>
                     <th className='py-3'>Aksi</th>
                 </tr>
             </thead>
             <tbody>{                  
-                osmedical.map((emp, index) => (
+                osTraining.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
                         <td>{emp.employee_id}</td>
                         <td>{emp.employee_name}</td>
-                        <td>{emp.medical_name}</td>
-                        <td>{emp.v_medical_date ? emp.v_medical_date : '-'}</td>
-                        <td>{emp.medical_result}</td>                        
-                        <td>{emp.medical_notes ? emp.medical_notes : '-'}</td>
+                        <td>{emp.training_name}</td>
+                        <td>{emp.v_training_date_from ? emp.v_training_date_from : '-'}</td>
+                        <td>{emp.v_training_date_to ? emp.v_training_date_to : '-'}</td>
+                        <td>{emp.training_result == 1 ? (
+                                <span className="badge bg-success">Lulus</span>
+                            ) : (
+                                <span className="badge bg-danger">Tidak Lulus</span>
+                            )}
+                        </td>                        
+                        <td>{emp.training_score ? emp.training_score : '-'}</td>
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(emp.osMedical_id, emp.employee_name)}
+                                onClick={() => handleDelete(emp.osTraining_id, emp.employee_name)}
                             >
                                 Hapus
                             </button>
@@ -88,4 +95,4 @@ const OsMedicTable = ({ refreshTrigger, onEditClick }) => {
         </div>        
     </>)
 };
-export default OsMedicTable;
+export default OsTrainingTable;

@@ -16,6 +16,7 @@ from routes.medical_bp import medical_bp
 from routes.canteen_bp import canteen_bp
 from routes.alokasi_bp import alokasi_bp
 from routes.osMedical_bp import osMedical_bp
+from routes.osTraining_bp import osTraining_bp
 
 def create_app():
     app = Flask(__name__)
@@ -30,6 +31,7 @@ def create_app():
     app.register_blueprint(canteen_bp, url_prefix='/')
     app.register_blueprint(alokasi_bp, url_prefix='/')
     app.register_blueprint(osMedical_bp, url_prefix='/')
+    app.register_blueprint(osTraining_bp, url_prefix='/')
     
     return app
 

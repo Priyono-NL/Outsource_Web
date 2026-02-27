@@ -66,3 +66,14 @@ def update(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+@alokasi_bp.route('/alokasi/<string:id>', methods=['DELETE'])
+def delete(id):
+    try:
+        alokasi = Alokasi.query.filter_by(id=id).first()
+        db.session.delete(alokasi)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
