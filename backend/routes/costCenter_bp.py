@@ -66,8 +66,7 @@ def update(id):
 @costCenter_bp.route('/costcenter/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        cc = costCenter.query.filter_by(cost_center=id).first()
-        db.session.delete(cc)
+        costCenter.query.filter_by(cost_center=id).delete()
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

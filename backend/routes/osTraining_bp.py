@@ -85,8 +85,7 @@ def update(id):
 @osTraining_bp.route('/ostraining/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        osTraining_data = osTraining.query.filter_by(id=id).first()
-        db.session.delete(osTraining_data)
+        osTraining.query.filter_by(id=id).delete()
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

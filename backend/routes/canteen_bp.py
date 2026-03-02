@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
-from model.canteen import canteen
+from model.canteen import canteen, canteenDetail
+
 
 canteen_bp = Blueprint('canteen_bp', __name__)
 
@@ -12,7 +13,7 @@ def index():
         pagination = canteen.query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
-            "data": [train.to_dict() for train in pagination.items],
+            "data": [canteeens.to_dict() for canteeens in pagination.items],
             "total_page": pagination.pages,
             "current_page": pagination.page,
             "total_item": pagination.total
@@ -33,6 +34,17 @@ def add():
             canteen_name = data.get('canteen_name')
         )
         db.session.add(new_canteen)
+        db.session.flush()
+        #add cc in detail       
+        for cc_id in data.get('cc_ids', []):
+            if not cc_id:
+                continue
+            newDetail = canteenDetail(
+                canteen_id = new_canteen.canteen_id,
+                cc_id = cc_id
+            )
+            db.session.add(newDetail)
+        #commit all
         db.session.commit()
 
         return jsonify({
@@ -49,10 +61,20 @@ def add():
 @canteen_bp.route('/canteen/<string:id>', methods=['PUT'])
 def update(id):
     try:
-        train = canteen.query.filter_by(canteen_id=id).first()
+        canteeens = canteen.query.filter_by(canteen_id=id).first()
         data = request.json
-        train.canteen_id = data.get('canteen_id', train.canteen_id)
-        train.canteen_name = data.get('canteen_name', train.canteen_name)
+        canteeens.canteen_id = data.get('canteen_id', canteeens.canteen_id)
+        canteeens.canteen_name = data.get('canteen_name', canteeens.canteen_name)
+        #detail
+        canteenDetail.query.filter_by(canteen_id=id).delete()
+        for cc_id in data.get('cc_ids', []):
+            if not cc_id:
+                continue
+            newDetail = canteenDetail(
+                canteen_id = canteeens.canteen_id,
+                cc_id = cc_id
+            )
+            db.session.add(newDetail)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
     except Exception as e:
@@ -62,8 +84,8 @@ def update(id):
 @canteen_bp.route('/canteen/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        company = canteen.query.filter_by(canteen_id=id).first()
-        db.session.delete(company)
+        canteen = canteen.query.filter_by(canteen_id=id).first()
+        db.session.delete(canteen)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:
