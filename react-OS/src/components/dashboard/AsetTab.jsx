@@ -22,19 +22,19 @@ function AsetTab() {
                 <label className="form-label small fw-bold">Absence Card Valid To</label>                        
                 <input 
                     type="date" 
-                    name="valid_to" 
-                    id="valid_to" 
+                    name="c_valid_to" 
+                    id="c_valid_to" 
                     className="form-control" 
                     disabled={isNoLimit}
                 />
                 <input 
                     type="checkbox" 
-                    id="no_limit" 
+                    id="no_c_limit" 
                     className="form-check-input"
                     checked={isNoLimit}
                     onChange={(e) => setIsNoLimit(e.target.checked)}
                 />
-                <label className="c_form-check-label" htmlFor="no_limit">
+                <label className="c_form-check-label" htmlFor="no_c_limit">
                     No Limit
                 </label> 
             </div>         

@@ -5,27 +5,44 @@ import api from '../../api/api';
 function EmployTab() {
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [subcom, setSubcom] = useState([]);
+  const [costCenter, setCostCenter] = useState([]);
   const [selectSubComId, setSelectSubComId] = useState(null);
+  const [selectCCId, setselectCCId] = useState(null);
   
   useEffect(() => {
     // get subcom select
     const fetchSubCom = async () => {
       try {        
         const response = await api.get('/subcom?page=1&pageSize=200'); 
-        if (response.data.status === 'success') {
-          setSubcom(response.data.data);
-        }
+        if (response.data.status === 'success') setSubcom(response.data.data);
       } catch (error) {
-        console.error("Gagal mengambil data:", error);
+        console.error("Gagal mengambil subcom:", error);
       }
-    };    
+    };
+    // get CC select
+    const fetchCC = async () => {
+        try {
+            const cc_res = await api.get('/costcenter?page=1&pageSize=200');
+            if (cc_res.data.status === 'success') setCostCenter(cc_res.data.data);
+        } catch (error) {
+            console.error("Gagal Mengambil CC:", error)
+        }
+    };
     fetchSubCom();
+    fetchCC();
   }, [])
+
   const subcomOptions = subcom.map((item) => ({
     value: item.sub_company_id,
     label: item.sub_company_name
   }));
-  
+  const ccOptions = [
+    { value: "", label: "No Cost Center" }, 
+    ...costCenter.map((item) => ({
+        value: item.cost_center,
+        label: item.org_name
+    }))
+  ]; 
 
   useEffect(() => {
         setIsNoLimit
@@ -43,7 +60,7 @@ function EmployTab() {
                 <Select 
                     options={subcomOptions}
                     isSearchable={true} 
-                    placeholder="cari Sub Company..."
+                    placeholder="cari Sub Company"
                     maxMenuHeight={200}
                     value={subcomOptions.find(opt => opt.value === selectSubComId) || null}
                     onChange={(selectedOption) => {
@@ -58,7 +75,17 @@ function EmployTab() {
             </div>
             <div className="mb-3 col-3">
                 <label className="form-label small fw-bold">Cost Center</label>
-                <input type="text" name="cc_id" className="form-control" />
+                <Select 
+                    options={ccOptions}
+                    isSearchable={true} 
+                    placeholder="cari Cost Center"
+                    maxMenuHeight={200}
+                    value={ccOptions.find(opt => opt.value === selectCCId) || null}
+                    onChange={(selectedOption) => {
+                        setselectCCId(selectedOption ? selectedOption.value : null);
+                    }}
+                />
+                <input type="hidden" name="cc_id" value={selectCCId || ''} />
             </div>
             <div className="mb-3 col-3">
                 <label className="form-label small fw-bold">Valid From</label>
