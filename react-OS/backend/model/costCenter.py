@@ -1,21 +1,25 @@
 from extensions import db
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 def get_wib_now():
     return datetime.now(timezone(timedelta(hours=7)))
 
-class OsCostCenter(db.Model):
-    __tablename__ = 'os_org'
-    id = db.Column(db.Integer, primary_key=True)
-    cc_id = db.Column(db.Integer)
-    valid_from = db.Column(db.Date)
-    valid_to = db.Column(db.Date)
+class costCenter(db.Model):
+    __tablename__ = 'org_cost_center'
+    cost_center = db.Column(db.Integer, primary_key=True)
+    org_name = db.Column(db.String(200))
+    company_id = db.Column(db.Integer)
+    org_id = db.Column(db.Integer)
     
     created_date = db.Column(db.DateTime, default=get_wib_now) 
     modified_date = db.Column(db.DateTime, onupdate=get_wib_now)
     created_by = db.Column(db.String(50))
     modified_by = db.Column(db.String(50))
 
-    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
-
-    employement = db.relationship('OsEmployment', backref='OsCard', lazy=True)
+    def to_dict(self):
+        return {
+            'company_id': self.company_id,
+            'org_id': self.org_id,
+            'org_name': self.org_name,
+            'cost_center': self.cost_center,            
+        }

@@ -4,7 +4,7 @@ from extensions import db
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.card import OsCard
-from model.costCenter import OsCostCenter
+from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
 
 employee_bp = Blueprint('employee_bp', __name__)

@@ -1,11 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 
 import Sidebar from './components/Sidebar';
-import Dashboard from './pages/Dashboard';
+
 import SubCompany from './pages/SubCompany';
 import Training_m from './pages/Training_m';
 import Medical_m from './pages/Medical_m';
 import Canteen from './pages/Canteen';
+import CostCenter from './pages/CostCenter';
+
+import Dashboard from './pages/Dashboard';
 import Alokasi from './pages/Alokasi'
 import OsMedical from './pages/OsMedical';
 import OsTraining from './pages/OsTraining';
@@ -30,14 +33,18 @@ function App() {
           
           <div className="flex-grow-1 overflow-auto p-4">
             <Routes>
+              {/* processing data */}
               <Route path="/" element={<Dashboard />} />
+              <Route path="/alokasi" element={<Alokasi />} />
+              <Route path="/os-medical" element={<OsMedical />} />
+              <Route path="/os-training" element={<OsTraining />} />
+              <Route path="/costcenter" element={<CostCenter />} />
+              {/* master data */}
               <Route path="/sub-company" element={<SubCompany />} />
               <Route path="/training-m" element={<Training_m />} />
               <Route path="/medical-m" element={<Medical_m />} />
               <Route path="/canteen" element={<Canteen />} />
-              <Route path="/alokasi" element={<Alokasi />} />
-              <Route path="/os-medical" element={<OsMedical />} />
-              <Route path="/os-training" element={<OsTraining />} />
+              
                             
               <Route path="*" element={<Dashboard />} />
             </Routes>

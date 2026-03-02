@@ -30,23 +30,28 @@ const Sidebar = () => {
             <ul className="nav flex-column ms-3 mt-1 gap-1" style={{ borderLeft: '1px solid #495057' }}>
               <li>
                 <NavLink to="/sub-company" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Master Sub Company
+                  Sub Company
                 </NavLink>
               </li>
               <li>
                 <NavLink 
                   to="/training-m" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Master Training
+                  Training
                 </NavLink>
               </li>
               <li>
                 <NavLink to="/medical-m" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Master Medical
+                  Medical
                 </NavLink>
               </li>
               <li>
                 <NavLink to="/canteen" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Master Kantin
+                  Kantin
+                </NavLink>
+              </li>
+              <li>
+                <NavLink to="/costcenter" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+                  Cost Center
                 </NavLink>
               </li>
             </ul>
