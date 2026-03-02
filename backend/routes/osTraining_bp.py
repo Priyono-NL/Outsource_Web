@@ -42,20 +42,14 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        employee_id = data.get('employee_id')
-        training_id = data.get('training_id')
-        training_date_from = data.get('training_date_from')
-        training_date_to = data.get('training_date_to')
-        training_result = data.get('training_result')
-        training_score = data.get('training_score')
-        
+
         new_osTraining = osTraining(
-            employee_id=employee_id,
-            training_id=training_id,
-            training_date_from=training_date_from,
-            training_date_to=training_date_to,
-            training_result=training_result,
-            training_score=training_score
+            employee_id = data.get('employee_id'),
+            training_id = data.get('training_id'),
+            training_date_from = data.get('training_date_from'),
+            training_date_to = data.get('training_date_to'),
+            training_result = data.get('training_result'),
+            training_score = data.get('training_score'),
         )
         db.session.add(new_osTraining)
         db.session.commit()

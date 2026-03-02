@@ -26,15 +26,12 @@ def index():
 @medical_bp.route('/medical/submit', methods=['POST'])
 def add():
     try:
-        data = request.json if request.is_json else request.form
-        medical_id = data.get('medical_id')
-        medical_name = data.get('medical_name')
-        faskes = data.get('faskes')
+        data = request.json if request.is_json else request.form        
         
         new_training = medical(
-            medical_id=medical_id,
-            medical_name=medical_name,
-            faskes=faskes
+            medical_id = data.get('medical_id'),
+            medical_name = data.get('medical_name'),
+            faskes = data.get('faskes')
         )
         db.session.add(new_training)
         db.session.commit()

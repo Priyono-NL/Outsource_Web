@@ -42,18 +42,14 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        employee_id = data.get('employee_id')
-        medical_id = data.get('medical_id')
-        medical_date = data.get('medical_date')
-        medical_result = data.get('medical_result')
-        medical_notes = data.get('medical_notes')
+        
         
         new_osMedical = osMedical(
-            employee_id=employee_id,
-            medical_id=medical_id,
-            medical_date=medical_date,
-            medical_result=medical_result,
-            medical_notes=medical_notes,
+            employee_id = data.get('employee_id'),
+            medical_id = data.get('medical_id'),
+            medical_date = data.get('medical_date'),
+            medical_result = data.get('medical_result'),
+            medical_notes = data.get('medical_notes')
         )
         db.session.add(new_osMedical)
         db.session.commit()

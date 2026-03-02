@@ -27,14 +27,11 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        training_id = data.get('training_id')
-        training_name = data.get('training_name')
-        organizer = data.get('organizer')
         
         new_training = training_m(
-            training_id=training_id,
-            training_name=training_name,
-            organizer=organizer
+            training_id = data.get('training_id'),
+        training_name = data.get('training_name'),
+        organizer = data.get('organizer')
         )
         db.session.add(new_training)
         db.session.commit()

@@ -42,16 +42,12 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        employee_id = data.get('employee_id')
-        canteen_id = data.get('canteen_id')
-        valid_from = data.get('valid_from')
-        valid_to = data.get('valid_to')        
         
         new_alokasi = Alokasi(
-            employee_id=employee_id,
-            canteen_id=canteen_id,
-            valid_from=valid_from,
-            valid_to=valid_to,
+            employee_id = data.get('employee_id'),
+            canteen_id = data.get('canteen_id'),
+            valid_from = data.get('valid_from'),
+            valid_to = data.get('valid_to')
         )
         db.session.add(new_alokasi)
         db.session.commit()

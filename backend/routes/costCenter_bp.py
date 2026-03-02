@@ -27,16 +27,12 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        company_id = data.get('company_id')
-        org_id = data.get('org_id')
-        org_name = data.get('org_name')
-        cost_center = data.get('cost_center')
         
         new_cc = costCenter(
-            company_id=company_id,
-            org_id=org_id,
-            org_name=org_name,
-            cost_center=cost_center            
+            company_id = data.get('company_id'),
+            org_id = data.get('org_id'),
+            org_name = data.get('org_name'),
+            cost_center = data.get('cost_center')                  
         )
         db.session.add(new_cc)
         db.session.commit()

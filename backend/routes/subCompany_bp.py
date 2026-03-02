@@ -27,8 +27,6 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        sub_name = data.get('sub_company_name')
-        sub_type = data.get('type_company')
 
         last_company = SubCompany.query.order_by(SubCompany.sub_company_id.desc()).first()
         if last_company and last_company.sub_company_id.startswith('sub'):
@@ -40,8 +38,8 @@ def add():
         
         new_company = SubCompany(
             sub_company_id=new_sub_id,
-            sub_company_name=sub_name,
-            type_company=sub_type
+            sub_name = data.get('sub_company_name'),
+            sub_type = data.get('type_company')
         )
         db.session.add(new_company)
         db.session.commit()

@@ -1,24 +1,44 @@
 import React, { useState, useRef } from 'react';
+import api from '../../api/api';
+
 import PersonelTab from './PersonalTab';
 import EmployTab from './EmployTab';
 import AsetTab from './AsetTab';
 
-function Dataform({ onClose }) {
+function Dataform({ onClose, onSuccess, initialData }) {
   const [activeTab, setActiveTab] = useState(0);
   const formRef = useRef(null);
 
   const tabs = ['Data Pribadi', 'Data Pekerjaan', 'Data Aset'];
-  const handleNext = () => {
+  const handleNext = (e) => {
+    e.preventDefault()
     setActiveTab((prev) => prev + 1);
   };
-  const handlePrev = () => {
+  const handlePrev = (e) => {
+    e.preventDefault()
     setActiveTab((prev) => prev - 1);
   };
   const handleSave = async (e) => {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
-    console.log("Data kirim:", data);
+    try {
+      const response = initialData 
+            ? await api.put(`/employee/${initialData.alokasi_id}`, data) 
+            : await api.post('/employee/submit', data);
+      if (response.data.status === 'success') {
+        formRef.current.reset();
+        alert(response.data.message);
+        onSuccess?.();
+        onClose?.();
+      }
+    } catch (error) {
+      if (error.response) {
+        alert("Gagal: " + error.response.data.message);
+      } else {
+         alert("Gagal: " + error);
+      }
+    }
 };
 
   return (

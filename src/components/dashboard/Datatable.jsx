@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Datatable = () => { 
+const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
     const [employees, setEmployees] = useState([]);   
     const [error, setError] = useState(null); 
@@ -12,7 +12,7 @@ const Datatable = () => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}`);
+            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
             const result = await response.data;      
             if (result.status === 'success') { 
                 setEmployees(result.data);
@@ -24,9 +24,27 @@ const Datatable = () => {
         }
     }
 
+    const handleDelete = async (id, name) => {
+        if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
+            try {
+                const response = await api.delete(`/osmedical/${id}`);
+                if (response.data.status === 'success') {
+                    alert(response.data.message);                
+                    fetchData(); 
+                }
+            } catch (error) {
+                alert("Gagal menghapus data: " + (error.response?.data?.message || error.message));
+            }
+        }
+    };
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
     useEffect(() => {
         fetchData();
-    }, [currentPage, itemsPerPage]);
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        

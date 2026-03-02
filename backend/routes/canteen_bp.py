@@ -26,13 +26,11 @@ def index():
 @canteen_bp.route('/canteen/submit', methods=['POST'])
 def add():
     try:
-        data = request.json if request.is_json else request.form
-        canteen_id = data.get('canteen_id')
-        canteen_name = data.get('canteen_name')
+        data = request.json if request.is_json else request.form        
         
         new_canteen = canteen(
-            canteen_id=canteen_id,
-            canteen_name=canteen_name,
+            canteen_id = data.get('canteen_id'),
+            canteen_name = data.get('canteen_name')
         )
         db.session.add(new_canteen)
         db.session.commit()
