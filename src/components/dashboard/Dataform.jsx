@@ -18,7 +18,7 @@ function Dataform({ onClose }) {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
-    console.log("Data yang akan dikirim:", data);
+    console.log("Data kirim:", data);
 };
 
   return (
