@@ -15,7 +15,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
           setCanteens(response.data.data);
         }
       } catch (error) {
-        console.error("Gagal mengambil data kantin:", error);
+        console.error("Gagal mengambil data:", error);
       }
     };
     fetchCanteens();

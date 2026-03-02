@@ -35,7 +35,6 @@ const Datatable = () => {
             <thead className="table">
                 <tr>
                 <th className="py-3">employee_id</th>
-                <th className="py-3">NIK</th>
                 <th className="py-3">person_id</th>
                 <th className="py-3">sub_company_id</th>
                 <th className="py-3">valid_from</th>
@@ -46,7 +45,6 @@ const Datatable = () => {
                 employees.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
                     <td>{emp.employee_id}</td>
-                    <td>{emp.nik}</td>
                     <td>{emp.person_name}</td>
                     <td>{emp.sub_con_name}</td>
                     <td>{emp.valid_from ? emp.valid_from : '-'}</td>

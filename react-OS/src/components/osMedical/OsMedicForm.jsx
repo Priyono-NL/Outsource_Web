@@ -14,7 +14,7 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
           setMedical(response.data.data);
         }
       } catch (error) {
-        console.error("Gagal mengambil data kantin:", error);
+        console.error("Gagal mengambil data:", error);
       }
     };
     fetchOsMedical();

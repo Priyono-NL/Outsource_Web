@@ -14,7 +14,7 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
           setTraining(response.data.data);
         }
       } catch (error) {
-        console.error("Gagal mengambil data kantin:", error);
+        console.error("Gagal mengambil data:", error);
       }
     };
     fetchTraining();

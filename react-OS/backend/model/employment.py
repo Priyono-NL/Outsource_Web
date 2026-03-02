@@ -6,8 +6,7 @@ def get_wib_now():
 
 class OsEmployment(db.Model):
     __tablename__ = 'os_employment'
-    employee_id = db.Column(db.Integer, primary_key=True)    
-    nik = db.Column(db.Integer)
+    employee_id = db.Column(db.Integer, primary_key=True)
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)
     
@@ -29,7 +28,6 @@ class OsEmployment(db.Model):
             'sub_con_name': self.sub_con_detail.sub_company_name,
             'person_id': self.person_id,
             'person_name': self.person_detail.name,
-            'nik': self.nik,
             'valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
             'valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None
         }

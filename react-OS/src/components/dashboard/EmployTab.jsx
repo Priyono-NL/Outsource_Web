@@ -1,16 +1,56 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import Select from 'react-select';
+import api from '../../api/api';
 
 function EmployTab() {
+  const [isNoLimit, setIsNoLimit] = useState(false);
+  const [subcom, setSubcom] = useState([]);
+  const [selectSubComId, setSelectSubComId] = useState(null);
+  
+  useEffect(() => {
+    // get subcom select
+    const fetchSubCom = async () => {
+      try {        
+        const response = await api.get('/subcom?page=1&pageSize=200'); 
+        if (response.data.status === 'success') {
+          setSubcom(response.data.data);
+        }
+      } catch (error) {
+        console.error("Gagal mengambil data:", error);
+      }
+    };    
+    fetchSubCom();
+  }, [])
+  const subcomOptions = subcom.map((item) => ({
+    value: item.sub_company_id,
+    label: item.sub_company_name
+  }));
+  
+
+  useEffect(() => {
+        setIsNoLimit
+    }, []);
+
   return (
     <div className="fade show active">
         <div className="row g-3">
             <div className="mb-3 col-3">
-                <label className="form-label small fw-bold">No Induk Karywan</label>
-                <input type="text" name="nik" className="form-control" />
+                <label className="form-label small fw-bold">No Induk Karyawan</label>
+                <input type="text" name="employee_id" className="form-control" />
             </div>
             <div className="mb-3 col-3">
                 <label className="form-label small fw-bold">Sub Company</label>
-                <input type="text" name="sub_company" className="form-control" />
+                <Select 
+                    options={subcomOptions}
+                    isSearchable={true} 
+                    placeholder="cari Sub Company..."
+                    maxMenuHeight={200}
+                    value={subcomOptions.find(opt => opt.value === selectSubComId) || null}
+                    onChange={(selectedOption) => {
+                        setSelectSubComId(selectedOption ? selectedOption.value : null);
+                    }}
+                />
+                <input type="hidden" name="sub_company_id" value={selectSubComId || ''} />
             </div>
             <div className="mb-3 col-3">
                 <label className="form-label small fw-bold">Grade</label>
@@ -18,8 +58,32 @@ function EmployTab() {
             </div>
             <div className="mb-3 col-3">
                 <label className="form-label small fw-bold">Cost Center</label>
-                <input type="text" name="cc" className="form-control" />
-            </div>            
+                <input type="text" name="cc_id" className="form-control" />
+            </div>
+            <div className="mb-3 col-3">
+                <label className="form-label small fw-bold">Valid From</label>
+                <input type="date" name="valid_from" className="form-control" />
+            </div>
+            <div className="mb-3 col-3">
+                <label className="form-label small fw-bold">Valid To</label>                        
+                <input 
+                    type="date" 
+                    name="valid_to" 
+                    id="valid_to" 
+                    className="form-control" 
+                    disabled={isNoLimit}
+                />
+                <input 
+                    type="checkbox" 
+                    id="no_limit" 
+                    className="form-check-input"
+                    checked={isNoLimit}
+                    onChange={(e) => setIsNoLimit(e.target.checked)}
+                />
+                <label className="form-check-label" htmlFor="no_limit">
+                    No Limit
+                </label> 
+            </div>        
         </div>
     </div>
   );
