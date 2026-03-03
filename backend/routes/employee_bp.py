@@ -8,6 +8,7 @@ from model.card import OsCard
 from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
 from model.alokasi import Alokasi
+from model.canteen import canteen, canteenDetail
 
 employee_bp = Blueprint('employee_bp', __name__)
 
@@ -91,14 +92,15 @@ def add():
         )       
         db.session.add(newCC)
         #canteen
-        # if (data.get('cc_id')):
-        #     newCanteen = Alokasi(
-        #         employee_id = data.get('employee_id'),
-        #         canteen_id = data.get('canteen_id'),
-        #         valid_from = data.get('valid_from'),
-        #         valid_to = data.get('valid_to')
-        #     )
-        #     db.session.add(newCanteen)            
+        if (data.get('cc_id')):
+            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(data.get('cc_id'))).first()
+            newAlokasi = Alokasi(
+                employee_id = newEmployment.employee_id,
+                canteen_id = cc_def.canteen_id,
+                valid_from = data.get('valid_from'),
+                valid_to = data.get('valid_to')
+            )
+            db.session.add(newAlokasi)            
         #commit all
         db.session.commit()
         return jsonify({
