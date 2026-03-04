@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { saveAs } from 'file-saver';
 import api from '../api/api';
 import OsTrainingTable from '../components/osTraining/OsTrainingTable';
 import OsTrainingForm from '../components/osTraining/OsTrainingForm';
@@ -9,6 +10,8 @@ const OsTraining = () => {
   const [editingData, setEditingData] = useState(null);
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const handleSearch = () => { setAppliedSearch(searchInput); };
   const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
@@ -20,20 +23,46 @@ const OsTraining = () => {
       setEditingData(data);
       setShowForm(true);
   };
-
   const handleExport = async () => {
     try {
         const response = await api.get('/ostraining/export', { responseType: 'blob' });
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'Data_OS_Training.xlsx');
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode.removeChild(link);
+        saveAs(response.data, 'Data_OS_Training.xlsx')
     } catch (error) {
         console.error("Gagal export data:", error);
         alert("Gagal mengunduh file Excel");
+    }
+  };
+  const handleDownloadTemplate = async () => {
+    try {
+        const { data } = await api.get('/ostraining/template', { responseType: 'blob' });
+        saveAs(data, 'Template_Import_OS_Training.xlsx');
+    } catch (error) {
+        alert("Gagal mengunduh template");
+    }
+  };
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const response = await api.post('/ostraining/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        alert(response.data.message);
+        handleRefresh();        
+    } catch (error) {
+        const serverResponse = error.response?.data;
+        const errorList = serverResponse?.errors;
+        if (errorList && errorList.length > 0) {
+            alert(`Gagal import:\n\n${errorList.join('\n')}`);
+        } else {
+            alert("Gagal import: " + (serverResponse?.message || "Cek format file"));
+        }
+    } finally {
+        setIsUploading(false); 
     }
   };
 
@@ -59,6 +88,27 @@ const OsTraining = () => {
           </div>
         </div>
         <div className="col-12 col-md-6 col-lg-8 d-flex justify-content-md-end gap-2">
+          <button className="btn btn-outline-secondary btn-sm" onClick={handleDownloadTemplate}>
+            Template for Import
+          </button>
+          <label className={`btn ${isUploading ? 'btn-secondary' : 'btn-outline-primary'} px-4 fw-semibold shadow-sm d-flex align-items-center`}>
+            {isUploading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Memproses...
+              </>
+            ) : (
+              <>Import From Excel</>
+            )}
+            <input 
+              type="file" 
+              hidden 
+              ref={fileInputRef}
+              onChange={handleImport} 
+              accept=".xlsx, .xls" 
+              disabled={isUploading}
+            />
+          </label>
           <button className="btn btn-success px-4 fw-semibold shadow-sm d-flex align-items-center justify-content-center" onClick={handleExport}>
             Export ke Excel
           </button>

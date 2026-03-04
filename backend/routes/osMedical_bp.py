@@ -3,7 +3,7 @@ from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
 from extensions import db
-
+from model.medical import medical
 from model.osMedical import osMedical
 from model.employment import OsEmployment
 from model.person import OsPerson
@@ -44,8 +44,6 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        
-        
         new_osMedical = osMedical(
             employee_id = data.get('employee_id'),
             medical_id = data.get('medical_id'),
@@ -55,7 +53,6 @@ def add():
         )
         db.session.add(new_osMedical)
         db.session.commit()
-
         return jsonify({
             "status": "success",
             "message": f"Data berhasil disimpan!"
@@ -123,3 +120,69 @@ def export():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+@osMedical_bp.route('/osmedical/template', methods=['GET'])
+def template():
+    try:
+        example_data = [{
+            "ID Employee": "12345",
+            "Medical Name": "Medical Check Up",
+            "Date": "2026-03-20",
+            "Result": "SEHAT",
+            "Notes": ""
+        }]
+        df = pd.DataFrame(example_data)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Template_Import')
+        output.seek(0)
+        return send_file(
+            output, 
+            as_attachment=True, 
+            download_name="Template_Import_Medical.xlsx"
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@osMedical_bp.route('/osmedical/upload', methods=['POST'])
+def upload():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'message': 'Tidak ada file'}), 400
+    try:
+        df = pd.read_excel(file)
+        all_medical = medical.query.all()
+        medical_map = {m.medical_name.lower(): m.medical_id for m in all_medical}
+        all_employees = OsEmployment.query.with_entities(OsEmployment.employee_id).all()
+        valid_employee_ids = {str(e.employee_id) for e in all_employees}
+        errors = []
+        to_save = []
+        for index, row in df.iterrows():
+            e_id = str(row['ID Employee']).strip()
+            m_name = str(row['Medical Name']).lower().strip()
+            m_id = medical_map.get(m_name)
+            if e_id not in valid_employee_ids:
+                errors.append(f"Baris {index+2}: ID Employee '{e_id}' tidak terdaftar di sistem.")
+                continue
+            if not m_id:
+                errors.append(f"Baris {index+2}: Jenis Medical '{row['Medical Name']}' tidak ditemukan.")
+                continue
+            new_medical = osMedical(
+                employee_id=int(e_id),
+                medical_id=m_id,
+                medical_date=pd.to_datetime(row['Date']),
+                medical_result=row['Result'],
+                medical_notes=row['Notes']
+            )
+            to_save.append(new_medical)
+        if errors:
+            return jsonify({
+                "status": "error", 
+                "message": "Import gagal karena beberapa data tidak valid.",
+                "errors": errors
+            }), 400
+        db.session.add_all(to_save)
+        db.session.commit()
+        return jsonify({"status": "success", "message": f"Berhasil mengimport {len(to_save)} data."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500    
