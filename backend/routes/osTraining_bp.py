@@ -1,4 +1,6 @@
-from flask import Blueprint, request, jsonify
+import pandas as pd
+from io import BytesIO
+from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
 from extensions import db
 
@@ -91,3 +93,35 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
+
+@osTraining_bp.route('/ostraining/export', methods=['GET'])
+def export():
+    try:
+        master = osTraining.query.all()
+        data = []
+        for m in master:
+            d = m.to_dict()
+            data.append({
+                "ID Karyawan": d['employee_id'],
+                "Nama Karyawan": d['employee_name'],
+                "Jenis Training": d['training_name'],
+                "Tanggal Mulai": d['v_training_date_from'],
+                "Tanggal Selesai": d['v_training_date_to'],
+                "Hasil": d['training_result'],
+                "Catatan": d['training_score']
+            })
+        if not data:
+            return jsonify({'status': 'error', 'message': 'tidak ada data'})
+        df = pd.DataFrame(data)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Data OS Medical')        
+        output.seek(0)
+        return send_file(
+            output, 
+            as_attachment=True, 
+            download_name="Export_OS_Medical.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
