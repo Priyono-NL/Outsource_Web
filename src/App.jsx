@@ -17,60 +17,88 @@ import OsTraining from './pages/OsTraining';
 
 const apiLokal = axios.create({
   baseURL: 'http://127.0.0.1:5000',
-  withCredentials: true // WAJIB agar Flask bisa menitipkan cookie di localhost
+  withCredentials: true
 });
-
 // Buat instance axios untuk SSO (via Proxy Vite)
 const apiSSO = axios.create({
-  baseURL: '/api-sso', // Menggunakan proxy Vite yang sudah dibuat
-  withCredentials: true // WAJIB agar browser mengirim cookie .ceresnl.com
+  baseURL: '/api-sso',
+  withCredentials: true
 });
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
 
   useEffect(() => {
-  const validasiToken = async () => {
+  const handleAuth = async () => {
     try {
-      const tokenLocal = localStorage.getItem('token');
+      // 1. TANGKAP: Lihat apakah ada ?token= di URL address bar
+      const params = new URLSearchParams(window.location.search);
+      const tokenURL = params.get('token');
 
-      if (!tokenLocal) {
+      if (tokenURL) {
+        // Simpan ke Local Storage agar tidak hilang saat refresh
+        const cleanToken = tokenURL.replace(/^"|"$/g, '');
+        localStorage.setItem('token', JSON.stringify(cleanToken));
+        
+        // Bersihkan URL agar rapi (menghilangkan ?token=...)
+        window.history.replaceState({}, document.title, "/");
+      }
+
+      // 2. AMBIL: Cek apakah sekarang sudah ada token di Local Storage?
+      let token = localStorage.getItem('token');
+
+      if (!token) {
+        // Jika tetap tidak ada, hentikan loading dan tampilkan tombol login
         setAuthState({ isAuthenticated: false, loading: false, user: null });
         return;
       }
 
-      // MEMBERSIHKAN TOKEN
-      const tokenClean = tokenLocal.replace(/^"|"$/g, '');
-
-      // Kirim ke backend
-      const res = await apiLokal.post('/api/validate-token-storage', { token: tokenClean });
+      // 3. VALIDASI: Kirim ke Flask untuk memastikan token masih aktif
+      const finalToken = token.replace(/^"|"$/g, '');
+      const res = await apiLokal.post('/api/validate-token-storage', { token: finalToken });
 
       if (res.data.isAuthenticated) {
         setAuthState({ isAuthenticated: true, loading: false, user: res.data.user });
       } else {
-        localStorage.removeItem('token'); // Hapus jika token salah/expired
+        localStorage.removeItem('token');
         setAuthState({ isAuthenticated: false, loading: false, user: null });
       }
     } catch (err) {
-      console.error("Payload salah atau token expired", err);
+      console.error("Gagal memproses token", err);
       setAuthState({ isAuthenticated: false, loading: false, user: null });
     }
   };
 
-  validasiToken();
+  handleAuth();
 }, []);
 
-  // --- TAMBAHKAN INI AGAR TIDAK LANGSUNG MERENDER DASHBOARD ---
+  // --- BAGIAN INI YANG MENYEBABKAN LAYAR PUTIH ---
   if (authState.loading) {
+    return <div className="p-5 text-center">Memverifikasi Sesi...</div>;
+  }
+
+  if (!authState.isAuthenticated) {
+    // Jika tidak login, jangan biarkan return null; tampilkan sesuatu atau redirect
     return (
-      <div className="vh-100 d-flex justify-content-center align-items-center bg-dark text-white">
+      <div className="vh-100 d-flex justify-content-center align-items-center">
         <div className="text-center">
-          <div className="spinner-border text-primary mb-3" role="status"></div>
-          <h5>Memeriksa Sesi Manajemen OS...</h5>
+          <p>Anda belum login.</p>
+          <a href="https://sso.ceresnl.com" className="btn btn-primary">Ke Halaman Login</a>
         </div>
       </div>
     );
   }
+
+  const handleLogout = async () => {
+    try {
+      await apiLokal.get('/api/logout');
+      localStorage.removeItem('token');
+      setAuthState({ isAuthenticated: false, loading: false, user: null });
+      window.location.href = "https://sso.ceresnl.com/Logout";
+    } catch (error) {
+      console.error("Gagal logout:", error);
+    }
+  };
 
   return (
     <BrowserRouter>
@@ -80,7 +108,26 @@ function App() {
         <nav className="navbar navbar-dark bg-dark shadow-sm z-1">
           <div className="container-fluid px-4">
             <span className="navbar-brand mb-0 h1 fw-bold">Manajemen OS</span>
-            <div className="text-white-50 small">User</div>
+            {authState.isAuthenticated && (
+              <div className="d-flex align-items-center">
+                <div className="text-end me-3">
+                  <div className="text-white small fw-semibold">
+                    {/* Sesuaikan property 'username' dengan response JSON dari SSO kamu */}
+                    {authState.user?.username || authState.user?.name || 'User'}
+                  </div>
+                  <div className="text-white-50" style={{ fontSize: '0.75rem' }}>
+                    Logged In
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={handleLogout}
+                  className="btn btn-outline-danger btn-sm px-3 shadow-sm"
+                >
+                  <i className="bi bi-box-arrow-right me-1"></i> Logout
+                </button>
+              </div>
+            )}
           </div>
         </nav>
         
