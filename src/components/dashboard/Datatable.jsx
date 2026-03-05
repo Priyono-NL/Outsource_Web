@@ -52,21 +52,22 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                <th className="py-3">employee_id</th>
-                <th className="py-3">person_id</th>
-                <th className="py-3">sub_company_id</th>
-                <th className="py-3">valid_from</th>
-                <th className="py-3 text-center">valid_to</th>
+                    <th className="py-3">Employee ID</th>
+                    <th className="py-3">Name Employee</th>
+                    <th className="py-3">Sub Company</th>
+                    <th className="py-3">Valid From</th>
+                    <th className="py-3">Valid To</th>
+                    <th className='py-3 text-center'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 employees.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                    <td>{emp.employee_id}</td>
-                    <td>{emp.person_name}</td>
-                    <td>{emp.sub_con_name}</td>
-                    <td>{emp.valid_from ? emp.valid_from : '-'}</td>
-                    <td>{emp.valid_to ? emp.valid_to : '-'}</td>
+                        <td>{emp.employee_id}</td>
+                        <td>{emp.person_name}</td>
+                        <td>{emp.sub_con_name}</td>
+                        <td>{emp.valid_from ? emp.valid_from : '-'}</td>
+                        <td>{emp.valid_to ? emp.valid_to : '-'}</td>
                     </tr>
                 ))}
             </tbody>
