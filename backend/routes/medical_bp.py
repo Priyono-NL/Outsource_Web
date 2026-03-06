@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.medical import medical
+from .auth_bp import login_required
 
 medical_bp = Blueprint('medical_bp', __name__)
 
@@ -70,3 +71,8 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
+
+@medical_bp.before_request
+@login_required
+def before_request():
+    pass

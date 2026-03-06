@@ -1,5 +1,6 @@
 from flask import Flask
 from flask_cors import CORS
+from datetime import timedelta
 
 from extensions import db
 from config import Config
@@ -19,6 +20,12 @@ from routes.osTraining_bp import osTraining_bp
 
 def create_app():
     app = Flask(__name__)
+    app.config.update(
+        SESSION_COOKIE_SAMESITE='Lax', # Mengizinkan cookie dikirim dalam navigasi top-level
+        SESSION_COOKIE_SECURE=False,   # Set False karena kamu masih menggunakan HTTP (bukan HTTPS)
+        SESSION_COOKIE_HTTPONLY=True,  # Melindungi cookie dari akses JavaScript (lebih aman)
+        PERMANENT_SESSION_LIFETIME=timedelta(seconds=10) # Tetap gunakan ini
+    )
     CORS(app, supports_credentials=True, origins=["http://localhost:5173"])    
     app.config.from_object(Config)
     db.init_app(app)

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from extensions import db
-
+from .auth_bp import login_required
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.card import OsCard
@@ -113,3 +113,8 @@ def add():
             "status": "error",
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
+
+@employee_bp.before_request
+@login_required
+def before_request():
+    pass

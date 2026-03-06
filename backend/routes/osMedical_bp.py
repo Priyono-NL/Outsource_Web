@@ -7,6 +7,7 @@ from model.medical import medical
 from model.osMedical import osMedical
 from model.employment import OsEmployment
 from model.person import OsPerson
+from .auth_bp import login_required
 
 osMedical_bp = Blueprint('osMedical_bp', __name__)
 
@@ -186,3 +187,8 @@ def upload():
         return jsonify({"status": "success", "message": f"Berhasil mengimport {len(to_save)} data."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500    
+    
+@osMedical_bp.before_request
+@login_required
+def before_request():
+    pass

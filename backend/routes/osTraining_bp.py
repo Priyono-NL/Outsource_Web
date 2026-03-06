@@ -7,6 +7,7 @@ from model.training import training_m
 from model.osTraining import osTraining
 from model.employment import OsEmployment
 from model.person import OsPerson
+from .auth_bp import login_required
 
 osTraining_bp = Blueprint('osTraining_bp', __name__)
 
@@ -200,3 +201,8 @@ def upload():
         return jsonify({"status": "success", "message": f"Berhasil mengimport {len(to_save)} data."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500  
+    
+@osTraining_bp.before_request
+@login_required
+def before_request():
+    pass

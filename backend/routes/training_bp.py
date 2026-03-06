@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.training import training_m
+from .auth_bp import login_required
 
 train_bp = Blueprint('train_bp', __name__)
 
@@ -26,16 +27,14 @@ def index():
 @train_bp.route('/training/submit', methods=['POST'])
 def add():
     try:
-        data = request.json if request.is_json else request.form
-        
+        data = request.json if request.is_json else request.form        
         new_training = training_m(
             training_id = data.get('training_id'),
-        training_name = data.get('training_name'),
-        organizer = data.get('organizer')
+            training_name = data.get('training_name'),
+            organizer = data.get('organizer')
         )
         db.session.add(new_training)
         db.session.commit()
-
         return jsonify({
             "status": "success",
             "message": f"Data berhasil disimpan!"
@@ -70,3 +69,8 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
+    
+@train_bp.before_request
+@login_required
+def before_request():
+    pass

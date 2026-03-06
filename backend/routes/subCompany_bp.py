@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.subCompany import SubCompany
+from .auth_bp import login_required
 
 subCom_bp = Blueprint('subCom_bp', __name__)
 
@@ -77,3 +78,8 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
+    
+@subCom_bp.before_request
+@login_required
+def before_request():
+    pass

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.canteen import canteen, canteenDetail
-
+from .auth_bp import login_required
 
 canteen_bp = Blueprint('canteen_bp', __name__)
 
@@ -91,3 +91,8 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
+    
+@canteen_bp.before_request
+@login_required
+def before_request():
+    pass

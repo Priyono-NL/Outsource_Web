@@ -6,7 +6,7 @@ const Sidebar = () => {
   return (
     <div 
       className="d-flex flex-column flex-shrink-0 p-3 text-white bg-dark vh-100 shadow-sm" 
-      style={{ width: '250px', position: 'sticky', top: '0' }}
+      style={{ width: '250px', position: 'sticky', top: '0', overflowY: 'auto', }}
     >
       <ul className="nav nav-pills flex-column gap-1">
         <li className="nav-item">

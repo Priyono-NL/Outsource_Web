@@ -1,7 +1,18 @@
 from flask import Blueprint, request, session, jsonify
 import requests
+from functools import wraps
 
 auth_bp = Blueprint('auth_bp', __name__)
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 1. Cek apakah status login ada di session Flask
+        if not session.get('isAuthenticated'):
+            # 2. Kirim 401 agar Interceptor di React langsung "bangun"
+            return jsonify({"message": "Sesi habis, silakan login ulang"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 @auth_bp.route('/api/validate-token-storage', methods=['POST'])
 def validate_token_storage():
@@ -26,6 +37,7 @@ def validate_token_storage():
         
         if response.status_code == 200:
             user_data = response.json()
+            session.permanent = True
             session['user'] = user_data
             session['isAuthenticated'] = True
             return jsonify({"isAuthenticated": True, "user": user_data}), 200

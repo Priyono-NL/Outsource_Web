@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './api/api';
 
 import Sidebar from './components/Sidebar';
 
@@ -15,75 +15,55 @@ import Alokasi from './pages/Alokasi'
 import OsMedical from './pages/OsMedical';
 import OsTraining from './pages/OsTraining';
 
-const apiLokal = axios.create({
-  baseURL: 'http://127.0.0.1:5000',
-  withCredentials: true
-});
-// Buat instance axios untuk SSO (via Proxy Vite)
-const apiSSO = axios.create({
-  baseURL: '/api-sso',
-  withCredentials: true
-});
-
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
 
   useEffect(() => {
-  const handleAuth = async () => {
-    try {
-      // 1. TANGKAP: Lihat apakah ada ?token= di URL address bar
-      const params = new URLSearchParams(window.location.search);
-      const tokenURL = params.get('token');
-
-      if (tokenURL) {
-        // Simpan ke Local Storage agar tidak hilang saat refresh
-        const cleanToken = tokenURL.replace(/^"|"$/g, '');
-        localStorage.setItem('token', JSON.stringify(cleanToken));
-        
-        // Bersihkan URL agar rapi (menghilangkan ?token=...)
-        window.history.replaceState({}, document.title, "/");
-      }
-
-      // 2. AMBIL: Cek apakah sekarang sudah ada token di Local Storage?
-      let token = localStorage.getItem('token');
-
-      if (!token) {
-        // Jika tetap tidak ada, hentikan loading dan tampilkan tombol login
-        setAuthState({ isAuthenticated: false, loading: false, user: null });
-        return;
-      }
-
-      // 3. VALIDASI: Kirim ke Flask untuk memastikan token masih aktif
-      const finalToken = token.replace(/^"|"$/g, '');
-      const res = await apiLokal.post('/api/validate-token-storage', { token: finalToken });
-
-      if (res.data.isAuthenticated) {
-        setAuthState({ isAuthenticated: true, loading: false, user: res.data.user });
-      } else {
-        localStorage.removeItem('token');
+    const handleAuth = async () => {
+      try {
+        // 1. TANGKAP: Lihat apakah ada ?token= di URL address bar
+        const params = new URLSearchParams(window.location.search);
+        const tokenURL = params.get('token');
+        if (tokenURL) {
+          // Simpan ke Local Storage agar tidak hilang saat refresh
+          const cleanToken = tokenURL.replace(/^"|"$/g, '');
+          localStorage.setItem('token', JSON.stringify(cleanToken));        
+          // Bersihkan URL agar rapi (menghilangkan ?token=...)
+          window.history.replaceState({}, document.title, "/");
+        }
+        // 2. AMBIL: Cek apakah sekarang sudah ada token di Local Storage?
+        let token = localStorage.getItem('token');
+        if (!token) {
+          // Jika tetap tidak ada, hentikan loading dan tampilkan tombol login
+          setAuthState({ isAuthenticated: false, loading: false, user: null });
+          return;
+        }
+        // 3. VALIDASI: Kirim ke Flask untuk memastikan token masih aktif
+        const finalToken = token.replace(/^"|"$/g, '');
+        const res = await api.post('/api/validate-token-storage', { token: finalToken });
+        if (res.data.isAuthenticated) {
+          setAuthState({ isAuthenticated: true, loading: false, user: res.data.user });
+        } else {
+          localStorage.removeItem('token');
+          setAuthState({ isAuthenticated: false, loading: false, user: null });
+        }
+      } catch (err) {
+        console.error("Gagal memproses token", err);
         setAuthState({ isAuthenticated: false, loading: false, user: null });
       }
-    } catch (err) {
-      console.error("Gagal memproses token", err);
-      setAuthState({ isAuthenticated: false, loading: false, user: null });
-    }
-  };
+    };
+    handleAuth();
+  }, []);
 
-  handleAuth();
-}, []);
-
-  // --- BAGIAN INI YANG MENYEBABKAN LAYAR PUTIH ---
   if (authState.loading) {
     return <div className="p-5 text-center">Memverifikasi Sesi...</div>;
   }
-
   if (!authState.isAuthenticated) {
-    // Jika tidak login, jangan biarkan return null; tampilkan sesuatu atau redirect
     return (
       <div className="vh-100 d-flex justify-content-center align-items-center">
         <div className="text-center">
           <p>Anda belum login.</p>
-          <a href="https://sso.ceresnl.com" className="btn btn-primary">Ke Halaman Login</a>
+          <a href="https://sso.ceresnl.com/Logout" className="btn btn-primary">Ke Halaman Login</a>
         </div>
       </div>
     );
@@ -91,7 +71,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await apiLokal.get('/api/logout');
+      await api.get('/api/logout');
       localStorage.removeItem('token');
       setAuthState({ isAuthenticated: false, loading: false, user: null });
       window.location.href = "https://sso.ceresnl.com/Logout";
@@ -102,8 +82,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="d-flex flex-column vh-100 bg-light"> 
-        
+      <div className="d-flex flex-column vh-100 bg-light">         
         {/* --- 1. NAVBAR (ATAS) --- */}
         <nav className="navbar navbar-dark bg-dark shadow-sm z-1">
           <div className="container-fluid px-4">
@@ -112,8 +91,7 @@ function App() {
               <div className="d-flex align-items-center">
                 <div className="text-end me-3">
                   <div className="text-white small fw-semibold">
-                    {/* Sesuaikan property 'username' dengan response JSON dari SSO kamu */}
-                    {authState.user?.username || authState.user?.name || 'User'}
+                    {authState.user?.fname}
                   </div>
                   <div className="text-white-50" style={{ fontSize: '0.75rem' }}>
                     Logged In
@@ -129,12 +107,10 @@ function App() {
               </div>
             )}
           </div>
-        </nav>
-        
+        </nav>        
         {/* --- 2. AREA BAWAH (KIRI & KANAN) --- */}
         <div className="d-flex flex-grow-1 overflow-hidden">
-          <Sidebar />
-          
+          <Sidebar />          
           <div className="flex-grow-1 overflow-auto p-4">
             <Routes>
               {/* processing data */}
@@ -147,15 +123,12 @@ function App() {
               <Route path="/sub-company" element={<SubCompany />} />
               <Route path="/training-m" element={<Training_m />} />
               <Route path="/medical-m" element={<Medical_m />} />
-              <Route path="/canteen" element={<Canteen />} />
-              
+              <Route path="/canteen" element={<Canteen />} />              
                             
               <Route path="*" element={<Dashboard />} />
             </Routes>
           </div>
-
         </div>
-
       </div>
     </BrowserRouter>
   );
