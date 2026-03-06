@@ -4,9 +4,6 @@ from datetime import timedelta
 
 from extensions import db
 from config import Config
-from model.person import OsPerson
-from model.subCompany import SubCompany
-from model.employment import OsEmployment
 from routes.auth_bp import auth_bp
 from routes.costCenter_bp import costCenter_bp
 from routes.subCompany_bp import subCom_bp
@@ -20,12 +17,6 @@ from routes.osTraining_bp import osTraining_bp
 
 def create_app():
     app = Flask(__name__)
-    app.config.update(
-        SESSION_COOKIE_SAMESITE='Lax', # Mengizinkan cookie dikirim dalam navigasi top-level
-        SESSION_COOKIE_SECURE=False,   # Set False karena kamu masih menggunakan HTTP (bukan HTTPS)
-        SESSION_COOKIE_HTTPONLY=True,  # Melindungi cookie dari akses JavaScript (lebih aman)
-        PERMANENT_SESSION_LIFETIME=timedelta(seconds=10) # Tetap gunakan ini
-    )
     CORS(app, supports_credentials=True, origins=["http://localhost:5173"])    
     app.config.from_object(Config)
     db.init_app(app)
