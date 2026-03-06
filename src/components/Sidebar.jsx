@@ -19,6 +19,11 @@ const Sidebar = () => {
             Absence Card
           </NavLink>
         </li>
+        <li className="nav-item">
+          <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            OS Cost Center
+          </NavLink>
+        </li>
       </ul>
       <hr />
       <ul className="nav nav-pills flex-column gap-1">

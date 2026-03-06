@@ -18,7 +18,7 @@ class OsCard(db.Model):
 
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
 
-    employement = db.relationship('OsEmployment', backref='OsCC', lazy=True)
+    employement = db.relationship('OsEmployment', backref='OsCard', lazy=True)
 
     def to_dict(self):
         return {

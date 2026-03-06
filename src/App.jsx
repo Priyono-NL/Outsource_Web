@@ -15,6 +15,7 @@ import Alokasi from './pages/Alokasi'
 import OsMedical from './pages/OsMedical';
 import OsTraining from './pages/OsTraining';
 import OsCard from './pages/OsCard';
+import OsCC from './pages/OsCC';
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
@@ -126,6 +127,7 @@ function App() {
               <Route path="/medical-m" element={<Medical_m />} />
               <Route path="/canteen" element={<Canteen />} />
               <Route path='/card' element={<OsCard />} />
+              <Route path='/oscc' element={<OsCC />} />
                             
               <Route path="*" element={<Dashboard />} />
             </Routes>
