@@ -67,7 +67,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     }
     setIsSearching(true);
     try {
-      const response = await api.get(`/alokasi/search-employee/${id}`);
+      const response = await api.get(`/employee/search/${id}`);
       if (response.data.status === "success") { 
         setFullName(response.data.full_name);
         setIsEmployeeFound(true);

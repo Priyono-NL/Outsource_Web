@@ -38,19 +38,6 @@ def index():
             "message": str(e)
         }), 500
 
-@alokasi_bp.route('/alokasi/search-employee/<string:emp_id>', methods=['GET'])
-def search_employee(emp_id):
-    try:
-        result = db.session.query(OsPerson.name) \
-            .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
-            .filter(OsEmployment.employee_id == emp_id) \
-            .first()
-        if result:
-            return jsonify({"status": "success", "full_name": result.name}), 200
-        return jsonify({"status": "error", "message": "Employee ID tidak Ada"}), 404
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
 @alokasi_bp.route('/alokasi/submit', methods=['POST'])
 def add():
     try:

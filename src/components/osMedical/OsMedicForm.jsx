@@ -3,9 +3,12 @@ import api from '../../api/api';
 
 function OsMedicForm({ onClose, onSuccess, initialData }) {
   const [medical, setMedical] = useState([]);
+  const [empId, setEmpId] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [isEmployeeFound, setIsEmployeeFound] = useState(false);
   const formRef = useRef(null);
-
-  // get medical select
+  
   useEffect(() => {
     const fetchOsMedical = async () => {
       try {        
@@ -18,15 +21,17 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
       }
     };
     fetchOsMedical();
-  }, [])
+  }, []) // get medical select
 
   useEffect(() => {
         if (initialData && formRef.current && medical.length > 0) {
-            formRef.current.employee_id.value = initialData.employee_id;
-            formRef.current.medical_id.value = initialData.medical_id;
-            formRef.current.medical_date.value = initialData.medical_date;
-            formRef.current.medical_result.value = initialData.medical_result;
-            formRef.current.medical_notes.value = initialData.medical_notes;
+          setEmpId(initialData.employee_id);
+          formRef.current.employee_id.value = initialData.employee_id;
+          formRef.current.medical_id.value = initialData.medical_id;
+          formRef.current.medical_date.value = initialData.medical_date;
+          formRef.current.medical_result.value = initialData.medical_result;
+          formRef.current.medical_notes.value = initialData.medical_notes;
+          handleSearchEmployee(initialData.employee_id)
         }
     }, [initialData, , medical]);
 
@@ -45,12 +50,43 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
         onClose?.();
       }
     } catch (error) {
-      if (error.response) {
-        alert("Gagal: " + error.response.data.message);
-      } else {
-        alert("Terjadi kesalahan jaringan.");
-      }
+      alert("Gagal: " + error.response.data.message);
     }    
+  };
+
+  const handleSearchEmployee = async (id) => {
+    if (!id) {
+      setFullName('');
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const response = await api.get(`/employee/search/${id}`);
+      if (response.data.status === "success") { 
+        setFullName(response.data.full_name);
+        setIsEmployeeFound(true);
+      }
+    } catch (err) {
+      setFullName('Karyawan ID tidak terdaftar!');
+      setIsEmployeeFound(false);
+      console.error("Employee lookup failed:", err);
+    } finally { setIsSearching(false); }
+  };
+
+  const handleIdChange = (e) => {
+    const value = e.target.value;
+    setEmpId(value);
+    if (value === "") {
+      setIsEmployeeFound(false);
+      setFullName("");
+      setFormData({
+        canteen_id: "",
+        valid_from: "",
+        valid_to: ""
+      });
+    } else {
+      setIsEmployeeFound(false);
+    }
   };
 
   return (
@@ -79,13 +115,34 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
               <form ref={formRef} onSubmit={handleSave}>
                 <div className="card-body border-top">
                   <div className="row g-3">
-                    <div className="mb-3 col-4">
+                    <div className="mb-3 col-3">
                         <label className="form-label small fw-bold">Employee ID</label>
-                        <input type="text" name="employee_id" className="form-control" />
+                        <input 
+                          type="text" 
+                          name="employee_id" 
+                          className="form-control" 
+                          required
+                          value={empId}
+                          onChange={handleIdChange}
+                          onBlur={(e) => handleSearchEmployee(e.target.value)}
+                        />
                     </div>
-                    <div className="mb-3 col-4">
+                    <div className="mb-3 col-9">
+                      <label className="form-label fw-bold">Nama Lengkap</label>
+                      <input 
+                        type="text" 
+                        className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
+                        value={isSearching ? "Mencari..." : fullName}
+                        readOnly
+                        style={{ backgroundColor: '#e9ecef' }} 
+                      />
+                      {isSearching && <div className="spinner-border spinner-border-sm text-primary mt-1" role="status"></div>}
+                    </div>
+                  </div>
+                  <div className="row g-3">
+                    <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Medical Check Name</label>
-                        <select name="medical_id" className="form-select">
+                        <select name="medical_id" className="form-select"  disabled={!isEmployeeFound || isSearching} required>
                             {medical.map((medical) => (
                                 <option key={medical.medical_id} value={medical.medical_id}>
                                     {medical.medical_name}
@@ -93,23 +150,23 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
                             ))}
                         </select>
                     </div>
-                    <div className="mb-3 col-4">
+                    <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Date</label>
-                        <input type="date" name="medical_date" className="form-control" />
+                        <input type="date" name="medical_date" className="form-control" disabled={!isEmployeeFound || isSearching} required />
                     </div>
                     <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Result</label>
-                        <input type="text" name="medical_result" className="form-control" />
+                        <input type="text" name="medical_result" className="form-control" disabled={!isEmployeeFound || isSearching} required />
                     </div>
                     <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Notes</label>
-                        <input type="text" name="medical_notes" className="form-control" />
+                        <input type="text" name="medical_notes" className="form-control" disabled={!isEmployeeFound || isSearching} />
                     </div>
                   </div>
                 </div>              
               <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
                 <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold">
+                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold" disabled={!isEmployeeFound || isSearching}>
                   <i className="bi bi-check-lg me-1"></i> Simpan Data
                 </button>
               </div>

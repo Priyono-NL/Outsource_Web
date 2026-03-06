@@ -3,9 +3,12 @@ import api from '../../api/api';
 
 function OsTrainingForm({ onClose, onSuccess, initialData }) {
   const [training, setTraining] = useState([]);
+  const [empId, setEmpId] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [isEmployeeFound, setIsEmployeeFound] = useState(false);
   const formRef = useRef(null);
-
-  // get training select
+  
   useEffect(() => {
     const fetchTraining = async () => {
       try {        
@@ -18,16 +21,18 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
       }
     };
     fetchTraining();
-  }, [])
+  }, []) // get training select
 
   useEffect(() => {
         if (initialData && formRef.current && training.length > 0) {
-            formRef.current.employee_id.value = initialData.employee_id;
-            formRef.current.training_id.value = initialData.training_id;
-            formRef.current.training_date_from.value = initialData.training_date_from;
-            formRef.current.training_date_to.value = initialData.training_date_to;
-            formRef.current.training_result.value = initialData.training_result;
-            formRef.current.training_score.value = initialData.training_score;
+          setEmpId(initialData.employee_id);
+          formRef.current.employee_id.value = initialData.employee_id;
+          formRef.current.training_id.value = initialData.training_id;
+          formRef.current.training_date_from.value = initialData.training_date_from;
+          formRef.current.training_date_to.value = initialData.training_date_to;
+          formRef.current.training_result.value = initialData.training_result;
+          formRef.current.training_score.value = initialData.training_score;
+          handleSearchEmployee(initialData.employee_id)
         }
     }, [initialData, , training]);
 
@@ -52,6 +57,41 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
         alert("Terjadi kesalahan jaringan.");
       }
     }    
+  };
+
+  const handleSearchEmployee = async (id) => {
+    if (!id) {
+      setFullName('');
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const response = await api.get(`/employee/search/${id}`);
+      if (response.data.status === "success") { 
+        setFullName(response.data.full_name);
+        setIsEmployeeFound(true);
+      }
+    } catch (err) {
+      setFullName('Karyawan ID tidak terdaftar!');
+      setIsEmployeeFound(false);
+      console.error("Employee lookup failed:", err);
+    } finally { setIsSearching(false); }
+  };
+
+  const handleIdChange = (e) => {
+    const value = e.target.value;
+    setEmpId(value);
+    if (value === "") {
+      setIsEmployeeFound(false);
+      setFullName("");
+      setFormData({
+        canteen_id: "",
+        valid_from: "",
+        valid_to: ""
+      });
+    } else {
+      setIsEmployeeFound(false);
+    }
   };
 
   return (
@@ -82,11 +122,32 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
                   <div className="row g-3">
                     <div className="mb-3 col-3">
                         <label className="form-label small fw-bold">Employee ID</label>
-                        <input type="text" name="employee_id" className="form-control" />
+                        <input 
+                          type="text" 
+                          name="employee_id" 
+                          className="form-control" 
+                          required
+                          value={empId}
+                          onChange={handleIdChange}
+                          onBlur={(e) => handleSearchEmployee(e.target.value)}
+                        />
                     </div>
+                    <div className="mb-3 col-9">
+                      <label className="form-label fw-bold">Nama Lengkap</label>
+                      <input 
+                        type="text" 
+                        className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
+                        value={isSearching ? "Mencari..." : fullName}
+                        readOnly
+                        style={{ backgroundColor: '#e9ecef' }} 
+                      />
+                      {isSearching && <div className="spinner-border spinner-border-sm text-primary mt-1" role="status"></div>}
+                    </div>
+                  </div>
+                  <div className="row g-3">
                     <div className="mb-3 col-3">
                         <label className="form-label small fw-bold">Training Name</label>
-                        <select name="training_id" className="form-select">
+                        <select name="training_id" className="form-select" required disabled={!isEmployeeFound || isSearching}>
                             {training.map((training) => (
                                 <option key={training.training_id} value={training.training_id}>
                                     {training.training_name}
@@ -95,17 +156,18 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
                         </select>
                     </div>
                     <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Date From</label>
-                        <input type="date" name="training_date_from" className="form-control" />
+                        <label className="form-label small fw-bold" required >Date From</label>
+                        <input type="date" name="training_date_from" className="form-control" disabled={!isEmployeeFound || isSearching} />
                     </div>
                     <div className="mb-3 col-3">
                         <label className="form-label small fw-bold">Date To</label>
-                        <input type="date" name="training_date_to" className="form-control" />
+                        <input type="date" name="training_date_to" className="form-control" disabled={!isEmployeeFound || isSearching} />
                     </div>
                     <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Result</label>
                         <select name="training_result" className='form-control' 
                           defaultValue={initialData ? initialData.training_result : ""}
+                          required disabled={!isEmployeeFound || isSearching}
                         >
                           <option value="0">Tidak Lulus</option>
                           <option value="1">Lulus</option>
@@ -113,13 +175,13 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
                     </div>
                     <div className="mb-3 col-6">
                         <label className="form-label small fw-bold">Score</label>
-                        <input type="number" name="training_score" className="form-control" />
+                        <input type="number" name="training_score" className="form-control" disabled={!isEmployeeFound || isSearching} />
                     </div>
                   </div>
                 </div>              
               <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
                 <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold">
+                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold" disabled={!isEmployeeFound || isSearching}>
                   <i className="bi bi-check-lg me-1"></i> Simpan Data
                 </button>
               </div>
