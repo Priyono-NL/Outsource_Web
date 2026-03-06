@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
+const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
-    const [employees, setEmployees] = useState([]);   
-    const [error, setError] = useState(null); 
+    const [card, setCard] = useState([]);   
+    const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(100);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
-            const result = await response.data;      
+            const response = await api.get(`/oscard?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
+            const result = await response.data;
             if (result.status === 'success') { 
-                setEmployees(result.data);
+                setCard(result.data);
                 setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
@@ -53,20 +53,31 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
             <thead className="table">
                 <tr>
                     <th className="py-3">Employee ID</th>
-                    <th className="py-3">Name Employee</th>
-                    <th className="py-3">Sub Company</th>
+                    <th className="py-3">Employee Name</th>
+                    <th className="py-3">Absence Card Number</th>
                     <th className="py-3">Valid From</th>
                     <th className="py-3">Valid To</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
-                employees.map((emp, index) => (
+                card.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
                         <td>{emp.employee_id}</td>
-                        <td>{emp.person_name}</td>
-                        <td>{emp.sub_con_name}</td>
-                        <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>                        
+                        <td>{emp.employee_name}</td>
+                        <td>{emp.card_number}</td>
+                        <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
+                        <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
+                        <td>
+                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
+                                Edit
+                            </button>
+                            <button className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleDelete(emp.alokasi_id, emp.employee_name)}
+                            >
+                                Hapus
+                            </button>
+                        </td>
                     </tr>
                 ))}
             </tbody>
@@ -79,4 +90,4 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
         </div>        
     </>)
 };
-export default Datatable;
+export default OsCardTable;

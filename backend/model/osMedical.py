@@ -32,6 +32,6 @@ class osMedical(db.Model):
             'medical_notes': self.medical_notes,
 
             "medical_name": self.medical_m.medical_name,
-            "employee_name": self.employement.person_detail.name,            
+            "employee_name": self.employement.person.name,            
             'v_medical_date': self.medical_date.strftime('%d %b %Y') if hasattr(self.medical_date, 'strftime') else None
         }

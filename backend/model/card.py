@@ -19,3 +19,16 @@ class OsCard(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
 
     employement = db.relationship('OsEmployment', backref='OsCC', lazy=True)
+
+    def to_dict(self):
+        return {
+            "card_id": self.id,
+            "employee_id": self.employee_id,
+            "card_number": self.card_number,            
+            'valid_from': self.valid_from.strftime('%Y-%m-%d') if hasattr(self.valid_from, 'strftime') else None,
+            'valid_to': self.valid_to.strftime('%Y-%m-%d') if hasattr(self.valid_to, 'strftime') else None,
+
+            "employee_name": self.employement.person.name,
+            'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
+            'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None
+        }

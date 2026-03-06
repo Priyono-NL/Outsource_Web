@@ -17,5 +17,4 @@ class OsCostCenter(db.Model):
     modified_by = db.Column(db.String(50))
 
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
-
     employement = db.relationship('OsEmployment', backref='OsCard', lazy=True)

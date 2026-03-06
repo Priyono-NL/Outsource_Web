@@ -16,18 +16,21 @@ class OsEmployment(db.Model):
     modified_by = db.Column(db.String(50))
 
     person_id = db.Column(db.Integer, db.ForeignKey('os_person.person_id'))
-    sub_company_id = db.Column(db.String(10), db.ForeignKey('sub_company.sub_company_id'))
+    sub_company_id = db.Column(db.String(10), db.ForeignKey('sub_company.sub_company_id'))    
     
-    person_detail = db.relationship('OsPerson', backref='employments', lazy=True)
-    sub_con_detail = db.relationship('SubCompany', backref='subcon', lazy=True)
+    person = db.relationship('OsPerson', backref='employments', lazy=True)
+    sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)
 
     def to_dict(self):
         return {
             'employee_id': self.employee_id,
-            'sub_company_id': self.sub_company_id,
-            'sub_con_name': self.sub_con_detail.sub_company_name,
+            'sub_company_id': self.sub_company_id,            
             'person_id': self.person_id,
-            'person_name': self.person_detail.name,
-            'valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
-            'valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None
+            'valid_from': self.valid_from.strftime('%Y-%m-%d') if hasattr(self.valid_from, 'strftime') else None,
+            'valid_to': self.valid_to.strftime('%Y-%m-%d') if hasattr(self.valid_to, 'strftime') else None,
+
+            'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
+            'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,
+            'person_name': self.person.name,
+            'sub_con_name': self.sub_con.sub_company_name,
         }

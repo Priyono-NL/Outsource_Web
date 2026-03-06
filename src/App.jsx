@@ -14,6 +14,7 @@ import Dashboard from './pages/Dashboard';
 import Alokasi from './pages/Alokasi'
 import OsMedical from './pages/OsMedical';
 import OsTraining from './pages/OsTraining';
+import OsCard from './pages/OsCard';
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
@@ -123,7 +124,8 @@ function App() {
               <Route path="/sub-company" element={<SubCompany />} />
               <Route path="/training-m" element={<Training_m />} />
               <Route path="/medical-m" element={<Medical_m />} />
-              <Route path="/canteen" element={<Canteen />} />              
+              <Route path="/canteen" element={<Canteen />} />
+              <Route path='/card' element={<OsCard />} />
                             
               <Route path="*" element={<Dashboard />} />
             </Routes>

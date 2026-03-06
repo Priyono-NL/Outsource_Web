@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import api from '../../api/api';
 
 import PersonelTab from './PersonalTab';
@@ -10,14 +10,17 @@ function Dataform({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
 
   const tabs = ['Data Pribadi', 'Data Pekerjaan', 'Data Aset'];
+
   const handleNext = (e) => {
     e.preventDefault()
     setActiveTab((prev) => prev + 1);
   };
+
   const handlePrev = (e) => {
     e.preventDefault()
     setActiveTab((prev) => prev - 1);
   };
+
   const handleSave = async (e) => {
     e.preventDefault();
     const formData = new FormData(formRef.current);
@@ -39,7 +42,7 @@ function Dataform({ onClose, onSuccess, initialData }) {
          alert("Gagal: " + error);
       }
     }
-};
+  };
 
   return (
     <>
@@ -133,9 +136,8 @@ function Dataform({ onClose, onSuccess, initialData }) {
                   </div>
                 </div>
               </form>
-
+              
             </div>
-
           </div>
         </div>
       </div>

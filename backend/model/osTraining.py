@@ -34,7 +34,7 @@ class osTraining(db.Model):
             'training_score': self.training_score,
 
             "training_name": self.training_m.training_name,
-            "employee_name": self.employement.person_detail.name,            
+            "employee_name": self.employement.person.name,            
             'v_training_date_from': self.training_date_from.strftime('%d %b %Y') if hasattr(self.training_date_from, 'strftime') else None,
             'v_training_date_to': self.training_date_to.strftime('%d %b %Y') if hasattr(self.training_date_to, 'strftime') else None,
             'status_result': "Lulus" if self.training_result == 1 else "Tidak Lulus",

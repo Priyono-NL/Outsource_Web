@@ -13,7 +13,12 @@ const Sidebar = () => {
           <NavLink to="/dashboard" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
             Dashboard
           </NavLink>
-        </li>       
+        </li>
+        <li className="nav-item">
+          <NavLink to="/card" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Absence Card
+          </NavLink>
+        </li>
       </ul>
       <hr />
       <ul className="nav nav-pills flex-column gap-1">
