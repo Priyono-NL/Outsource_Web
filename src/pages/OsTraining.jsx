@@ -89,13 +89,13 @@ const OsTraining = () => {
         </div>
         <div className="col-12 col-md-6 col-lg-8 d-flex justify-content-md-end gap-2">
           <button className="btn btn-outline-secondary btn-sm" onClick={handleDownloadTemplate}>
-            Template for Import
+            Template (Import)
           </button>
           <label className={`btn ${isUploading ? 'btn-secondary' : 'btn-outline-primary'} px-4 fw-semibold shadow-sm d-flex align-items-center`}>
             {isUploading ? (
               <>
                 <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                Memproses...
+                Processing...
               </>
             ) : (
               <>Import From Excel</>
@@ -110,13 +110,13 @@ const OsTraining = () => {
             />
           </label>
           <button className="btn btn-success px-4 fw-semibold shadow-sm d-flex align-items-center justify-content-center" onClick={handleExport}>
-            Export ke Excel
+            Export To Excel
           </button>
           <button 
             className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold shadow-sm d-flex align-items-center justify-content-center`}
             onClick={handleAdd}
           >
-            {showForm ? 'Tutup Form' : '+ Tambah Data'}
+            {showForm ? 'Close Form' : '+ Add New'}
           </button>
         </div>
       </div>

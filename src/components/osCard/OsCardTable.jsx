@@ -27,7 +27,7 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/osmedical/${id}`);
+                const response = await api.delete(`/oscard/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -75,7 +75,7 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(emp.alokasi_id, emp.employee_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

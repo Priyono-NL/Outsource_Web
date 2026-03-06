@@ -59,7 +59,7 @@ const OsTrainingTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                     <th className="py-3">Date To</th>
                     <th className="py-3">Result</th>
                     <th className="py-3">Score</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -84,7 +84,7 @@ const OsTrainingTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(emp.osTraining_id, emp.employee_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

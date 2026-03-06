@@ -51,7 +51,7 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
                     <th className="py-3">Medical Id</th>
                     <th className="py-3">Medical Name</th>
                     <th className="py-3">Fasilitas Kesehatan</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -67,7 +67,7 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(sub.medical_id, sub.medical_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

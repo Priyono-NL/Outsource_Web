@@ -43,7 +43,7 @@ const Dashboard = () => {
           className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold`}
           onClick={handleAdd}
         >
-          {showForm ? 'Tutup Form' : '+ Tambah Data'}
+          {showForm ? 'Close Form' : '+ Add New'}
         </button>          
       </div>
       {showForm && (

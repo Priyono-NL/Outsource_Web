@@ -51,7 +51,7 @@ const Train_m_table = ({ refreshTrigger, onEditClick }) => {
                     <th className="py-3">Training Id</th>
                     <th className="py-3">Training Name</th>
                     <th className="py-3">Organizer</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -67,7 +67,7 @@ const Train_m_table = ({ refreshTrigger, onEditClick }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(sub.training_id, sub.training_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

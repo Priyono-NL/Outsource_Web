@@ -6,7 +6,7 @@ const Sidebar = () => {
   return (
     <div 
       className="d-flex flex-column flex-shrink-0 p-3 text-white bg-dark vh-100 shadow-sm" 
-      style={{ width: '250px', position: 'sticky', top: '0', overflowY: 'auto', }}
+      style={{ width: '200px', position: 'sticky', top: '0', overflowY: 'auto', }}
     >
       <ul className="nav nav-pills flex-column gap-1">
         <li className="nav-item">
@@ -16,12 +16,7 @@ const Sidebar = () => {
         </li>
         <li className="nav-item">
           <NavLink to="/card" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Absence Card
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Cost Center
+            OS Absence Card
           </NavLink>
         </li>
       </ul>
@@ -74,12 +69,22 @@ const Sidebar = () => {
         </li>
         <li className="nav-item">
           <NavLink to="/os-medical" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Medical OS
+            OS Medical
           </NavLink>
         </li>
         <li className="nav-item">
           <NavLink to="/os-training" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Training OS
+            OS Training
+          </NavLink>
+        </li>
+        <li className="nav-item">
+          <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            OS Cost Center
+          </NavLink>
+        </li>
+        <li className="nav-item">
+          <NavLink to="/grade" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            OS Grade
           </NavLink>
         </li>
       </ul>

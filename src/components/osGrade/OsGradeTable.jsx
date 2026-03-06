@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => { 
+const OsGradeTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
-    const [osmedical, setOsMedical] = useState([]);   
-    const [error, setError] = useState(null); 
+    const [card, setCard] = useState([]);   
+    const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(100);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/osmedical?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
+            const response = await api.get(`/osgrade?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
             const result = await response.data;
             if (result.status === 'success') { 
-            setOsMedical(result.data);
-            setTotalPages(result.total_page);
+                setCard(result.data);
+                setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
         } catch (err) {
@@ -27,7 +27,7 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/osmedical/${id}`);
+                const response = await api.delete(`/osgrade/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -54,28 +54,26 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
                 <tr>
                     <th className="py-3">Employee ID</th>
                     <th className="py-3">Employee Name</th>
-                    <th className="py-3">Medical Check</th>
-                    <th className="py-3">Date</th>
-                    <th className="py-3">Result</th>
-                    <th className="py-3">Notes</th>
+                    <th className="py-3">Grade</th>
+                    <th className="py-3">Valid From</th>
+                    <th className="py-3">Valid To</th>
                     <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
-                osmedical.map((emp, index) => (
+                card.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
                         <td>{emp.employee_id}</td>
                         <td>{emp.employee_name}</td>
-                        <td>{emp.medical_name}</td>
-                        <td>{emp.v_medical_date ? emp.v_medical_date : '-'}</td>
-                        <td>{emp.medical_result}</td>                        
-                        <td>{emp.medical_notes ? emp.medical_notes : '-'}</td>
+                        <td>{emp.grade}</td>
+                        <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
+                        <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(emp.osMedical_id, emp.employee_name)}
+                                onClick={() => handleDelete(emp.grade_id, emp.employee_name)}
                             >
                                 Delete
                             </button>
@@ -92,4 +90,4 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
         </div>        
     </>)
 };
-export default OsMedicTable;
+export default OsGradeTable;

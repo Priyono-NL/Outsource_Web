@@ -52,7 +52,7 @@ const CCTable = ({ refreshTrigger, onEditClick }) => {
                     <th className="py-3">Org ID</th>
                     <th className="py-3">Cost Center Name</th>
                     <th className="py-3">Cost Center ID</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -69,7 +69,7 @@ const CCTable = ({ refreshTrigger, onEditClick }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(cc.cost_center, cc.org_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

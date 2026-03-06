@@ -48,9 +48,9 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">KantinID</th>
-                    <th className="py-3">Nama Kantin</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className="py-3">Canteen ID</th>
+                    <th className="py-3">Canteen Name</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -65,7 +65,7 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(can.Canteen_id, can.Canteen_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

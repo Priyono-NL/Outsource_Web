@@ -57,7 +57,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                     <th className="py-3">Canteen</th>
                     <th className="py-3">Valid From</th>
                     <th className="py-3">Valid To</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -75,7 +75,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(emp.alokasi_id, emp.employee_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>

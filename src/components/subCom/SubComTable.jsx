@@ -50,8 +50,8 @@ const SubComTable = ({ refreshTrigger, onEditClick }) => {
                 <tr>
                     <th className="py-3">Sub Company Id</th>
                     <th className="py-3">Sub Company Name</th>
-                    <th className="py-3">tipe Company</th>
-                    <th className='py-3'>Aksi</th>
+                    <th className="py-3">Company Type</th>
+                    <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -67,7 +67,7 @@ const SubComTable = ({ refreshTrigger, onEditClick }) => {
                             <button className="btn btn-sm btn-outline-danger"
                                 onClick={() => handleDelete(sub.sub_company_id, sub.sub_company_name)}
                             >
-                                Hapus
+                                Delete
                             </button>
                         </td>
                     </tr>
