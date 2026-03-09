@@ -20,8 +20,12 @@ class OsEmployment(db.Model):
     
     person = db.relationship('OsPerson', backref='employments', lazy=True)
     sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)
+   
 
     def to_dict(self):
+        card = self.OsCard[0] if self.OsCard and len(self.OsCard) > 0 else None
+        card_from = card.valid_from if card else None
+        card_to = card.valid_to if card else None
         return {
             'employee_id': self.employee_id,
             'sub_company_id': self.sub_company_id,            
@@ -31,6 +35,7 @@ class OsEmployment(db.Model):
 
             'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
             'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,
+            
 
             'person_name': self.person.name,
             'gender': self.person.gender,
@@ -41,5 +46,10 @@ class OsEmployment(db.Model):
             'address': self.person.address,
 
             'sub_con_name': self.sub_con.sub_company_name,
-            'type_company': self.sub_con.type_company,
+            'type_company': self.sub_con.type_company,            
+            'cc_name': self.OsCC[0].cc_master.org_name if self.OsCC else None,
+
+            'card_number': self.OsCard[0].card_number if self.OsCard else None,
+            'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
+            'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
         }
