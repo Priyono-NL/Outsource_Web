@@ -20,11 +20,12 @@ import OsGrade from './pages/OsGrade';
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
+  const SSO_API_URL = "https://sso.ceresnl.com:50443//api/session"
+  const SSO_LOGIN_URL = "https://sso.ceresnl.com/";
+  const SSO_LOGOUT_URL = "https://sso.ceresnl.com/Logout";
 
   useEffect(() => {
-    const checkSession = async () => {
-      const SSO_API_URL = "https://sso.ceresnl.com:50443//api/session"
-      const SSO_LOGIN_URL = "https://sso.ceresnl.com/";
+    const checkSession = async () => {      
       try {
         const res = await api.get(SSO_API_URL);
         if (res.data.isAuthenticated === true) {
@@ -48,13 +49,29 @@ function App() {
     checkSession();
   }, []);
 
+  useEffect(() => {
+  const syncWithSSO = setInterval(async () => {
+    try {
+      const res = await api.get(SSO_API_URL);
+      if (res.data.isAuthenticated === false) {
+        await api.get('/api/logout'); 
+        window.location.href = SSO_LOGIN_URL;
+      }
+    } catch (err) {
+      console.log("SSO unreachable");
+    }
+  }, 60000);
+
+  return () => clearInterval(syncWithSSO);
+}, []);
+
   const handleLogout = async () => {
     try {
       await api.get('/api/logout'); 
     } catch (error) {
       console.error("Gagal logout di server:", error);
     } finally {      
-      window.location.href = "https://sso.ceresnl.com/Logout";
+      window.location.href = SSO_LOGOUT_URL;
     }
   };
 

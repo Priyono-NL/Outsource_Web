@@ -19,6 +19,11 @@ const Sidebar = () => {
             OS Absence Card
           </NavLink>
         </li>
+        <li className="nav-item">
+          <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            OS Department
+          </NavLink>
+        </li>
       </ul>
       <hr />
       <ul className="nav nav-pills flex-column gap-1">
@@ -76,12 +81,7 @@ const Sidebar = () => {
           <NavLink to="/os-training" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
             OS Training
           </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Cost Center
-          </NavLink>
-        </li>
+        </li>        
         <li className="nav-item">
           <NavLink to="/grade" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
             OS Grade

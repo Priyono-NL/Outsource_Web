@@ -60,7 +60,7 @@ function EmployTab() {
                 <Select 
                     options={subcomOptions}
                     isSearchable={true} 
-                    placeholder="cari Sub Company"
+                    placeholder="Cari Sub Company"
                     maxMenuHeight={200}
                     value={subcomOptions.find(opt => opt.value === selectSubComId) || null}
                     onChange={(selectedOption) => {
@@ -74,11 +74,11 @@ function EmployTab() {
                 <input type="text" name="grade" className="form-control" />
             </div>
             <div className="mb-3 col-3">
-                <label className="form-label small fw-bold">Cost Center</label>
+                <label className="form-label small fw-bold">Department</label>
                 <Select 
                     options={ccOptions}
                     isSearchable={true} 
-                    placeholder="cari Cost Center"
+                    placeholder="Cari Department"
                     maxMenuHeight={200}
                     value={ccOptions.find(opt => opt.value === selectCCId) || null}
                     onChange={(selectedOption) => {

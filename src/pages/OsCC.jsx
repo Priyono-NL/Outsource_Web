@@ -23,7 +23,7 @@ const OsCC = () => {
      return (
         <div className="container-fluid px-4">
         <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="text-dark mb-0">OS Cost Center</h3>
+          <h3 className="text-dark mb-0">OS Department</h3>
           <div className="flex-grow-1 mx-4" style={{ maxWidth: '500px' }}>
             <div className="input-group">
               <input 

@@ -46,7 +46,7 @@ function ViewDetails({ onClose, initialData }) {
                         <div className='col-md-3'>Type Company : {initialData.type_company}</div>
                         <div className='col-md-3'>Valid From : {initialData.v_valid_from}</div>
                         <div className='col-md-3'>Valid To : {initialData?.valid_to ? initialData.valid_to : "-"}</div>
-                        <div className='col-md-6'>Cost Center : {initialData.sub_con_name}</div>
+                        <div className='col-md-6'>Department : Department Name</div>
                         <div className='col-md-3'>Valid From : {initialData.v_valid_from}</div>
                         <div className='col-md-3'>Valid To : {initialData?.valid_to ? initialData.valid_to : "-"}</div>
                         <div></div>                        
@@ -54,10 +54,12 @@ function ViewDetails({ onClose, initialData }) {
                     <hr />
                     <div className='row g-3'>
                         <div className='col-md-12 fw-bold'>Asset Information</div>
-                        <div></div>                        
+                        <div className='col-md-6'>Absence Card : Absence Card Number</div>
+                        <div className='col-md-3'>Valid From : {initialData.v_valid_from}</div>
+                        <div className='col-md-3'>Valid To : {initialData?.valid_to ? initialData.valid_to : "-"}</div>                       
                     </div>
-                </div>            
-              
+                </div>
+                  
             </div>
           </div>
         </div>

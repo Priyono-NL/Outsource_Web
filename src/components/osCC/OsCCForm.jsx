@@ -165,7 +165,7 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
                   </div>
                   <div className="row g-3">
                     <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Cost Center</label>
+                        <label className="form-label small fw-bold">Department</label>
                         <Select 
                           options={ccOptions}
                           isSearchable={true} 

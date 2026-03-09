@@ -54,7 +54,7 @@ const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                 <tr>
                     <th className="py-3">Employee ID</th>
                     <th className="py-3">Employee Name</th>
-                    <th className="py-3">Cost Center</th>
+                    <th className="py-3">Department</th>
                     <th className="py-3">Valid From</th>
                     <th className="py-3">Valid To</th>
                     <th className='py-3'>Action</th>
