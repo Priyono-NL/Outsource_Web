@@ -14,7 +14,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
 @auth_bp.route('/api/sync-session', methods=['POST'])
 def sync_session():
     data = request.json
