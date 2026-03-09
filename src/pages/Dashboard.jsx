@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import Datatable from '../components/dashboard/Datatable';
 import Dataform from '../components/dashboard/Dataform';
+import ViewDetails from '../components/dashboard/ViewDetails';
 
 const Dashboard = () => {
   const [showForm, setShowForm] = useState(false);
+  const [viewForm, setViewForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [editingData, setEditingData] = useState(null);
   const [searchInput, setSearchInput] = useState("");
@@ -15,9 +17,9 @@ const Dashboard = () => {
       setEditingData(null);
       setShowForm(true);
   };
-  const handleEdit = (data) => {
+  const handleView = (data) => {
       setEditingData(data);
-      setShowForm(true);
+      setViewForm(true);
   };
 
   return (
@@ -53,11 +55,17 @@ const Dashboard = () => {
           initialData={editingData}
         />
       )}
+      {viewForm && (
+        <ViewDetails 
+          onClose={() => setViewForm(false)} 
+          initialData={editingData}
+        />
+      )}
     <div className="card border-0 shadow-sm">
       <div className="card-body p-0">
         <Datatable 
           refreshTrigger={refreshKey} 
-          onEditClick={handleEdit}
+          onViewClick={handleView}
           searchTerm={appliedSearch}
         />          
       </div>

@@ -31,6 +31,15 @@ class OsEmployment(db.Model):
 
             'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
             'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,
+
             'person_name': self.person.name,
+            'gender': self.person.gender,
+            'pob': self.person.pob,
+            'dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
+            'religion': self.person.religion,
+            'resident_id': self.person.resident_id,
+            'address': self.person.address,
+
             'sub_con_name': self.sub_con.sub_company_name,
+            'type_company': self.sub_con.type_company,
         }

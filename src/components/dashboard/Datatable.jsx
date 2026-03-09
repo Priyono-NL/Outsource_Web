@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
+const Datatable = ({ refreshTrigger, onViewClick, searchTerm }) => { 
        
     const [employees, setEmployees] = useState([]);   
     const [error, setError] = useState(null); 
@@ -24,20 +24,6 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
         }
     }
 
-    const handleDelete = async (id, name) => {
-        if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
-            try {
-                const response = await api.delete(`/osmedical/${id}`);
-                if (response.data.status === 'success') {
-                    alert(response.data.message);                
-                    fetchData(); 
-                }
-            } catch (error) {
-                alert("Gagal menghapus data: " + (error.response?.data?.message || error.message));
-            }
-        }
-    };
-
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm]);
@@ -45,6 +31,8 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     useEffect(() => {
         fetchData();
     }, [currentPage, refreshTrigger, searchTerm]);
+
+
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -57,6 +45,7 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                     <th className="py-3">Sub Company</th>
                     <th className="py-3">Valid From</th>
                     <th className="py-3">Valid To</th>
+                    <th className="py-3">Action</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -66,7 +55,12 @@ const Datatable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                         <td>{emp.person_name}</td>
                         <td>{emp.sub_con_name}</td>
                         <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>                        
+                        <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>
+                        <td>
+                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onViewClick(emp)}>
+                                View
+                            </button>
+                        </td>
                     </tr>
                 ))}
             </tbody>

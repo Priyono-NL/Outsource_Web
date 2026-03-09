@@ -27,7 +27,7 @@ function Dataform({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/employee/${initialData.alokasi_id}`, data) 
+            ? await api.put(`/employee/${initialData.employee_id}`, data) 
             : await api.post('/employee/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
