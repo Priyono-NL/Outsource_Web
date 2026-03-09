@@ -2,7 +2,7 @@ import React, { useState, useEffect, use } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
+const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => { 
        
     const [alokasi, setAlokasi] = useState([]);   
     const [error, setError] = useState(null);
@@ -12,7 +12,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
+            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
             const result = await response.data;
             if (result.status === 'success') { 
                 setAlokasi(result.data);
@@ -40,11 +40,11 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, filterTerm]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm]);
+    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Datatable = ({ refreshTrigger, onViewClick, searchTerm }) => { 
+const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => { 
        
     const [employees, setEmployees] = useState([]);   
     const [error, setError] = useState(null); 
@@ -12,7 +12,7 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
+            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
             const result = await response.data;      
             if (result.status === 'success') { 
                 setEmployees(result.data);
@@ -26,14 +26,12 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm }) => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, filterTerm]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm]);
-
-
-
+    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
+    
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
@@ -48,21 +46,29 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm }) => {
                     <th className="py-3">Action</th>
                 </tr>
             </thead>
-            <tbody>{                  
-                employees.map((emp, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{emp.employee_id}</td>
-                        <td>{emp.person_name}</td>
-                        <td>{emp.sub_con_name}</td>
-                        <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>
-                        <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onViewClick(emp)}>
-                                View
-                            </button>
+            <tbody>
+                {employees.length > 0 ? (
+                    employees.map((emp, index) => (
+                        <tr key={`row-${emp.employee_id || index}`} className="border-bottom">
+                            <td className="ps-3">{emp.employee_id}</td>
+                            <td>{emp.person_name}</td>
+                            <td>{emp.sub_con_name}</td>
+                            <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
+                            <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>
+                            <td className="text-center">
+                                <button className="btn btn-sm btn-outline-primary" onClick={() => onViewClick(emp)}>
+                                    View
+                                </button>
+                            </td>
+                        </tr>
+                    ))
+                ) : (
+                    <tr>
+                        <td colSpan="6" className="text-center py-5 text-muted">
+                            Data tidak ditemukan
                         </td>
                     </tr>
-                ))}
+                )}
             </tbody>
             </table>
             <PageNav 
