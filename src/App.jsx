@@ -22,66 +22,52 @@ function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
 
   useEffect(() => {
-    const handleAuth = async () => {
+    const checkSession = async () => {
+      const SSO_API_URL = "https://sso.ceresnl.com:50443//api/session"
+      const SSO_LOGIN_URL = "https://sso.ceresnl.com/";
       try {
-        // 1. TANGKAP: Lihat apakah ada ?token= di URL address bar
-        const params = new URLSearchParams(window.location.search);
-        const tokenURL = params.get('token');
-        if (tokenURL) {
-          // Simpan ke Local Storage agar tidak hilang saat refresh
-          const cleanToken = tokenURL.replace(/^"|"$/g, '');
-          localStorage.setItem('token', JSON.stringify(cleanToken));        
-          // Bersihkan URL agar rapi (menghilangkan ?token=...)
-          window.history.replaceState({}, document.title, "/");
-        }
-        // 2. AMBIL: Cek apakah sekarang sudah ada token di Local Storage?
-        let token = localStorage.getItem('token');
-        if (!token) {
-          // Jika tetap tidak ada, hentikan loading dan tampilkan tombol login
-          setAuthState({ isAuthenticated: false, loading: false, user: null });
-          return;
-        }
-        // 3. VALIDASI: Kirim ke Flask untuk memastikan token masih aktif
-        const finalToken = token.replace(/^"|"$/g, '');
-        const res = await api.post('/api/validate-token-storage', { token: finalToken });
-        if (res.data.isAuthenticated) {
-          setAuthState({ isAuthenticated: true, loading: false, user: res.data.user });
-        } else {
-          localStorage.removeItem('token');
-          setAuthState({ isAuthenticated: false, loading: false, user: null });
+        const res = await api.get(SSO_API_URL);
+        if (res.data.isAuthenticated === true) {
+          await api.post('/api/sync-session', { 
+            isAuthenticated: true, 
+            user: res.data 
+          });
+          setAuthState({ 
+            isAuthenticated: true, 
+            loading: false, 
+            user: res.data || null 
+          });
+        } else {        
+          window.location.href = SSO_LOGIN_URL;
         }
       } catch (err) {
-        console.error("Gagal memproses token", err);
-        setAuthState({ isAuthenticated: false, loading: false, user: null });
+        console.error("Session check failed:", err);
+        window.location.href = SSO_LOGIN_URL;
       }
     };
-    handleAuth();
+    checkSession();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      await api.get('/api/logout'); 
+    } catch (error) {
+      console.error("Gagal logout di server:", error);
+    } finally {      
+      window.location.href = "https://sso.ceresnl.com/Logout";
+    }
+  };
+
   if (authState.loading) {
-    return <div className="p-5 text-center">Memverifikasi Sesi...</div>;
-  }
-  if (!authState.isAuthenticated) {
     return (
-      <div className="vh-100 d-flex justify-content-center align-items-center">
+      <div className="vh-100 d-flex justify-content-center align-items-center bg-light">
         <div className="text-center">
-          <p>Anda belum login.</p>
-          <a href="https://sso.ceresnl.com/Logout" className="btn btn-primary">Ke Halaman Login</a>
+          <div className="spinner-border text-primary mb-2" role="status"></div>
+          <p>Memeriksa Autentikasi...</p>
         </div>
       </div>
     );
   }
-
-  const handleLogout = async () => {
-    try {
-      await api.get('/api/logout');
-      localStorage.removeItem('token');
-      setAuthState({ isAuthenticated: false, loading: false, user: null });
-      window.location.href = "https://sso.ceresnl.com/Logout";
-    } catch (error) {
-      console.error("Gagal logout:", error);
-    }
-  };
 
   return (
     <BrowserRouter>
