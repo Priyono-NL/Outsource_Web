@@ -51,11 +51,15 @@ function EmployTab() {
   return (
     <div className="fade show active">
         <div className="row g-3">
-            <div className="mb-3 col-3">
+            <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">No Induk Karyawan</label>
-                <input type="text" name="employee_id" className="form-control" />
+                <input type="text" name="employee_id" className="form-control" required />
             </div>
             <div className="mb-3 col-3">
+                <label className="form-label small fw-bold">Grade</label>
+                <input type="text" name="grade" className="form-control" />
+            </div>
+            <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Sub Company</label>
                 <Select 
                     options={subcomOptions}
@@ -69,11 +73,7 @@ function EmployTab() {
                 />
                 <input type="hidden" name="sub_company_id" value={selectSubComId || ''} />
             </div>
-            <div className="mb-3 col-3">
-                <label className="form-label small fw-bold">Grade</label>
-                <input type="text" name="grade" className="form-control" />
-            </div>
-            <div className="mb-3 col-3">
+            <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Department</label>
                 <Select 
                     options={ccOptions}
@@ -87,11 +87,11 @@ function EmployTab() {
                 />
                 <input type="hidden" name="cc_id" value={selectCCId || ''} />
             </div>
-            <div className="mb-3 col-3">
+            <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Valid From</label>
-                <input type="date" name="valid_from" className="form-control" />
+                <input type="date" name="valid_from" className="form-control" required />
             </div>
-            <div className="mb-3 col-3">
+            <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Valid To</label>                        
                 <input 
                     type="date" 

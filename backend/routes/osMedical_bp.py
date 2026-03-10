@@ -2,6 +2,7 @@ import pandas as pd
 from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
+
 from extensions import db
 from model.medical import medical
 from model.osMedical import osMedical

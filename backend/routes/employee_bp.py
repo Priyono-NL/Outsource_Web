@@ -1,6 +1,9 @@
+import pandas as pd
+from io import BytesIO
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
+
 from extensions import db
 from .auth_bp import login_required
 from model.employment import OsEmployment
@@ -68,12 +71,12 @@ def add():
         #person
         newPerson = OsPerson(
             name = data.get('nama'),
-            gender = data.get('gender'),
-            address = data.get('address'),
+            gender = data.get('gender'),            
             pob = data.get('pob'),
             dob = data.get('dob'),
             religion = data.get('religion'),
-            resident_id = data.get('resident_id')
+            resident_id = data.get('resident_id'),
+            address = data.get('address')
         )
         db.session.add(newPerson)
         db.session.flush()
@@ -133,6 +136,32 @@ def add():
             "status": "error",
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
+
+@employee_bp.route('/employee/template', methods=['GET'])
+def template():
+    try:
+        example_data = [{
+            "nama": "Budi Contoh",
+            "gender": "L",
+            "pob": "Bandung",
+            "dob": "2026-03-20",
+            "religion": "Islam",
+            "resident_id": "32xxxx",
+            "address": "Alamat Rumah",
+            
+        }]
+        df = pd.DataFrame(example_data)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Template_Import')
+        output.seek(0)
+        return send_file(
+            output, 
+            as_attachment=True, 
+            download_name="Template_Import.xlsx"
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @employee_bp.before_request
 @login_required

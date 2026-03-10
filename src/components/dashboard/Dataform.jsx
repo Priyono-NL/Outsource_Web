@@ -5,10 +5,9 @@ import PersonelTab from './PersonalTab';
 import EmployTab from './EmployTab';
 import AsetTab from './AsetTab';
 
-function Dataform({ onClose, onSuccess, initialData }) {
+function DataformAll({ onClose, onSuccess, initialData }) {
   const [activeTab, setActiveTab] = useState(0);
   const formRef = useRef(null);
-
   const tabs = ['Data Pribadi', 'Data Pekerjaan', 'Data Aset'];
 
   const handleNext = (e) => {
@@ -46,98 +45,93 @@ function Dataform({ onClose, onSuccess, initialData }) {
 
   return (
     <>
-      <div 
-        className="modal-backdrop fade show" 
-        style={{ zIndex: 1050 }}
-        onClick={onClose}
-      ></div>
+      <div className="modal-backdrop fade show" style={{ zIndex: 1050 }} onClick={onClose}></div>
 
-      <div 
-        className="modal fade show d-block" 
-        tabIndex="-1" 
-        style={{ zIndex: 1055 }}
-      >
-        <div className="modal-dialog modal-xl">
+      <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+        <div className="modal-dialog modal-xl modal-dialog-centered">
           <div className="modal-content border-0 shadow-lg">
             
-            <div className="card shadow-sm border-0">
-              
-              <div className="card-header bg-white pt-3 border-bottom-0">
-                <div className="d-flex justify-content-between align-items-center mb-3 px-2">
-                  <h5 className="fw-bold mb-0">Form Input Data</h5>
-                  <button type="button" className="btn-close" onClick={onClose}></button>
+            {/* Header Modal */}
+            <div className="modal-header bg-white border-bottom-0 pt-4 px-4">
+              <h5 className="fw-bold mb-0">Form Input Data</h5>
+              <button type="button" className="btn-close" onClick={onClose}></button>
+            </div>
+
+            <form ref={formRef} onSubmit={handleSave}>
+              <div className="modal-body px-4">
+                <div className="row">
+                  
+                  <div className="col-md-4 border-end d-flex flex-column align-items-center justify-content-start pt-3">
+                    <div 
+                      className="border rounded d-flex align-items-center justify-content-center mb-3 shadow-sm bg-light"
+                      style={{ width: '250px', height: '250px', overflow: 'hidden' }}
+                    >
+                      <img 
+                        src="\src\assets\no_image.png"
+                        className="rounded img-thumbnail" 
+                        style={{ width: '200px', height: '200px', objectFit: 'cover' }} 
+                      />
+                    </div>
+                    <label className="fw-bold text-muted small mt-2">Nanti Buat upload Foto</label>
+                    <button type="button" className="btn btn-sm btn-outline-primary mt-3 px-4">
+                       Pilih Foto
+                    </button>
+                  </div>
+
+                  <div className="col-md-8 ps-md-4">
+                    <ul className="nav nav-pills mb-4 bg-light p-1 rounded" role="tablist">
+                      {['Data Pribadi', 'Data Pekerjaan', 'Data Aset'].map((label, index) => (
+                        <li className="nav-item flex-fill" key={index}>
+                          <button 
+                            type="button"
+                            className={`nav-link w-100 fw-bold border-0 ${activeTab === index ? 'active shadow-sm' : 'text-secondary bg-transparent'}`}
+                            onClick={() => setActiveTab(index)}
+                          >
+                            {label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="tab-content" style={{ minHeight: '400px' }}>
+                      <div className={activeTab === 0 ? 'animate__animated animate__fadeIn' : 'd-none'}>
+                        <PersonelTab />
+                      </div>
+                      <div className={activeTab === 1 ? 'animate__animated animate__fadeIn' : 'd-none'}>
+                        <EmployTab />
+                      </div>
+                      <div className={activeTab === 2 ? 'animate__animated animate__fadeIn' : 'd-none'}>
+                        <AsetTab />
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
-                <ul className="nav nav-tabs card-header-tabs" role="tablist">
-                  <li className="nav-item">
-                    <button 
-                      type="button"
-                      className={`nav-link fw-bold ${activeTab === 0 ? 'active text-primary' : 'text-secondary'}`}
-                      onClick={() => setActiveTab(0)}
-                    >
-                      Data Pribadi
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button 
-                      type="button"
-                      className={`nav-link fw-bold ${activeTab === 1 ? 'active text-primary' : 'text-secondary'}`}
-                      onClick={() => setActiveTab(1)}
-                    >
-                      Data Pekerjaan
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button 
-                      type="button"
-                      className={`nav-link fw-bold ${activeTab === 2 ? 'active text-primary' : 'text-secondary'}`}
-                      onClick={() => setActiveTab(2)}
-                    >
-                      Data Aset
-                    </button>
-                  </li>
-                </ul>
               </div>
 
-              <form ref={formRef} onSubmit={handleSave}>
-                <div className="card-body border-top">
-                  <div className="tab-content py-3">
-                    <div className={activeTab === 0 ? '' : 'd-none'}>
-                      <PersonelTab />
-                    </div>
-                    <div className={activeTab === 1 ? '' : 'd-none'}>
-                      <EmployTab />
-                    </div>
-                    <div className={activeTab === 2 ? '' : 'd-none'}>
-                      <AsetTab />
-                    </div>                    
-                  </div>
+              <div className="modal-footer bg-white border-top py-3 px-4">
+                <button 
+                  type="button" 
+                  className={`btn btn-outline-secondary fw-semibold ${activeTab === 0 ? 'invisible' : ''}`} 
+                  onClick={handlePrev}
+                >
+                  Sebelumnya
+                </button>
+                
+                <div>
+                  {activeTab < 2 ? (
+                    <button type="button" className="btn btn-primary px-5 shadow-sm fw-bold" onClick={handleNext}>
+                      Selanjutnya
+                    </button>
+                  ) : (
+                    <button type="submit" className="btn btn-success px-5 shadow-sm fw-bold">
+                      <i className="bi bi-check-lg me-1"></i> Simpan Data
+                    </button>
+                  )}
                 </div>
-
-                <div className="card-footer bg-white d-flex justify-content-between py-3 border-top-0">
-                  <div>
-                    {activeTab === 0 ? (
-                      <p></p>
-                    ) : (
-                      <button type="button" className="btn btn-outline-secondary fw-semibold" onClick={handlePrev}>
-                        Sebelumnya
-                      </button>
-                    )}
-                  </div>
-                  <div>
-                    {activeTab < 2 ? (
-                      <button type="button" className="btn btn-primary px-4 shadow-sm fw-semibold" onClick={handleNext}>
-                        Selanjutnya
-                      </button>
-                    ) : (
-                      <button type="submit" className="btn btn-success px-4 shadow-sm fw-semibold">
-                        <i className="bi bi-check-lg me-1"></i> Simpan Data
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </form>
-              
-            </div>
+              </div>
+            </form>
+            
           </div>
         </div>
       </div>
@@ -145,4 +139,4 @@ function Dataform({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default Dataform;
+export default DataformAll;
