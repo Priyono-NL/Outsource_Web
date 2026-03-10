@@ -67,6 +67,24 @@ function App() {
     handleAuth();
   }, []);
 
+  useEffect(() => {
+    if (!authState.isAuthenticated) return;
+    const syncWithSSO = setInterval(async () => {
+      try {
+        const res = await api.get(SSO_API_URL);
+        if (res.data && res.data.isAuthenticated === false) {
+          console.warn("Sesi di SSO pusat telah berakhir.");
+          await api.get('/logout'); 
+          const currentUrl = window.location.origin;
+          window.location.href = `${SSO_LOGIN_URL}/?returnUrl=${encodeURIComponent(currentUrl)}`;
+        }
+      } catch (err) {
+        console.error("Gagal sinkronisasi sesi:", err);
+      }
+    }, 60000);
+    return () => clearInterval(syncWithSSO);
+  }, [authState.isAuthenticated]);
+
   const handleLogout = async () => {
     try {
       await api.get('/logout'); 

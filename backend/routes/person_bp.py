@@ -13,7 +13,16 @@ def search_person():
     persons = OsPerson.query.filter(OsPerson.name.ilike(f"%{query_str}%")).limit(10).all()
     return jsonify({
         "status": "success",
-        "data": [{"person_id": p.person_id, "name": p.name} for p in persons]
+        "data": [{
+            "person_id": p.person_id, 
+            "name": p.name,
+            "gender": p.gender,
+            "religion": p.religion,
+            "pob": p.pob,
+            "dob": str(p.dob),
+            "resident_id": p.resident_id,
+            "address": p.address
+            } for p in persons]
     })
 
 @person_bp.before_request

@@ -12,6 +12,6 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     SECRET_KEY = os.getenv('SECRET_KEY')
-    SESSION_COOKIE_SAMESITE = 'Lax'     # Mengizinkan pengiriman cookie antar port localhost
-    SESSION_COOKIE_SECURE = False      # Set ke False karena kita masih pakai HTTP (bukan HTTPS)
-    SESSION_COOKIE_HTTPONLY = True     # Mencegah akses cookie dari JavaScript luar demi keamanan
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_HTTPONLY = True
