@@ -21,54 +21,55 @@ import Blacklist from './pages/Blacklist';
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
-  const SSO_API_URL = "https://sso.ceresnl.com:50443//api/session"
-  const SSO_LOGIN_URL = "https://sso.ceresnl.com/";
+  const SSO_API_URL = "https://sso.ceresnl.com:50443/api/session"
+  const SSO_VALIDATE_URL = "https://sso.ceresnl.com:50443/api/validate-token";
+  const SSO_LOGIN_URL = "https://sso.ceresnl.com";
   const SSO_LOGOUT_URL = "https://sso.ceresnl.com/Logout";
 
   useEffect(() => {
-    const checkSession = async () => {      
+    const handleAuth = async () => {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const tokenFromUrl = params.get('token');
+        if (tokenFromUrl) {
+          localStorage.setItem('sso_token', tokenFromUrl);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          const valRes = await api.post(SSO_VALIDATE_URL, { token: tokenFromUrl });
+          if (!valRes.data.isAuthenticated) {
+            throw new Error("Token tidak valid");
+          }
+        }
         const res = await api.get(SSO_API_URL);
         if (res.data.isAuthenticated === true) {
-          await api.post('/api/sync-session', { 
+          await api.post('/sync-session', { 
             isAuthenticated: true, 
             user: res.data 
           });
           setAuthState({ 
             isAuthenticated: true, 
             loading: false, 
-            user: res.data || null 
+            user: res.data 
           });
-        } else {        
-          window.location.href = SSO_LOGIN_URL;
+        } else {
+          redirectToSSO();
         }
       } catch (err) {
-        console.error("Session check failed:", err);
-        window.location.href = SSO_LOGIN_URL;
+        console.error("Auth failed:", err);
+        redirectToSSO();
       }
     };
-    checkSession();
+
+    const redirectToSSO = () => {
+      const currentUrl = window.location.origin;
+      window.location.href = `${SSO_LOGIN_URL}/?returnUrl=${encodeURIComponent(currentUrl)}`;
+    };
+
+    handleAuth();
   }, []);
-
-  useEffect(() => {
-  const syncWithSSO = setInterval(async () => {
-    try {
-      const res = await api.get(SSO_API_URL);
-      if (res.data.isAuthenticated === false) {
-        await api.get('/api/logout'); 
-        window.location.href = SSO_LOGIN_URL;
-      }
-    } catch (err) {
-      console.log("SSO unreachable");
-    }
-  }, 60000);
-
-  return () => clearInterval(syncWithSSO);
-}, []);
 
   const handleLogout = async () => {
     try {
-      await api.get('/api/logout'); 
+      await api.get('/logout'); 
     } catch (error) {
       console.error("Gagal logout di server:", error);
     } finally {      

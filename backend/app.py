@@ -22,7 +22,7 @@ from routes.blacklist_bp import blacklist_bp
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, supports_credentials=True, origins=["http://localhost:5173"])    
+    CORS(app, supports_credentials=True, origins=["http://localhost:3000"])    
     app.config.from_object(Config)
     db.init_app(app)
     app.register_blueprint(auth_bp, url_prefix='/')

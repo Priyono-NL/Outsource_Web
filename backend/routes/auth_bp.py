@@ -14,7 +14,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-@auth_bp.route('/api/sync-session', methods=['POST'])
+@auth_bp.route('/sync-session', methods=['POST'])
 def sync_session():
     data = request.json
     if data.get('isAuthenticated'):
@@ -23,7 +23,7 @@ def sync_session():
         return jsonify({"status": "synced"}), 200
     return jsonify({"status": "failed"}), 401
 
-@auth_bp.route('/api/logout', methods=['GET'])
+@auth_bp.route('/logout', methods=['GET'])
 def logout():
     session.clear()
     return jsonify({"message": "Logged out from Flask"}), 200
