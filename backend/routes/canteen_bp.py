@@ -35,7 +35,6 @@ def add():
         )
         db.session.add(new_canteen)
         db.session.flush()
-        #add cc in detail       
         for cc_id in data.get('cc_ids', []):
             if not cc_id:
                 continue
@@ -44,9 +43,7 @@ def add():
                 cc_id = cc_id
             )
             db.session.add(newDetail)
-        #commit all
         db.session.commit()
-
         return jsonify({
             "status": "success",
             "message": f"Data berhasil disimpan!"
@@ -65,7 +62,6 @@ def update(id):
         data = request.json
         canteeens.canteen_id = data.get('canteen_id', canteeens.canteen_id)
         canteeens.canteen_name = data.get('canteen_name', canteeens.canteen_name)
-        #detail
         canteenDetail.query.filter_by(canteen_id=id).delete()
         for cc_id in data.get('cc_ids', []):
             if not cc_id:
@@ -84,8 +80,9 @@ def update(id):
 @canteen_bp.route('/canteen/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        canteen = canteen.query.filter_by(canteen_id=id).first()
-        db.session.delete(canteen)
+        canteenDetail.query.filter_by(canteen_id=id).delete()
+        data_canteen = canteen.query.filter_by(canteen_id=id).first()        
+        db.session.delete(data_canteen)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

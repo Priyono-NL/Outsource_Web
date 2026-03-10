@@ -85,7 +85,8 @@ def update(id):
 @osMedical_bp.route('/osmedical/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        osMedical.query.filter_by(id=id).delete()
+        data = osMedical.query.filter_by(id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

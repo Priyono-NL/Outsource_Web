@@ -76,6 +76,9 @@ function DataformAll({ onClose, onSuccess, initialData }) {
                     <button type="button" className="btn btn-sm btn-outline-primary mt-3 px-4">
                        Pilih Foto
                     </button>
+
+                    <label className='fw-bold text-muted small mt-2'>Status Blacklist</label>
+                    
                   </div>
 
                   <div className="col-md-8 ps-md-4">

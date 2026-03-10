@@ -83,7 +83,8 @@ def update(id):
 @osCard_bp.route('/oscard/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        OsCard.query.filter_by(id=id).delete()
+        data = OsCard.query.filter_by(id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

@@ -83,7 +83,8 @@ def update(id):
 @osCC_bp.route('/oscc/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        OsCostCenter.query.filter_by(id=id).delete()
+        data = OsCostCenter.query.filter_by(id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

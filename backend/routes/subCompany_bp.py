@@ -72,7 +72,8 @@ def update(id):
 @subCom_bp.route('/subcom/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        SubCompany.query.filter_by(sub_company_id=id).delete()
+        data = SubCompany.query.filter_by(sub_company_id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

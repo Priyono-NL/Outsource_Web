@@ -2,9 +2,9 @@ import React, { useState, useEffect, use } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => { 
+const BlacklistTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
-    const [alokasi, setAlokasi] = useState([]);   
+    const [blacklist, setBlacklist] = useState([]);   
     const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -12,10 +12,10 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
+            const response = await api.get(`/oslist?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
             const result = await response.data;
             if (result.status === 'success') { 
-                setAlokasi(result.data);
+                setBlacklist(result.data);
                 setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
@@ -27,7 +27,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
     const handleDelete = async (id, name) => {
         if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
             try {
-                const response = await api.delete(`/alokasi/${id}`);
+                const response = await api.delete(`/oslist/${id}`);
                 if (response.data.status === 'success') {
                     alert(response.data.message);                
                     fetchData(); 
@@ -40,11 +40,11 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, filterTerm]);
+    }, [searchTerm]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -52,28 +52,26 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">Employee ID</th>
-                    <th className="py-3">Employee Name</th>
-                    <th className="py-3">Canteen</th>
-                    <th className="py-3">Valid From</th>
-                    <th className="py-3">Valid To</th>
+                    <th className="py-3">ID Person</th>
+                    <th className="py-3">Name Person</th>
+                    <th className="py-3">Blacklist</th>
+                    <th className="py-3">Reason</th>
                     <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
-                alokasi.map((emp, index) => (
+                blacklist.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{emp.employee_id}</td>
-                        <td>{emp.employee_name}</td>
-                        <td>{emp.canteen_name}</td>
-                        <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
+                        <td>{emp.person_id}</td>
+                        <td>{emp.person_name}</td>
+                        <td>{emp.status_text}</td>
+                        <td>{emp.block_status ? emp.block_status : '-'}</td>
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(emp.alokasi_id, emp.employee_name)}
+                                onClick={() => handleDelete(emp.id, emp.person_name)}
                             >
                                 Delete
                             </button>
@@ -90,4 +88,4 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
         </div>        
     </>)
 };
-export default AlokasiTable;
+export default BlacklistTable;

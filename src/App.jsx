@@ -17,6 +17,7 @@ import OsTraining from './pages/OsTraining';
 import OsCard from './pages/OsCard';
 import OsCC from './pages/OsCC';
 import OsGrade from './pages/OsGrade';
+import Blacklist from './pages/Blacklist';
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
@@ -133,6 +134,7 @@ function App() {
               <Route path='/card' element={<OsCard />} />
               <Route path='/oscc' element={<OsCC />} />
               <Route path='/grade' element={<OsGrade />} />
+              <Route path='/blacklist' element={<Blacklist />} />
 
               <Route path="*" element={<Dashboard />} />
             </Routes>

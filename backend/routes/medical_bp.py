@@ -65,7 +65,8 @@ def update(id):
 @medical_bp.route('/medical/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        medical.query.filter_by(medical_id=id).delete()
+        data = medical.query.filter_by(medical_id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

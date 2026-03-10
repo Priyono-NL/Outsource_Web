@@ -90,7 +90,8 @@ def update(id):
 @alokasi_bp.route('/alokasi/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        Alokasi.query.filter_by(id=id).delete()
+        data = Alokasi.query.filter_by(id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:

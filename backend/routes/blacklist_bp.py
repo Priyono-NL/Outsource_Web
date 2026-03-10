@@ -1,19 +1,27 @@
+from datetime import datetime
 from flask import Blueprint, request, jsonify
+from sqlalchemy import or_
 from extensions import db
-from model.costCenter import costCenter
 from .auth_bp import login_required
+from model.blacklist import OsBlacklist
+from model.person import OsPerson
 
-costCenter_bp = Blueprint('costCenter_bp', __name__)
+blacklist_bp = Blueprint('blacklist_bp', __name__)
 
-@costCenter_bp.route('/costcenter')
+@blacklist_bp.route('/oslist')
 def index():
     try:
         page = request.args.get('page', 1, type=int)
-        pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = costCenter.query.paginate(page=page, per_page=pageSize, error_out=False)
+        pageSize = request.args.get('pageSize', 100, type=int)
+        search = request.args.get('search', '', type=str)
+        query = OsBlacklist.query
+        if search:
+            query = query.join(OsPerson, OsBlacklist.person_id == OsPerson.person_id)   
+            query = query.filter(OsPerson.name.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
-            "data": [cost.to_dict() for cost in pagination.items],
+            "data": [emp.to_dict() for emp in pagination.items],
             "total_page": pagination.pages,
             "current_page": pagination.page,
             "total_item": pagination.total
@@ -24,18 +32,16 @@ def index():
             "message": str(e)
         }), 500
 
-@costCenter_bp.route('/costcenter/submit', methods=['POST'])
+@blacklist_bp.route('/oslist/submit', methods=['POST'])
 def add():
     try:
         data = request.json if request.is_json else request.form
-        
-        new_cc = costCenter(
-            company_id = data.get('company_id'),
-            org_id = data.get('org_id'),
-            org_name = data.get('org_name'),
-            cost_center = data.get('cost_center')                  
+        new_OsBlacklist = OsBlacklist(
+            person_id = data.get('person_id'),
+            status = data.get('status'),
+            block_status = data.get('block_status')
         )
-        db.session.add(new_cc)
+        db.session.add(new_OsBlacklist)
         db.session.commit()
 
         return jsonify({
@@ -49,25 +55,24 @@ def add():
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
 
-@costCenter_bp.route('/costcenter/<string:id>', methods=['PUT'])
+@blacklist_bp.route('/oslist/<string:id>', methods=['PUT'])
 def update(id):
     try:
-        cc = costCenter.query.filter_by(cost_center=id).first()
+        data_OsBlacklist = OsBlacklist.query.filter_by(id=id).first()
         data = request.json
-        cc.company_id = data.get('company_id', cc.company_id)
-        cc.org_id = data.get('org_id', cc.org_id)
-        cc.org_name = data.get('org_name', cc.org_name)
-        cc.cost_center = data.get('cost_center', cc.cost_center)
+        data_OsBlacklist.person_id = data.get('person_id', OsBlacklist.person_id)
+        data_OsBlacklist.status = data.get('status', OsBlacklist.status)
+        data_OsBlacklist.block_status = data.get('block_status', OsBlacklist.block_status)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
-
-@costCenter_bp.route('/costcenter/<string:id>', methods=['DELETE'])
+    
+@blacklist_bp.route('/oslist/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        data = costCenter.query.filter_by(cost_center=id).first()
+        data = OsBlacklist.query.filter_by(id=id).first()
         db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
@@ -75,7 +80,7 @@ def delete(id):
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
     
-@costCenter_bp.before_request
+@blacklist_bp.before_request
 @login_required
 def before_request():
     pass

@@ -10,6 +10,7 @@ from routes.subCompany_bp import subCom_bp
 from routes.training_bp import train_bp
 from routes.medical_bp import medical_bp
 from routes.canteen_bp import canteen_bp
+from routes.person_bp import person_bp
 from routes.employee_bp import employee_bp
 from routes.alokasi_bp import alokasi_bp
 from routes.osMedical_bp import osMedical_bp
@@ -17,6 +18,7 @@ from routes.osTraining_bp import osTraining_bp
 from routes.osCard_bp import osCard_bp
 from routes.osCC_bp import osCC_bp
 from routes.osGrade_bp import osGrade_bp
+from routes.blacklist_bp import blacklist_bp
 
 def create_app():
     app = Flask(__name__)
@@ -25,6 +27,7 @@ def create_app():
     db.init_app(app)
     app.register_blueprint(auth_bp, url_prefix='/')
     #master Data
+    app.register_blueprint(person_bp, url_prefix='/')
     app.register_blueprint(subCom_bp, url_prefix='/')
     app.register_blueprint(train_bp, url_prefix='/')
     app.register_blueprint(medical_bp, url_prefix='/')
@@ -38,6 +41,7 @@ def create_app():
     app.register_blueprint(osCard_bp, url_prefix='/')
     app.register_blueprint(osCC_bp, url_prefix='/')
     app.register_blueprint(osGrade_bp, url_prefix='/')
+    app.register_blueprint(blacklist_bp, url_prefix='/')
     return app
 
 if __name__ == '__main__':

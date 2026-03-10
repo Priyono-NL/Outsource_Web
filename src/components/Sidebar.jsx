@@ -15,15 +15,36 @@ const Sidebar = () => {
           </NavLink>
         </li>
         <li className="nav-item">
+          <NavLink to="/alokasi" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Alokasi Kantin
+          </NavLink>
+        </li>
+        <li className="nav-item">
           <NavLink to="/card" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Absence Card
+            Absence Card
           </NavLink>
         </li>
         <li className="nav-item">
           <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Department
+            Department
+          </NavLink>
+        </li>        
+        <li className="nav-item">
+          <NavLink to="/os-medical" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Medical
           </NavLink>
         </li>
+        <li className="nav-item">
+          <NavLink to="/os-training" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Training
+          </NavLink>
+        </li>        
+        <li className="nav-item">
+          <NavLink to="/grade" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Grade
+          </NavLink>
+        </li>
+        
       </ul>
       <hr />
       <ul className="nav nav-pills flex-column gap-1">
@@ -68,23 +89,8 @@ const Sidebar = () => {
           )}
         </li>
         <li className="nav-item">
-          <NavLink to="/alokasi" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Alokasi Kantin
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/os-medical" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Medical
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/os-training" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Training
-          </NavLink>
-        </li>        
-        <li className="nav-item">
-          <NavLink to="/grade" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            OS Grade
+          <NavLink to="/blacklist" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
+            Blacklist
           </NavLink>
         </li>
       </ul>

@@ -163,6 +163,14 @@ def template():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@employee_bp.route('/employee/export', methods=['GET'])
+def export():
+    return
+
+@employee_bp.route('/employee/upload', methods=['GET'])
+def upload():
+    return
+
 @employee_bp.before_request
 @login_required
 def before_request():

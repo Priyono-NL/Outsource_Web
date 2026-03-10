@@ -63,7 +63,8 @@ def update(id):
 @train_bp.route('/training/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
-        training_m.query.filter_by(training_id=id).delete()
+        data = training_m.query.filter_by(training_id=id).first()
+        db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:
