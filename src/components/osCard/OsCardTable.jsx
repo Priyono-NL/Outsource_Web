@@ -7,7 +7,7 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     const [card, setCard] = useState([]);   
     const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(100);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async() => {

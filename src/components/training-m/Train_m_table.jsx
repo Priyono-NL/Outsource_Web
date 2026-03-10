@@ -7,7 +7,7 @@ const Train_m_table = ({ refreshTrigger, onEditClick }) => {
     const [Training, setTraining] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0); 
 
     const fetchData = async() => {
