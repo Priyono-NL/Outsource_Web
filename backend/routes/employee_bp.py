@@ -8,13 +8,22 @@ from extensions import db
 from .auth_bp import login_required
 from model.employment import OsEmployment
 from model.person import OsPerson
+from model.subCompany import SubCompany
+from model.costCenter import costCenter
+from model.canteen import canteen, canteenDetail
+
 from model.card import OsCard
 from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
 from model.alokasi import Alokasi
-from model.canteen import canteen, canteenDetail
+
 
 employee_bp = Blueprint('employee_bp', __name__)
+
+def clean_str(val):
+    if val is None or pd.isna(val):
+        return None
+    return str(val).strip()
 
 @employee_bp.route('/employee')
 def index():
@@ -175,78 +184,117 @@ def template():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@employee_bp.route('/employee/upload', methods=['GET'])
+@employee_bp.route('/employee/upload', methods=['POST'])
 def upload():
     file = request.files.get('file')
     if not file:
         return jsonify({"message": 'Tidak ada file'}), 400
+    
     try:
-        df = pd.read_excel(file)
-        error = []
-        to_save = []
+        df = pd.read_excel(file, dtype={'card number': str, 'employee_id': str, 'grade': str,})
+        df = df.where(pd.notnull(df), None)
+        errors = []
+
         for index, row in df.iterrows():
-            #person
-            newPerson = OsPerson(
-                name = row['nama'],
-                gender = row['gender'],            
-                pob = row['pob'],
-                dob = row['dob'],
-                religion = row['religion'],
-                resident_id = row['resident_id'],
-                address = row['address']
-            )
-            db.session.add(newPerson)
-            db.session.flush()
-            #employment
-            newEmployment = OsEmployment(
-                employee_id = row['employee_id'],
-                sub_company_id = row['sub_company_id'],
-                person_id = newPerson.person_id,
-                valid_from = row['valid from'],
-                valid_to = row['valid to']
-            )
-            db.session.add(newEmployment)
-            db.session.flush()
-            #card
-            newCard = OsCard(
-                employee_id = newEmployment.employee_id,
-                card_number = row['card number'],
-                valid_from = row['card valid from'],
-                valid_to = row['card valid to']
-            )
-            db.session.add(newCard)
-            #grade
-            newGrade = OsGrade(
-                employee_id = newEmployment.employee_id,
-                grade = row['grade'],
-                valid_from = row['valid from'],
-                valid_to = row['valid to']
-            )       
-            db.session.add(newGrade)
-            #org cost center
-            newCC = OsCostCenter(
-                employee_id = newEmployment.employee_id,
-                cc_id = row['cc_id'],
-                valid_from = row['valid from'],
-                valid_to = row['valid to']
-            )       
-            db.session.add(newCC)
-            #canteen
-            if (row['cc_id']):
-                cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(row['cc_id'])).first()
-                newAlokasi = Alokasi(
-                    employee_id = newEmployment.employee_id,
-                    canteen_id = cc_def.canteen_id,
-                    valid_from = row['valid from'],
-                    valid_to = row['valid to']
-                )
-                db.session.add(newAlokasi)            
-            #commit all
+            try:
+                person_id = None
+                subCom_id = None                
+                # --- PROSES PERSON ---
+                nama_input = str(row['nama']).strip() if row['nama'] else ""
+                nik_input = str(row['resident_id']).strip() if row['resident_id'] else ""                
+                existing_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
+                if existing_person:
+                    person_id = existing_person.person_id       
+                else:
+                    person_by_name = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()            
+                    if person_by_name:
+                        person_id = person_by_name.person_id
+                        if not person_by_name.resident_id:                        
+                            person_by_name.resident_id = nik_input
+                            db.session.add(person_by_name)
+                    else:
+                        newPerson = OsPerson(
+                            name=nama_input,
+                            gender=row['gender'],            
+                            pob=row['pob'],
+                            dob=row['dob'],
+                            religion=row['religion'],
+                            resident_id=nik_input,
+                            address=row['address']
+                        )
+                        db.session.add(newPerson)
+                        db.session.flush()
+                        person_id = newPerson.person_id
+                # --- PROSES EMPLOYMENT & DEPENDENCIES ---
+                subCom_name = str(row['SubCompany']).strip() if row['SubCompany'] else ""
+                exist_subCom = SubCompany.query.filter(SubCompany.sub_company_name.ilike(subCom_name)).first()                
+                if not exist_subCom:
+                    errors.append(f"Baris {index+2}: Sub Company '{subCom_name}' tidak terdaftar.")
+                    continue
+                subCom_id = exist_subCom.sub_company_id
+                if person_id and subCom_id:
+                    newEmployment = OsEmployment(
+                        employee_id = row['employee_id'],
+                        sub_company_id = subCom_id,
+                        person_id = person_id,
+                        valid_from = row['valid from'],
+                        valid_to = row['valid to']
+                    )
+                    db.session.add(newEmployment)
+                    db.session.flush()
+                    # --- PROSES CARD, GRADE, CC (Hanya jika employment berhasil) ---
+                    # Card
+                    db.session.add(OsCard(
+                        employee_id = newEmployment.employee_id,
+                        card_number = clean_str(row['card number']),
+                        valid_from = row['card valid from'],
+                        valid_to = row['card valid to']
+                    ))                    
+                    # Grade
+                    db.session.add(OsGrade(
+                        employee_id = newEmployment.employee_id,
+                        grade = clean_str(row['grade']),
+                        valid_from = row['valid from'],
+                        valid_to = row['valid to']
+                    ))
+                    #CC
+                    cc_name = str(row['Department']).strip() if row['Department'] else ""
+                    exist_cc = costCenter.query.filter(costCenter.org_name.ilike(cc_name)).first()                
+                    if not exist_cc:
+                        errors.append(f"Baris {index+2}: Department '{cc_name}' tidak terdaftar.")
+                        continue
+                    subCom_id = exist_cc.cost_center
+                    db.session.add(OsCostCenter(
+                        employee_id = newEmployment.employee_id,
+                        cc_id = exist_cc.cost_center,
+                        valid_from = row['valid from'],
+                        valid_to = row['valid to']
+                    ))
+                    #canteen if exist cc
+                    #canteen
+                    if exist_cc:
+                        cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(exist_cc.cost_center)).first()
+                        newAlokasi = Alokasi(
+                            employee_id = newEmployment.employee_id,
+                            canteen_id = cc_def.canteen_id,
+                            valid_from = row['valid from'],
+                            valid_to = row['valid to']
+                        )
+                        db.session.add(newAlokasi)
+                else:
+                    errors.append(f"Baris {index+2}: Data person atau company tidak lengkap.")
+            except Exception as e:
+                errors.append(f"Baris {index+2}: Error: {str(e)}")
+                continue
+        # FINAL DECISION
+        if not errors:
             db.session.commit()
-            return
-        return
+            return jsonify({"status": "success", "message": f"Berhasil mengimport {len(df)} data."}), 200
+        else:
+            db.session.rollback()
+            return jsonify({"status": "error", "errors": errors}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"message": f"Fatal Error: {str(e)}"}), 500
 
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():
