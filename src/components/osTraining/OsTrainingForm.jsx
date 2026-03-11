@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import api from '../../api/api';
 
 function OsTrainingForm({ onClose, onSuccess, initialData }) {
@@ -46,16 +47,13 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
             : await api.post('/ostraining/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        alert(response.data.message);
+        toast.success(response.data.message);
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      if (error.response) {
-        alert("Gagal: " + error.response.data.message);
-      } else {
-        alert("Terjadi kesalahan jaringan.");
-      }
+      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
+      toast.error("Gagal: " + errorMsg);
     }    
   };
 
@@ -74,7 +72,7 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
       setIsEmployeeFound(false);
-      console.error("Employee lookup failed:", err);
+      toast.warning("ID Karyawan tidak ditemukan.");
     } finally { setIsSearching(false); }
   };
 

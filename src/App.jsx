@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import api from './api/api';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
+import api from './api/api';
 import Sidebar from './components/Sidebar';
 
 import SubCompany from './pages/SubCompany';
@@ -38,6 +40,7 @@ function App() {
           if (!valRes.data.isAuthenticated) {
             throw new Error("Token tidak valid");
           }
+          toast.success("Login Berhasil! Selamat datang.");
         }
         const res = await api.get(SSO_API_URL);
         if (res.data.isAuthenticated === true) {
@@ -73,7 +76,7 @@ function App() {
       try {
         const res = await api.get(SSO_API_URL);        
         if (res.data && res.data.isAuthenticated === false) {
-          console.warn("Sesi di SSO pusat telah berakhir.");
+          toast.warn("Sesi Anda telah berakhir.");
           await api.get('/logout'); 
           const currentUrl = window.location.origin;
           window.location.href = `${SSO_LOGIN_URL}/?returnUrl=${encodeURIComponent(currentUrl)}`;
@@ -87,7 +90,8 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await api.get('/logout'); 
+      await api.get('/logout');
+      toast.info("Anda telah keluar."); 
     } catch (error) {
       console.error("Gagal logout di server:", error);
     } finally {      
@@ -108,6 +112,19 @@ function App() {
 
   return (
     <BrowserRouter>
+      <ToastContainer 
+        position="top-center"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored"
+      />
+
       <div className="d-flex flex-column vh-100 bg-light">         
         {/* --- 1. NAVBAR (ATAS) --- */}
         <nav className="navbar navbar-dark bg-dark shadow-sm z-1">

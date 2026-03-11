@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import api from '../../api/api';
-
-
 
 function CanteenForm({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
@@ -47,16 +46,13 @@ function CanteenForm({ onClose, onSuccess, initialData }) {
             : await api.post('/canteen/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        alert(response.data.message);
+        toast.success(response.data.message);
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      if (error.response) {
-        alert("Gagal: " + error.response.data.message);
-      } else {
-        alert("Terjadi kesalahan jaringan.");
-      }
+      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
+      toast.error("Gagal: " + errorMsg);
     }    
   };
 

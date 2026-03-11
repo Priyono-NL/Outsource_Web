@@ -1,4 +1,5 @@
 import React, { useState, useEffect, use } from 'react';
+import { toast } from 'react-toastify';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
@@ -29,11 +30,12 @@ const OsGradeTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
             try {
                 const response = await api.delete(`/osgrade/${id}`);
                 if (response.data.status === 'success') {
-                    alert(response.data.message);                
+                    toast.success(response.data.message);              
                     fetchData(); 
                 }
             } catch (error) {
-                alert("Gagal menghapus data: " + (error.response?.data?.message || error.message));
+                const msg = error.response?.data?.message || error.message;
+                toast.error("Gagal menghapus data: " + msg);
             }
         }
     };

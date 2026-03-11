@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import api from '../../api/api';
 
 function BlacklistForm({ onClose, onSuccess, initialData }) {  
@@ -44,7 +45,8 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
         handleSelect(data[0]);
       }
     } catch (err) {
-      console.error("Gagal mencari person:", err);
+      const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
+      toast.error("Error: " + errorMsg);
     } finally {
       setIsSearching(false);
     }
@@ -72,12 +74,13 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
             : await api.post('/oslist/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        alert(response.data.message);
+        toast.success(response.data.message);
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      alert("Gagal: " + error.response.data.message);
+      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
+      toast.error("Gagal: " + errorMsg);
     }    
   };
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import api from '../../api/api';
 
 function PersonelTab() {
@@ -36,7 +37,8 @@ function PersonelTab() {
             setResults(data);
             if (data.length === 1) handleSelect(data[0]);
         } catch (err) {
-            console.error("Gagal mencari data:", err);
+            const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
+            toast.error("Error: " + errorMsg);
         } finally {
             setIsSearching(false);
         }

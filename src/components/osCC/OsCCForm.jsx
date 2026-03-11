@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import Select from 'react-select';
 import api from '../../api/api';
 
@@ -40,12 +41,13 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
             : await api.post('/oscc/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        alert(response.data.message);
+        toast.success(response.data.message);
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      alert("Gagal: " + error.response.data.message);
+      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
+      toast.error("Gagal: " + errorMsg);
     }    
   };
 
@@ -64,7 +66,7 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
       setIsEmployeeFound(false);
-      console.error("Employee lookup failed:", err);
+      toast.warning("ID Karyawan tidak ditemukan.");
     } finally { setIsSearching(false); }
   };
 
