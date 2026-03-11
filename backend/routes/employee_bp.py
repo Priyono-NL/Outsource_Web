@@ -68,23 +68,27 @@ def search_employee(emp_id):
 def add():
     try:
         data = request.json if request.is_json else request.form
+        person_id = data.get('person_id')
         #person
-        newPerson = OsPerson(
-            name = data.get('nama'),
-            gender = data.get('gender'),            
-            pob = data.get('pob'),
-            dob = data.get('dob'),
-            religion = data.get('religion'),
-            resident_id = data.get('resident_id'),
-            address = data.get('address')
-        )
-        db.session.add(newPerson)
-        db.session.flush()
+        if not person_id or person_id == "":
+            newPerson = OsPerson(
+                name = data.get('nama'),
+                gender = data.get('gender'),            
+                pob = data.get('pob'),
+                dob = data.get('dob'),
+                religion = data.get('religion'),
+                resident_id = data.get('resident_id'),
+                address = data.get('address')
+            )
+            db.session.add(newPerson)
+            db.session.flush()
+            person_id = newPerson.person_id
+        
         #employment
         newEmployment = OsEmployment(
             employee_id = data.get('employee_id'),
             sub_company_id = data.get('sub_company_id'),
-            person_id = newPerson.person_id,
+            person_id = person_id,
             valid_from = data.get('valid_from'),
             valid_to = data.get('valid_to')
         )
@@ -148,7 +152,15 @@ def template():
             "religion": "Islam",
             "resident_id": "32xxxx",
             "address": "Alamat Rumah",
-            
+            "employee_id": "123456",
+            "grade": "1",
+            "SubCompany":"",
+            "Department": "",
+            "valid from": "2026-03-10",
+            "valid to": "2026-03-11",
+            "card number": "12345.12345",
+            "card valid from": "2026-03-10",
+            "card valid to": "2026-03-11"
         }]
         df = pd.DataFrame(example_data)
         output = BytesIO()
@@ -163,12 +175,81 @@ def template():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@employee_bp.route('/employee/export', methods=['GET'])
-def export():
-    return
-
 @employee_bp.route('/employee/upload', methods=['GET'])
 def upload():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"message": 'Tidak ada file'}), 400
+    try:
+        df = pd.read_excel(file)
+        error = []
+        to_save = []
+        for index, row in df.iterrows():
+            #person
+            newPerson = OsPerson(
+                name = row['nama'],
+                gender = row['gender'],            
+                pob = row['pob'],
+                dob = row['dob'],
+                religion = row['religion'],
+                resident_id = row['resident_id'],
+                address = row['address']
+            )
+            db.session.add(newPerson)
+            db.session.flush()
+            #employment
+            newEmployment = OsEmployment(
+                employee_id = row['employee_id'],
+                sub_company_id = row['sub_company_id'],
+                person_id = newPerson.person_id,
+                valid_from = row['valid from'],
+                valid_to = row['valid to']
+            )
+            db.session.add(newEmployment)
+            db.session.flush()
+            #card
+            newCard = OsCard(
+                employee_id = newEmployment.employee_id,
+                card_number = row['card number'],
+                valid_from = row['card valid from'],
+                valid_to = row['card valid to']
+            )
+            db.session.add(newCard)
+            #grade
+            newGrade = OsGrade(
+                employee_id = newEmployment.employee_id,
+                grade = row['grade'],
+                valid_from = row['valid from'],
+                valid_to = row['valid to']
+            )       
+            db.session.add(newGrade)
+            #org cost center
+            newCC = OsCostCenter(
+                employee_id = newEmployment.employee_id,
+                cc_id = row['cc_id'],
+                valid_from = row['valid from'],
+                valid_to = row['valid to']
+            )       
+            db.session.add(newCC)
+            #canteen
+            if (row['cc_id']):
+                cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(row['cc_id'])).first()
+                newAlokasi = Alokasi(
+                    employee_id = newEmployment.employee_id,
+                    canteen_id = cc_def.canteen_id,
+                    valid_from = row['valid from'],
+                    valid_to = row['valid to']
+                )
+                db.session.add(newAlokasi)            
+            #commit all
+            db.session.commit()
+            return
+        return
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@employee_bp.route('/employee/export', methods=['GET'])
+def export():
     return
 
 @employee_bp.before_request

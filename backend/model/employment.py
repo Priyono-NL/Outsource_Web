@@ -1,26 +1,16 @@
 from extensions import db
-from datetime import datetime, timezone, timedelta
+from model.base import AuditMixin
 
-def get_wib_now():
-    return datetime.now(timezone(timedelta(hours=7)))
-
-class OsEmployment(db.Model):
+class OsEmployment(db.Model, AuditMixin):
     __tablename__ = 'os_employment'
     employee_id = db.Column(db.Integer, primary_key=True)
-    valid_from = db.Column(db.Date)
-    valid_to = db.Column(db.Date)
-    
-    created_date = db.Column(db.DateTime, default=get_wib_now) 
-    modified_date = db.Column(db.DateTime, onupdate=get_wib_now)
-    created_by = db.Column(db.String(50))
-    modified_by = db.Column(db.String(50))
-
     person_id = db.Column(db.Integer, db.ForeignKey('os_person.person_id'))
-    sub_company_id = db.Column(db.String(10), db.ForeignKey('sub_company.sub_company_id'))    
+    sub_company_id = db.Column(db.String(10), db.ForeignKey('sub_company.sub_company_id')) 
+    valid_from = db.Column(db.Date)
+    valid_to = db.Column(db.Date)       
     
     person = db.relationship('OsPerson', backref='employments', lazy=True)
-    sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)
-   
+    sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)   
 
     def to_dict(self):
         card = self.OsCard[0] if self.OsCard and len(self.OsCard) > 0 else None
@@ -53,3 +43,5 @@ class OsEmployment(db.Model):
             'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
             'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
         }
+    
+AuditMixin.register_audit_events(OsEmployment)

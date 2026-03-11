@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, session, jsonify
 from extensions import db
 from model.training import training_m
 from .auth_bp import login_required
@@ -25,13 +25,14 @@ def index():
         }), 500
 
 @train_bp.route('/training/submit', methods=['POST'])
-def add():
+def add():    
     try:
         data = request.json if request.is_json else request.form        
         new_training = training_m(
             training_id = data.get('training_id'),
             training_name = data.get('training_name'),
-            organizer = data.get('organizer')
+            organizer = data.get('organizer'),
+            created_by = session['user'].get('username')
         )
         db.session.add(new_training)
         db.session.commit()

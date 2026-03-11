@@ -1,23 +1,14 @@
 from extensions import db
-from datetime import datetime, timedelta, timezone
+from model.base import AuditMixin
 
-def get_wib_now():
-    return datetime.now(timezone(timedelta(hours=7)))
-
-class osMedical(db.Model):
+class osMedical(db.Model, AuditMixin):
     __tablename__ = 'os_employee_medical'
     id = db.Column(db.Integer, primary_key=True)
-    medical_date = db.Column(db.Date)
-    medical_result = db.Column(db.String(50))
-    medical_notes = db.Column(db.String(200))
-
-    created_date = db.Column(db.DateTime, default=get_wib_now) 
-    modified_date = db.Column(db.DateTime, onupdate=get_wib_now)
-    created_by = db.Column(db.String(50))
-    modified_by = db.Column(db.String(50))
-
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
     medical_id = db.Column(db.String(10), db.ForeignKey('medical_master.medical_id'))
+    medical_date = db.Column(db.Date)
+    medical_result = db.Column(db.String(50))
+    medical_notes = db.Column(db.String(200))    
     
     employement = db.relationship('OsEmployment', backref='medical_records', lazy=True)
     medical_m = db.relationship('medical', backref='tr_medical', lazy=True)
@@ -35,3 +26,5 @@ class osMedical(db.Model):
             "employee_name": self.employement.person.name,            
             'v_medical_date': self.medical_date.strftime('%d %b %Y') if hasattr(self.medical_date, 'strftime') else None
         }
+    
+AuditMixin.register_audit_events(osMedical)

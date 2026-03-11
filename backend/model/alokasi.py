@@ -1,23 +1,14 @@
 from extensions import db
-from datetime import datetime, timedelta, timezone
+from model.base import AuditMixin
 
-def get_wib_now():
-    return datetime.now(timezone(timedelta(hours=7)))
-
-class Alokasi(db.Model):
+class Alokasi(db.Model, AuditMixin):
     __tablename__ = 'os_employee_canteen'
     id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
+    canteen_id = db.Column(db.String(10), db.ForeignKey('canteen_master.canteen_id'))
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)
 
-    created_date = db.Column(db.DateTime, default=get_wib_now) 
-    modified_date = db.Column(db.DateTime, onupdate=get_wib_now)
-    created_by = db.Column(db.String(50))
-    modified_by = db.Column(db.String(50))
-
-    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
-    canteen_id = db.Column(db.String(10), db.ForeignKey('canteen_master.canteen_id'))
-    
     employement = db.relationship('OsEmployment', backref='alokasi_kantin', lazy=True)
     canteen_master = db.relationship('canteen', backref='tr_kantin', lazy=True)
 
@@ -34,3 +25,5 @@ class Alokasi(db.Model):
             'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
             'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None
         }
+
+AuditMixin.register_audit_events(Alokasi)

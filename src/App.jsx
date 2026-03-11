@@ -71,7 +71,7 @@ function App() {
     if (!authState.isAuthenticated) return;
     const syncWithSSO = setInterval(async () => {
       try {
-        const res = await api.get(SSO_API_URL);
+        const res = await api.get(SSO_API_URL);        
         if (res.data && res.data.isAuthenticated === false) {
           console.warn("Sesi di SSO pusat telah berakhir.");
           await api.get('/logout'); 

@@ -8,8 +8,7 @@ import AsetTab from './AsetTab';
 function DataformAll({ onClose, onSuccess, initialData }) {
   const [activeTab, setActiveTab] = useState(0);
   const formRef = useRef(null);
-  const tabs = ['Data Pribadi', 'Data Pekerjaan', 'Data Aset'];
-
+  
   const handleNext = (e) => {
     e.preventDefault()
     setActiveTab((prev) => prev + 1);
@@ -24,6 +23,7 @@ function DataformAll({ onClose, onSuccess, initialData }) {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
+    console.log(data);
     try {
       const response = initialData 
             ? await api.put(`/employee/${initialData.employee_id}`, data) 
