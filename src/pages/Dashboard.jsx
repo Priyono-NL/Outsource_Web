@@ -34,7 +34,7 @@ const Dashboard = () => {
   const handleExport = async () => {
     try {
         const response = await api.get('/employee/export', { responseType: 'blob' });
-        saveAs(response.data, 'Data_OS_medical.xlsx')
+        saveAs(response.data, 'Data OS.xlsx')
     } catch (error) {
         console.error("Gagal export data:", error);
         alert("Gagal mengunduh file Excel");

@@ -298,7 +298,43 @@ def upload():
 
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():
-    return
+    try:
+        master = OsEmployment.query.all()
+        data = []
+        for m in master:
+            d = m.to_dict()
+            data.append({
+                "Name": d['person_name'],
+                "Gender": d['gender'],
+                "Religion": d['religion'],
+                "Place of Birth": d['pob'],
+                "Date of Birth": d['v_dob'],                
+                "Resident ID": d['resident_id'],
+                "Address": d['address'],
+                "Employee ID": d['employee_id'],
+                "Sub Company": d['sub_con_name'],
+                "Department": d['cc_name'],
+                "Valid From": d['v_valid_from'],
+                "Valid To": d['valid_to'],
+                "Card Number": d['card_number'],
+                "Card Valid From": d['card_number_from'],
+                "Card Valid To": d['card_number_to']
+            })
+        if not data:
+            return jsonify({'status': 'error', 'message': 'tidak ada data'})
+        df = pd.DataFrame(data)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Data OS')        
+        output.seek(0)
+        return send_file(
+            output, 
+            as_attachment=True, 
+            download_name="Export_OS.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @employee_bp.before_request
 @login_required

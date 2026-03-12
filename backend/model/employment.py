@@ -30,11 +30,12 @@ class OsEmployment(db.Model, AuditMixin):
             'person_name': self.person.name,
             'gender': self.person.gender,
             'pob': self.person.pob,
-            'dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
+            'dob': self.person.dob.strftime('%Y-%m-%d') if hasattr(self.person.dob, 'strftime') else None,            
             'religion': self.person.religion,
             'resident_id': self.person.resident_id,
             'address': self.person.address,
 
+            'v_dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
             'sub_con_name': self.sub_con.sub_company_name,
             'type_company': self.sub_con.type_company,            
             'cc_name': self.OsCC[0].cc_master.org_name if self.OsCC else None,
