@@ -7,9 +7,7 @@ function PersonelTab() {
     const [results, setResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
     const [selectedPerson, setSelectedPerson] = useState(null);
-    const [isNewPerson, setIsNewPerson] = useState(false);
     const [formData, setFormData] = useState({
-        name: "", 
         gender: "L",
         religion: "islam",
         pob: "",
@@ -49,7 +47,6 @@ function PersonelTab() {
         setSearchTerm(person.name);
         setResults([]);
         setFormData({
-            name: person.name || "",
             gender: person.gender || "L",
             religion: person.religion || "islam",
             pob: person.pob || "",
@@ -62,7 +59,7 @@ function PersonelTab() {
     const handleReset = () => {
         setSelectedPerson(null);
         setSearchTerm("");
-        setFormData({ name: "", gender: "L", religion: "islam", pob: "", dob: "", resident_id: "", address: "" });
+        setFormData({ gender: "L", religion: "islam", pob: "", dob: "", resident_id: "", address: "" });
     };
 
     const handleInputChange = (e) => {
@@ -70,28 +67,20 @@ function PersonelTab() {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleCheckboxChange = (e) => {
-        const checked = e.target.checked;
-        setIsNewPerson(checked);
-        if (checked) {
-            setSelectedPerson(null);
-            setResults([]);
-        }
-    };
-
     return (
         <div className="fade show active">
             <div className="row g-3">
-                <div className="col-md-9 position-relative">
-                    <label className="form-label fw-bold">Search Person Name</label>
+                <div className="col-md-12 position-relative">
+                    <label className="form-label fw-bold">Nama Lengkap</label>
                     <div className="input-group">
                     <input
                         type="text"
-                        className={`form-control ${isNewPerson ? 'border-primary' : ''}`}
+                        name='nama'
+                        className="form-control"
                         placeholder="Ketik nama untuk mencari..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        disabled={isNewPerson || !!selectedPerson}
+                        disabled={!!selectedPerson}
                     />
                     {selectedPerson && (
                         <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
@@ -115,34 +104,9 @@ function PersonelTab() {
                     </ul>
                     )}
                     {isSearching && <small className="text-primary">Mencari...</small>}
-                </div>
-                <div className="col-3 d-flex justify-content-center mt-2">
-                    <div className="form-check">
-                        <input 
-                            className="form-check-input" 
-                            type="checkbox" 
-                            id="checkNewPerson" 
-                            checked={isNewPerson}
-                            onChange={handleCheckboxChange}
-                            disabled={!!selectedPerson}
-                        />
-                        <label className="form-check-label small text-primary fw-bold" htmlFor="checkNewPerson">
-                            New Person
-                        </label>
-                    </div>
-                </div>
+                </div>                
             </div>
             <hr />
-            <div className="row g-3">
-                <div className="mb-3 col-12">
-                    <label className="form-label small fw-bold"> Nama Lengkap</label>
-                    <input 
-                        type="text" name="nama" className="form-control" required 
-                        value={formData.name} 
-                        onChange={handleInputChange}
-                    />
-                </div>            
-            </div>
             <div className="row g-3">
                 <div className="mb-3 col-6">
                     <label className="form-label small fw-bold"> Jenis Kelamin</label>
@@ -174,7 +138,7 @@ function PersonelTab() {
                     <label className="form-label small fw-bold">Tempat Lahir</label>
                     <input 
                         type="text" name="pob" className="form-control" 
-                        value={formData.dob} 
+                        value={formData.pob} 
                         onChange={handleInputChange} 
                     />
                 </div>

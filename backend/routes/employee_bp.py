@@ -76,9 +76,9 @@ def search_employee(emp_id):
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():
     try:
-        data = request.json if request.is_json else request.form
-        person_id = data.get('person_id')
+        data = request.json if request.is_json else request.form        
         #person
+        person_id = data.get('person_id')
         if not person_id or person_id == "":
             newPerson = OsPerson(
                 name = data.get('nama'),

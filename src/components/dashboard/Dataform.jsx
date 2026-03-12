@@ -6,7 +6,7 @@ import PersonelTab from './PersonalTab';
 import EmployTab from './EmployTab';
 import AsetTab from './AsetTab';
 
-function DataformAll({ onClose, onSuccess, initialData }) {
+function DataFrom({ onClose, onSuccess, initialData }) {
   const [activeTab, setActiveTab] = useState(0);
   const formRef = useRef(null);
   
@@ -140,4 +140,4 @@ function DataformAll({ onClose, onSuccess, initialData }) {
   );
 }
 
-export default DataformAll;
+export default DataFrom;

@@ -11,11 +11,9 @@ const Dashboard = () => {
   const [viewForm, setViewForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [editingData, setEditingData] = useState(null);
-
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [filterTerm, setFilterTerm] = useState("all");
-
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
