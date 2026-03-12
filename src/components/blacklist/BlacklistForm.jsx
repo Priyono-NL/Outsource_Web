@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { toast } from 'react-toastify';
+import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function BlacklistForm({ onClose, onSuccess, initialData }) {  
@@ -46,7 +46,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
       }
     } catch (err) {
       const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
-      toast.error("Error: " + errorMsg);
+      Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
     } finally {
       setIsSearching(false);
     }
@@ -74,13 +74,12 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
             : await api.post('/oslist/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        toast.success(response.data.message);
+        Toast.fire({ icon: 'success', title: response.data.message || 'Data berhasil disimpan' });
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
-      toast.error("Gagal: " + errorMsg);
+      Toast.fire({ icon: 'error', title: error.response?.data?.message || "Terjadi kesalahan server" });
     }    
   };
 

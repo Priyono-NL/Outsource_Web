@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify';
+import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 

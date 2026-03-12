@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { toast } from 'react-toastify';
+import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function CanteenForm({ onClose, onSuccess, initialData }) {
@@ -46,13 +46,12 @@ function CanteenForm({ onClose, onSuccess, initialData }) {
             : await api.post('/canteen/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        toast.success(response.data.message);
+        Toast.fire({ icon: 'success', title: response.data.message });
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
-      toast.error("Gagal: " + errorMsg);
+      Toast.fire({ icon: 'error', title: error.response?.data?.message || "Terjadi kesalahan server" });
     }    
   };
 

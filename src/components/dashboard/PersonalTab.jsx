@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify';
+import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function PersonelTab() {
@@ -36,7 +36,7 @@ function PersonelTab() {
             if (data.length === 1) handleSelect(data[0]);
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
-            toast.error("Error: " + errorMsg);
+            Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
         } finally {
             setIsSearching(false);
         }

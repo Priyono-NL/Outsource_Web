@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { toast } from 'react-toastify';
+import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function AlokasiForm({ onClose, onSuccess, initialData }) {
@@ -52,13 +52,12 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
             : await api.post('/alokasi/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
-        toast.success(response.data.message);
+        Toast.fire({ icon: 'success', title: response.data.message });
         onSuccess?.();
         onClose?.();
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.message || "Terjadi kesalahan server";
-      toast.error("Gagal: " + errorMsg);
+      Toast.fire({ icon: 'error', title: error.response?.data?.message || "Terjadi kesalahan server" });
     }    
   };
 
@@ -77,7 +76,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
       setIsEmployeeFound(false);
-      toast.warning("ID Karyawan tidak ditemukan.");
+      Toast.fire({ icon: 'warning', title: 'ID Karyawan tidak ditemukan' });
     } finally { setIsSearching(false); }
   };
 

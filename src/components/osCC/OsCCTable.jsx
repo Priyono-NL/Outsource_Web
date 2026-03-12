@@ -1,5 +1,5 @@
 import React, { useState, useEffect, use } from 'react';
-import { toast } from 'react-toastify';
+import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
@@ -26,18 +26,26 @@ const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     }
 
     const handleDelete = async (id, name) => {
-        if (window.confirm(`Apakah Anda yakin ingin menghapus ${name}?`)) {
-            try {
-                const response = await api.delete(`/oscc/${id}`);
-                if (response.data.status === 'success') {
-                    toast.success(response.data.message);               
-                    fetchData(); 
+        Confirm.fire({
+            title: 'Hapus Data?',
+            text: `Apakah Anda yakin ingin menghapus departemen untuk ${name}?`,
+            icon: 'warning',
+            confirmButtonText: 'Ya, Hapus!',
+            cancelButtonText: 'Batal'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await api.delete(`/oscc/${id}`);
+                    if (response.data.status === 'success') {
+                        Toast.fire({ icon: 'success', title: response.data.message || `Data ${name} berhasil dihapus` });
+                        fetchData(); 
+                    }
+                } catch (error) {
+                    const msg = error.response?.data?.message || error.message;
+                    Toast.fire({ icon: 'error', title: 'Gagal menghapus data', text: msg });
                 }
-            } catch (error) {
-                const msg = error.response?.data?.message || error.message;
-                toast.error("Gagal menghapus data: " + msg);
             }
-        }
+        });
     };
 
     useEffect(() => {
@@ -75,7 +83,7 @@ const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                                 Edit
                             </button>
                             <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => handleDelete(emp.osCC_id, emp.employee_name)}
+                                onClick={() => handleDelete(emp.id_oscc, emp.employee_name)}
                             >
                                 Delete
                             </button>

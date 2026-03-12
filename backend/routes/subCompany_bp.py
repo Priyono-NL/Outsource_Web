@@ -39,8 +39,8 @@ def add():
         
         new_company = SubCompany(
             sub_company_id=new_sub_id,
-            sub_name = data.get('sub_company_name'),
-            sub_type = data.get('type_company')
+            sub_company_name = data.get('sub_company_name'),
+            type_company = data.get('type_company')
         )
         db.session.add(new_company)
         db.session.commit()
