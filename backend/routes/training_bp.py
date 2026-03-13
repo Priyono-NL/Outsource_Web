@@ -10,7 +10,11 @@ def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = training_m.query.paginate(page=page, per_page=pageSize, error_out=False)
+        search = request.args.get('search', '', type=str)
+        query = training_m.query
+        if search:                    
+            query = query.filter(training_m.training_name.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
             "data": [train.to_dict() for train in pagination.items],

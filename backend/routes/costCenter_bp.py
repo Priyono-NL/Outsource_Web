@@ -10,7 +10,11 @@ def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = costCenter.query.paginate(page=page, per_page=pageSize, error_out=False)
+        search = request.args.get('search', '', type=str)
+        query = costCenter.query
+        if search:                    
+            query = query.filter(costCenter.org_name.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
             "data": [cost.to_dict() for cost in pagination.items],

@@ -3,7 +3,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Medic_m_table = ({ refreshTrigger, onEditClick }) => { 
+const Medic_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
     const [Medical, setMedical] = useState([]);   
     const [error, setError] = useState(null); 
@@ -13,7 +13,7 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/medical?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/medical?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
         const result = await response.data;
         if (result.status === 'success') { 
             setMedical(result.data);
@@ -49,8 +49,12 @@ const Medic_m_table = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
-    fetchData();
-    }, [currentPage, refreshTrigger]);
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        fetchData();
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}

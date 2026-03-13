@@ -3,7 +3,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Train_m_table = ({ refreshTrigger, onEditClick }) => { 
+const Train_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
     const [Training, setTraining] = useState([]);   
     const [error, setError] = useState(null); 
@@ -13,7 +13,7 @@ const Train_m_table = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/training?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/training?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
         const result = await response.data;
         if (result.status === 'success') { 
             setTraining(result.data);
@@ -49,8 +49,12 @@ const Train_m_table = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
-    fetchData();
-    }, [currentPage, refreshTrigger]);
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        fetchData();
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}

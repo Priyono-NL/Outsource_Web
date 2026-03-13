@@ -3,7 +3,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const CCTable = ({ refreshTrigger, onEditClick }) => { 
+const CCTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
     const [costCenter, setCostCenter] = useState([]);   
     const [error, setError] = useState(null); 
@@ -13,7 +13,7 @@ const CCTable = ({ refreshTrigger, onEditClick }) => {
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/costcenter?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/costcenter?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
         const result = await response.data;
         if (result.status === 'success') { 
             setCostCenter(result.data);
@@ -49,8 +49,12 @@ const CCTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger]);
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}
@@ -58,20 +62,16 @@ const CCTable = ({ refreshTrigger, onEditClick }) => {
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">Company ID</th>
-                    <th className="py-3">Org ID</th>
+                    <th className="py-3">Cost Center</th>
                     <th className="py-3">Cost Center Name</th>
-                    <th className="py-3">Cost Center ID</th>
                     <th className='py-3'>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 costCenter.map((cc, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{cc.company_id}</td>
-                        <td>{cc.org_id}</td>
+                        <td>{cc.cost_center}</td>
                         <td>{cc.org_name}</td>
-                        <td>{cc.cost_center}</td>                        
                         <td>
                             <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(cc)}>
                                 Edit

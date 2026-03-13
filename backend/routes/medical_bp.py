@@ -10,7 +10,11 @@ def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = medical.query.paginate(page=page, per_page=pageSize, error_out=False)
+        search = request.args.get('search', '', type=str)
+        query = medical.query
+        if search:                    
+            query = query.filter(medical.medical_name.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
             "data": [train.to_dict() for train in pagination.items],
@@ -51,11 +55,11 @@ def add():
 @medical_bp.route('/medical/<string:id>', methods=['PUT'])
 def update(id):
     try:
-        train = medical.query.filter_by(medical_id=id).first()
+        med = medical.query.filter_by(medical_id=id).first()
         data = request.json
-        train.medical_id = data.get('medical_id', train.medical_id)
-        train.medical_name = data.get('medical_name', train.medical_name)
-        train.faskes = data.get('faskes', train.faskes)
+        med.medical_id = data.get('medical_id', med.medical_id)
+        med.medical_name = data.get('medical_name', med.medical_name)
+        med.faskes = data.get('faskes', med.faskes)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
     except Exception as e:
