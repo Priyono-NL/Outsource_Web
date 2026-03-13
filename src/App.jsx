@@ -1,22 +1,11 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Toast } from './utils/sweetalert';
 
 import api from './api/api';
 import Sidebar from './components/Sidebar';
-import SubCompany from './pages/SubCompany';
-import Training_m from './pages/Training_m';
-import Medical_m from './pages/Medical_m';
-import Canteen from './pages/Canteen';
-import CostCenter from './pages/CostCenter';
-import Dashboard from './pages/Dashboard';
-import Alokasi from './pages/Alokasi'
-import OsMedical from './pages/OsMedical';
-import OsTraining from './pages/OsTraining';
-import OsCard from './pages/OsCard';
-import OsCC from './pages/OsCC';
-import OsGrade from './pages/OsGrade';
-import Blacklist from './pages/Blacklist';
+import { routesConfig } from './utils/menuConfig';
+import { Toast } from './utils/sweetalert';
+
 
 function App() {
   const [authState, setAuthState] = useState({ isAuthenticated: false, loading: true, user: null });
@@ -140,23 +129,10 @@ function App() {
           <Sidebar />          
           <div className="flex-grow-1 overflow-auto p-4">
             <Routes>
-              {/* processing data */}
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/alokasi" element={<Alokasi />} />
-              <Route path="/os-medical" element={<OsMedical />} />
-              <Route path="/os-training" element={<OsTraining />} />
-              <Route path="/costcenter" element={<CostCenter />} />
-              {/* master data */}
-              <Route path="/sub-company" element={<SubCompany />} />
-              <Route path="/training-m" element={<Training_m />} />
-              <Route path="/medical-m" element={<Medical_m />} />
-              <Route path="/canteen" element={<Canteen />} />
-              <Route path='/card' element={<OsCard />} />
-              <Route path='/oscc' element={<OsCC />} />
-              <Route path='/grade' element={<OsGrade />} />
-              <Route path='/blacklist' element={<Blacklist />} />
-
-              <Route path="*" element={<Dashboard />} />
+              {routesConfig.map((route, index) => (
+                <Route key={index} path={route.path} element={route.element} />
+              ))}
+              <Route path="*" element={routesConfig[0].element} />
             </Routes>
           </div>
         </div>

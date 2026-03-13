@@ -1,98 +1,39 @@
-import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { routesConfig } from '../utils/menuConfig';
 
 const Sidebar = () => {
-  const [isMasterOpen, setIsMasterOpen] = useState(false)
+  const renderGroup = (groupNumber) => {
+    return routesConfig
+      .filter((route) => route.group === groupNumber)
+      .map((route) => (
+        <li className="nav-item" key={route.path}>
+          <NavLink
+            to={route.path}
+            end={route.path === "/"}
+            className={({ isActive }) =>
+              `nav-link ${isActive ? 'active bg-primary' : 'text-white'} mb-1`
+            }
+            style={{ borderRadius: '8px' }}
+          >
+            {route.label}
+          </NavLink>
+        </li>
+      ));
+  };
+
   return (
     <div 
       className="d-flex flex-column flex-shrink-0 p-3 text-white bg-dark vh-100 shadow-sm" 
-      style={{ width: '200px', position: 'sticky', top: '0', overflowY: 'auto', }}
+      style={{ width: '220px', position: 'sticky', top: '0', overflowY: 'auto' }}
     >
-      <ul className="nav nav-pills flex-column gap-1">
-        <li className="nav-item">
-          <NavLink to="/dashboard" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Dashboard
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/alokasi" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Alokasi Kantin
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/card" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Absence Card
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/oscc" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Department
-          </NavLink>
-        </li>        
-        <li className="nav-item">
-          <NavLink to="/os-medical" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Medical
-          </NavLink>
-        </li>
-        <li className="nav-item">
-          <NavLink to="/os-training" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Training
-          </NavLink>
-        </li>        
-        <li className="nav-item">
-          <NavLink to="/grade" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Grade
-          </NavLink>
-        </li>
-        
-      </ul>
-      <hr />
-      <ul className="nav nav-pills flex-column gap-1">
-        <li className="nav-item">
-          <button 
-            onClick={() => setIsMasterOpen(!isMasterOpen)}
-            className="nav-link text-white w-100 text-start d-flex justify-content-between align-items-center"
-            style={{ background: 'transparent', border: 'none' }}
-          >
-            <span>Master Data</span>
-            <span style={{ fontSize: '0.8rem' }}>{isMasterOpen ? '▼' : '▶'}</span>
-          </button>
-          {isMasterOpen && (
-            <ul className="nav flex-column ms-3 mt-1 gap-1" style={{ borderLeft: '1px solid #495057' }}>
-              <li>
-                <NavLink to="/sub-company" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Sub Company
-                </NavLink>
-              </li>
-              <li>
-                <NavLink 
-                  to="/training-m" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Training
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/medical-m" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Medical
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/canteen" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Kantin
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/costcenter" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-                  Cost Center
-                </NavLink>
-              </li>
-            </ul>
-          )}
-        </li>
-        <li className="nav-item">
-          <NavLink to="/blacklist" className={({ isActive }) => `nav-link ${isActive ? 'active bg-primary' : 'text-white'}`}>
-            Blacklist
-          </NavLink>
-        </li>
+      <ul className="nav nav-pills flex-column">
+        {renderGroup(0)}        
+        <hr className="text-white-50" />
+        {renderGroup(1)}
+        <hr className="text-white-50" />
+        {renderGroup(2)}
+        <hr className="text-white-50" />
+        {renderGroup(3)}
       </ul>
     </div>
   );
