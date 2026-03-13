@@ -14,6 +14,7 @@ class OsEmployment(db.Model, AuditMixin):
 
     def to_dict(self):
         card = self.OsCard[0] if self.OsCard and len(self.OsCard) > 0 else None
+        blacklist_data = self.person.OsBlist[0] if (self.person and self.person.OsBlist) else None
         card_from = card.valid_from if card else None
         card_to = card.valid_to if card else None
         return {
@@ -24,8 +25,7 @@ class OsEmployment(db.Model, AuditMixin):
             'valid_to': self.valid_to.strftime('%Y-%m-%d') if hasattr(self.valid_to, 'strftime') else None,
 
             'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
-            'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,
-            
+            'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,            
 
             'person_name': self.person.name,
             'gender': self.person.gender,
@@ -43,6 +43,8 @@ class OsEmployment(db.Model, AuditMixin):
             'card_number': self.OsCard[0].card_number if self.OsCard else None,
             'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
             'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
+
+            "is_blacklist": blacklist_data.to_dict()['status_text'] if blacklist_data else "No in Blacklist",
         }
     
 AuditMixin.register_audit_events(OsEmployment)

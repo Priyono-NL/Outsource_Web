@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 
-function PersonelTab() {
+function PersonelTab({ onPersonSelect }) {
     const [searchTerm, setSearchTerm] = useState("");
     const [results, setResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -46,6 +46,7 @@ function PersonelTab() {
         setSelectedPerson(person);
         setSearchTerm(person.name);
         setResults([]);
+        onPersonSelect?.(person);
         setFormData({
             gender: person.gender || "L",
             religion: person.religion || "islam",
@@ -60,6 +61,7 @@ function PersonelTab() {
         setSelectedPerson(null);
         setSearchTerm("");
         setFormData({ gender: "L", religion: "islam", pob: "", dob: "", resident_id: "", address: "" });
+        onPersonSelect?.({ is_blacklist: "No in Blacklist" });
     };
 
     const handleInputChange = (e) => {
@@ -98,7 +100,10 @@ function PersonelTab() {
                             className="list-group-item list-group-item-action"
                             onClick={() => handleSelect(p)}
                         >
-                            {p.name}
+                            {p.is_blacklist === "Blacklist" && (
+                                <span className="badge bg-danger">Blacklist</span>
+                            )}
+                            {p.name}                            
                         </button>
                         ))}
                     </ul>

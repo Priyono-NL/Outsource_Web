@@ -132,7 +132,6 @@ const Dashboard = () => {
         <Dataform
           onClose={() => setShowForm(false)} 
           onSuccess={handleRefresh} 
-          initialData={editingData}
         />
       )}
       {viewForm && (

@@ -6,12 +6,24 @@ import PersonelTab from './PersonalTab';
 import EmployTab from './EmployTab';
 import AsetTab from './AsetTab';
 
-function DataFrom({ onClose, onSuccess, initialData }) {
+function DataFrom({ onClose, onSuccess, initialData: propsData }) {
   const [activeTab, setActiveTab] = useState(0);
   const formRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);  
+  const [initialData, setInitialData] = useState(propsData || { is_blacklist: "No in Blacklist" });
+  const [previewUrl, setPreviewUrl] = useState(initialData?.photo_url || "/src/assets/no_image.png");
   
   const handleNext = (e) => {
     e.preventDefault()
+    if (initialData?.is_blacklist === "Blacklist") {
+      Toast.fire({
+        icon: 'error',
+        title: 'Akses Ditolak!',
+        text: 'Personel ini masuk dalam daftar Blacklist dan tidak dapat diproses lebih lanjut.',
+      });
+      return;
+    }
     setActiveTab((prev) => prev + 1);
   };
 
@@ -20,11 +32,28 @@ function DataFrom({ onClose, onSuccess, initialData }) {
     setActiveTab((prev) => prev - 1);
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handlePersonSelect = (person) => {
+    setInitialData({
+      is_blacklist: person.is_blacklist,
+      photo_url: person.photo_url
+    });
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
-    console.log(data);
+    if (selectedFile) {
+      formData.append('photo', selectedFile); 
+    }
     try {
       const response = initialData 
             ? await api.put(`/employee/${initialData.employee_id}`, data) 
@@ -64,38 +93,62 @@ function DataFrom({ onClose, onSuccess, initialData }) {
                       style={{ width: '250px', height: '250px', overflow: 'hidden' }}
                     >
                       <img 
-                        src="\src\assets\no_image.png"
-                        className="rounded img-thumbnail" 
-                        style={{ width: '200px', height: '200px', objectFit: 'cover' }} 
+                        src={previewUrl}
+                        className="rounded" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        onError={(e) => e.target.src = "/src/assets/no_image.png"}
                       />
                     </div>
-                    <label className="fw-bold text-muted small mt-2">Nanti Buat upload Foto</label>
-                    <button type="button" className="btn btn-sm btn-outline-primary mt-3 px-4">
-                       Pilih Foto
+
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="d-none" 
+                      accept="image/*" 
+                      onChange={handleFileChange} 
+                    />
+
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline-primary mt-3 px-4"
+                      onClick={() => fileInputRef.current.click()}
+                    >
+                      Pilih Foto
                     </button>
 
-                    <label className='fw-bold text-muted small mt-2'>Status Blacklist</label>
-                    
+                    <div className="mt-4 w-100 px-3">
+                      <label className='fw-bold text-muted small d-block mb-2 text-center'>Status Blacklist</label>
+                      <div className="text-center">
+                        <span className={`badge p-2 w-100 ${initialData?.is_blacklist === 'Blacklist' ? 'bg-danger' : ''}`}>
+                          <i className={`bi ${initialData?.is_blacklist === 'Blacklist' ? 'bi-shield-slash-fill' : 'bi-shield-check-fill'} me-2`}></i>
+                          {initialData?.is_blacklist === 'Blacklist' ? 'BLACKLISTED' : ''}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="col-md-8 ps-md-4">
                     <ul className="nav nav-pills mb-4 bg-light p-1 rounded" role="tablist">
-                      {['Data Pribadi', 'Data Pekerjaan', 'Data Aset'].map((label, index) => (
-                        <li className="nav-item flex-fill" key={index}>
-                          <button 
-                            type="button"
-                            className={`nav-link w-100 fw-bold border-0 ${activeTab === index ? 'active shadow-sm' : 'text-secondary bg-transparent'}`}
-                            onClick={() => setActiveTab(index)}
-                          >
-                            {label}
-                          </button>
-                        </li>
-                      ))}
+                      {['Data Pribadi', 'Data Pekerjaan', 'Data Aset'].map((label, index) => {
+                        const isLocked = initialData?.is_blacklist === 'Blacklist' && index > 0;
+                        return (
+                          <li className="nav-item flex-fill" key={index}>
+                            <button 
+                              type="button"
+                              disabled={isLocked}
+                              className={`nav-link w-100 fw-bold border-0 ${activeTab === index ? 'active shadow-sm' : 'text-secondary bg-transparent'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              onClick={() => !isLocked && setActiveTab(index)}
+                            >
+                              {isLocked ? <i className="bi bi-lock-fill me-1"></i> : null}
+                              {label}
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
-
                     <div className="tab-content" style={{ minHeight: '400px' }}>
                       <div className={activeTab === 0 ? 'animate__animated animate__fadeIn' : 'd-none'}>
-                        <PersonelTab />
+                        <PersonelTab onPersonSelect={handlePersonSelect} />
                       </div>
                       <div className={activeTab === 1 ? 'animate__animated animate__fadeIn' : 'd-none'}>
                         <EmployTab />
@@ -120,8 +173,13 @@ function DataFrom({ onClose, onSuccess, initialData }) {
                 
                 <div>
                   {activeTab < 2 ? (
-                    <button type="button" className="btn btn-primary px-5 shadow-sm fw-bold" onClick={handleNext}>
-                      Selanjutnya
+                    <button 
+                      type="button" 
+                      className={`btn px-5 shadow-sm fw-bold ${initialData?.is_blacklist === 'Blacklist' ? 'btn-secondary' : 'btn-primary'}`}
+                      onClick={handleNext}
+                      disabled={initialData?.is_blacklist === 'Blacklist'} 
+                    >
+                      {initialData?.is_blacklist === 'Blacklist' ? 'Blacklist' : 'Selanjutnya'}
                     </button>
                   ) : (
                     <button type="submit" className="btn btn-success px-5 shadow-sm fw-bold">

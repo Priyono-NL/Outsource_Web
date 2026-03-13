@@ -17,7 +17,7 @@ class OsBlacklist(db.Model, AuditMixin):
             "status": self.status,
             "block_status": self.block_status,
             "person_name": self.person.name,
-            'status_text': "Blacklist" if self.status == 1 else "Tidak Diblacklist",
+            'status_text': "Blacklist" if self.status == 1 else "No in Blacklist",
         }
     
 AuditMixin.register_audit_events(OsBlacklist)

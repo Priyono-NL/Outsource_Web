@@ -44,6 +44,15 @@ function ViewDetails({ onClose, initialData }) {
                     />
                   </div>
                   <h4 className="fw-bold mb-0">{initialData.person_name}</h4>
+                  <div className="mt-4 w-100 px-3">
+                    <label className='fw-bold text-muted small d-block mb-2 text-center'>Status Blacklist</label>
+                    <div className="text-center">
+                      <span className={`badge p-2 w-100 ${initialData?.is_blacklist === 'Blacklist' ? 'bg-danger' : 'bg-success'}`}>
+                        <i className={`bi ${initialData?.is_blacklist === 'Blacklist' ? 'bi-exclamation-octagon-fill' : 'bi-check-circle-fill'} me-2`}></i>
+                        {initialData?.is_blacklist === 'Blacklist' ? 'BLACKLISTED' : 'ACTIVE / CLEAN'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Sisi Kanan: Informasi Detail (Gabungan script Anda) */}
