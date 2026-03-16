@@ -105,9 +105,9 @@ def add():
 def update(id):
     try:
         persons = OsPerson.query.filter_by(person_id=id).first()
-        data = request.form
+        data = request.json if request.is_json else request.form
 
-        persons.name = data.get('name', persons.name)
+        persons.name = data.get('nama', persons.name)
         persons.gender = data.get('gender', persons.gender)
         persons.pob = data.get('pob', persons.pob)
         persons.dob = data.get('dob', persons.dob)

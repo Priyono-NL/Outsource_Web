@@ -19,7 +19,7 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
       formRef.current.religion.value = initialData.religion || 'islam';
       formRef.current.resident_id.value = initialData.resident_id || '';
 
-      const photoPath = initialData.photo; // Ambil nilai photo dari DB
+      const photoPath = initialData.photo;
       const BASE_URL = 'http://localhost:5000';
       if (photoPath) {
         const fullPhotoUrl = photoPath.startsWith('http') 
@@ -59,9 +59,7 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    const customConfig = {
-      headers: { 'Content-Type': 'multipart/form-data', }
-    };
+    const customConfig = { headers: { 'Content-Type': 'multipart/form-data', } };
     const formData = new FormData(formRef.current);
     
     if (selectedFile) formData.append('photo', selectedFile);

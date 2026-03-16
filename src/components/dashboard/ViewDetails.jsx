@@ -2,6 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import api from '../../api/api';
 
 function ViewDetails({ onClose, initialData }) {
+  const BASE_URL = 'http://localhost:5000';
+  const photoUrl = initialData?.photo 
+    ? (initialData.photo.startsWith('http') ? initialData.photo : `${BASE_URL}${initialData.photo}`)
+    : "/src/assets/no_image.png";
+
   const maskResidentId = (id) => {
     if (!id) return "-";
     const strId = String(id);
@@ -23,7 +28,6 @@ function ViewDetails({ onClose, initialData }) {
         <div className="modal-dialog modal-xl">
           <div className="modal-content border-0 shadow-lg">
             <div className="card shadow-sm border-0">
-            {/* Header dengan tombol close */}
             <div className="card-header bg-white pt-3 border-bottom-0">
               <div className="d-flex justify-content-between align-items-center mb-3 px-2">
                 <h5 className="fw-bold mb-0">Data Details</h5>
@@ -33,14 +37,13 @@ function ViewDetails({ onClose, initialData }) {
 
             <div className="card-body">
               <div className="row">
-                {/* Sisi Kiri: Foto & Nama Utama (Seperti di Gambar) */}
                 <div className="col-md-4 border-end text-center">
                   <div className="position-relative d-inline-block mb-3">
                     <img 
-                      src="\src\assets\no_image.png"
-                      className="rounded img-thumbnail" 
-                      style={{ width: '200px', height: '200px', objectFit: 'cover' }} 
-                      alt="Profile" 
+                      src={photoUrl || "/src/assets/no_image.png"} 
+                      className="rounded shadow-sm border" 
+                      style={{ width: '220px', height: '220px', objectFit: 'cover' }} 
+                      alt="Profile"
                     />
                   </div>
                   <h4 className="fw-bold mb-0">{initialData.person_name}</h4>
@@ -55,7 +58,6 @@ function ViewDetails({ onClose, initialData }) {
                   </div>
                 </div>
 
-                {/* Sisi Kanan: Informasi Detail (Gabungan script Anda) */}
                 <div className="col-md-8 ps-md-4">
                   <div className="row g-3">
                     {/* Personal Information */}

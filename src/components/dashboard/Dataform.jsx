@@ -12,7 +12,42 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);  
   const [initialData, setInitialData] = useState(propsData || { is_blacklist: "No in Blacklist" });
-  const [previewUrl, setPreviewUrl] = useState(initialData?.photo_url || "/src/assets/no_image.png");
+  const [previewUrl, setPreviewUrl] = useState("/no_image.png");
+  const BASE_URL = 'http://localhost:5000';
+  
+  useEffect(() => {
+    if (initialData?.photo_url) {
+      const fullUrl = initialData.photo_url.startsWith('http') 
+        ? initialData.photo_url 
+        : `${BASE_URL}${initialData.photo_url}`;
+      setPreviewUrl(fullUrl);
+    } else if (!selectedFile) {
+      setPreviewUrl("/no_image.png");
+    }
+  }, [initialData, selectedFile]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith('blob:')) { URL.revokeObjectURL(previewUrl); }
+    };
+  }, [previewUrl]);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return; 
+    if (!file.type.startsWith('image/')) {
+      Toast.fire({ 
+        icon: 'error', 
+        title: 'Format tidak didukung',
+        text: 'Harap pilih file gambar (JPG, PNG, atau WebP).' 
+      });
+      e.target.value = "";
+      return;
+    }
+    if (previewUrl && previewUrl.startsWith('blob:')) { URL.revokeObjectURL(previewUrl); }
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
   
   const handleNext = (e) => {
     e.preventDefault()
@@ -30,34 +65,23 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
   const handlePrev = (e) => {
     e.preventDefault()
     setActiveTab((prev) => prev - 1);
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-    }
-  };
+  };  
 
   const handlePersonSelect = (person) => {
     setInitialData({
       is_blacklist: person.is_blacklist,
-      photo_url: person.photo_url
+      photo: person.photo
     });
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    const customConfig = { headers: { 'Content-Type': 'multipart/form-data', } };
     const formData = new FormData(formRef.current);
-    const data = Object.fromEntries(formData.entries());
-    if (selectedFile) {
-      formData.append('photo', selectedFile); 
-    }
+    if (selectedFile) { formData.append('photo', selectedFile); }
+
     try {
-      const response = initialData 
-            ? await api.put(`/employee/${initialData.employee_id}`, data) 
-            : await api.post('/employee/submit', data);
+      const response = await api.post('/employee/submit', formData, customConfig);
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });

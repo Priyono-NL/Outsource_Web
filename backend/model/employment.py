@@ -34,6 +34,7 @@ class OsEmployment(db.Model, AuditMixin):
             'religion': self.person.religion,
             'resident_id': self.person.resident_id,
             'address': self.person.address,
+            'photo': self.person.photo,
 
             'v_dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
             'sub_con_name': self.sub_con.sub_company_name,
