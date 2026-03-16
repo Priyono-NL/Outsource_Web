@@ -12,4 +12,17 @@ class OsPerson(db.Model, AuditMixin):
     religion = db.Column(db.String(50))
     resident_id = db.Column(db.String(50))
 
+    def to_dict(self):
+        return {
+            'person_id': self.person_id,
+            'name': self.name,
+            'gender': self.gender,
+            'address': self.address,
+            'pob': self.pob,
+            'dob': self.dob.strftime('%Y-%m-%d') if hasattr(self.dob, 'strftime') else None,
+            'v_dob': self.dob.strftime('%d %b %Y') if self.dob else None,
+            'religion': self.religion,
+            'resident_id': self.resident_id,
+        }
+
 AuditMixin.register_audit_events(OsPerson)

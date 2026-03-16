@@ -11,9 +11,12 @@ const Sidebar = () => {
             to={route.path}
             end={route.path === "/"}
             className={({ isActive }) =>
-              `nav-link ${isActive ? 'active bg-primary' : 'text-white'} mb-1`
+              `nav-link ${isActive ? 'active shadow-sm' : 'text-white-50'} py-2 mb-1`
             }
-            style={{ borderRadius: '8px' }}
+            style={{ 
+              borderRadius: '6px',
+              paddingLeft: '12px'
+            }}
           >
             {route.label}
           </NavLink>
@@ -23,16 +26,23 @@ const Sidebar = () => {
 
   return (
     <div 
-      className="d-flex flex-column flex-shrink-0 p-3 text-white bg-dark vh-100 shadow-sm" 
-      style={{ width: '220px', position: 'sticky', top: '0', overflowY: 'auto' }}
+      className="d-flex flex-column flex-shrink-0 text-white bg-dark shadow-lg" 
+      style={{ 
+        width: '230px', 
+        height: '100vh', 
+        position: 'sticky', 
+        top: '0', 
+        overflowY: 'auto',
+        borderRight: '1px solid rgba(255,255,255,0.05)'
+      }}
     >
-      <ul className="nav nav-pills flex-column">
-        {renderGroup(0)}        
-        <hr className="text-white-50" />
+      <ul className="nav nav-pills flex-column px-3">
+        {renderGroup(0)}        
+        <hr className="my-2 opacity-25 text-white" /> {/* my-2 untuk merapatkan garis */}
         {renderGroup(1)}
-        <hr className="text-white-50" />
+        <hr className="my-2 opacity-25 text-white" />
         {renderGroup(2)}
-        <hr className="text-white-50" />
+        <hr className="my-2 opacity-25 text-white" />
         {renderGroup(3)}
       </ul>
     </div>
