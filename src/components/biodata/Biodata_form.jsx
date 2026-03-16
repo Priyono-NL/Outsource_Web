@@ -4,12 +4,12 @@ import api from '../../api/api';
 
 function BiodataForm({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
-  const fileInputRef = useRef(null);
-  
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
 
-  useEffect(() => {
+  const fileInputRef = useRef(null);  
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);  
+
+  useEffect(() => {    
     if (initialData && formRef.current) {
       formRef.current.nama.value = initialData.name || '';
       formRef.current.gender.value = initialData.gender || 'L';
@@ -18,28 +18,57 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
       formRef.current.dob.value = initialData.dob || '';
       formRef.current.religion.value = initialData.religion || 'islam';
       formRef.current.resident_id.value = initialData.resident_id || '';
-      if (initialData.photo) {
-        setPreviewUrl(initialData.photo);
-      }
+
+      const photoPath = initialData.photo; // Ambil nilai photo dari DB
+      const BASE_URL = 'http://localhost:5000';
+      if (photoPath) {
+        const fullPhotoUrl = photoPath.startsWith('http') 
+          ? photoPath 
+          : `${BASE_URL}${photoPath}`;
+        setPreviewUrl(fullPhotoUrl);
+      } else { setPreviewUrl(null); }
     }
   }, [initialData]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (!file.type.startsWith('image/')) {
+        Toast.fire({ 
+          icon: 'error', 
+          title: 'Format file tidak didukung. Harap pilih gambar (JPG, PNG, dll).' 
+        });
+        e.target.value = "";
+        return;
+      }
       setSelectedFile(file);
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
       setPreviewUrl(URL.createObjectURL(file));
     }
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    const customConfig = {
+      headers: { 'Content-Type': 'multipart/form-data', }
+    };
     const formData = new FormData(formRef.current);
+    
     if (selectedFile) formData.append('photo', selectedFile);
     try {
       const response = initialData 
-        ? await api.put(`/person/${initialData.person_id}`, formData) 
-        : await api.post('/person/submit', formData);
+        ? await api.put(`/person/${initialData.person_id}`, formData, customConfig) 
+        : await api.post('/person/submit', formData, customConfig);
       if (response.data.status === 'success') {
         Toast.fire({ icon: 'success', title: response.data.message });
         onSuccess?.();
@@ -84,10 +113,13 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
                           style={{ width: '250px', height: '250px', overflow: 'hidden' }}
                         >
                           <img 
-                            src={previewUrl}
+                            src={previewUrl || "/src/assets/no_image.png"} 
                             className="rounded" 
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                            onError={(e) => e.target.src = "/src/assets/no_image.png"}
+                            onError={(e) => {
+                              e.target.onerror = null; 
+                              e.target.src = "/no_image.png";
+                            }}
                           />
                         </div>
                         
@@ -153,17 +185,6 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
 
                     </div>
                   </div>
-                </div>
-
-                <div className="row justify-content-center">                  
-                  
-
-                  <div className="col-md-8 ps-md-5">
-                    <div className="row g-3">
-                      
-                    </div>
-                  </div>
-
                 </div>
                 <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
                   <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>

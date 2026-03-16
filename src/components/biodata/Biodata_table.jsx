@@ -3,17 +3,17 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const BiodataTable = ({ refreshTrigger, onEditClick }) => { 
+const BiodataTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
        
     const [person, setPerson] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0); 
 
     const fetchData = async() => {
     try {
-        const response = await api.get(`/person?page=${currentPage}&pageSize=${itemsPerPage}`);
+        const response = await api.get(`/person?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
         const result = await response.data;
         if (result.status === 'success') { 
             setPerson(result.data);
@@ -49,8 +49,12 @@ const BiodataTable = ({ refreshTrigger, onEditClick }) => {
     };
 
     useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger]);
+    }, [currentPage, refreshTrigger, searchTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}

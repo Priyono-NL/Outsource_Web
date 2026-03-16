@@ -11,6 +11,7 @@ class OsPerson(db.Model, AuditMixin):
     dob = db.Column(db.Date)
     religion = db.Column(db.String(50))
     resident_id = db.Column(db.String(50))
+    photo = db.Column(db.String(255), nullable=True)
 
     def to_dict(self):
         return {
@@ -23,6 +24,7 @@ class OsPerson(db.Model, AuditMixin):
             'v_dob': self.dob.strftime('%d %b %Y') if self.dob else None,
             'religion': self.religion,
             'resident_id': self.resident_id,
+            "photo": self.photo,
         }
 
 AuditMixin.register_audit_events(OsPerson)
