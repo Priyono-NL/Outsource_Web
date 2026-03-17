@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from extensions import db
 from config import Config
-from routes.auth_bp import auth_bp
+# from routes.auth_bp import auth_bp
 from routes.costCenter_bp import costCenter_bp
 from routes.subCompany_bp import subCom_bp
 from routes.training_bp import train_bp
@@ -22,10 +22,13 @@ from routes.blacklist_bp import blacklist_bp
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, supports_credentials=True, origins=["http://localhost:3000"])    
+    CORS(app, supports_credentials=True, origins=[
+        "http://localhost:3000",
+        "http://172.16.2.141:3000"
+    ])
     app.config.from_object(Config)
     db.init_app(app)
-    app.register_blueprint(auth_bp, url_prefix='/')
+    # app.register_blueprint(auth_bp, url_prefix='/')
     #master Data
     app.register_blueprint(person_bp, url_prefix='/')
     app.register_blueprint(subCom_bp, url_prefix='/')

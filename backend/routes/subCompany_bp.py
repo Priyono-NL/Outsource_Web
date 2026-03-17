@@ -84,7 +84,7 @@ def delete(id):
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
     
-@subCom_bp.before_request
-@login_required
-def before_request():
-    pass
+# @subCom_bp.before_request
+# @login_required
+# def before_request():
+#     pass
