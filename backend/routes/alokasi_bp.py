@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from extensions import db
@@ -49,6 +49,16 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
+
+        #change last alokasi to valid to previous day
+        old_alokasi = Alokasi.query.filter_by(employee_id=data.get('employee_id')).order_by(Alokasi.id.desc()).first()
+        if old_alokasi and data.get('valid_from'):
+            try:
+                new_valid_from = datetime.strptime(data.get('valid_from'), '%Y-%m-%d')
+                previous_day = new_valid_from - timedelta(days=1)
+                old_alokasi.valid_to = previous_day.date()
+            except ValueError as e:
+                print(f"Format tanggal salah: {e}")
         
         new_alokasi = Alokasi(
             employee_id = data.get('employee_id'),
