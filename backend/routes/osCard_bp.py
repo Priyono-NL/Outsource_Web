@@ -45,16 +45,25 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-        
-        #change last card to valid to previous day
-        old_card = OsCard.query.filter_by(card_number=data.get('card_number')).order_by(OsCard.id.desc()).first()
-        if old_card and data.get('valid_from'):
+
+        previous_day = None
+        if data.get('valid_from'):
             try:
-                new_valid_from = datetime.strptime(data.get('valid_from'), '%Y-%m-%d')
-                previous_day = new_valid_from - timedelta(days=1)
-                old_card.valid_to = previous_day.date()
-            except ValueError as e:
-                print(f"Format tanggal salah: {e}")
+                new_from_dt = datetime.strptime(data.get('valid_from'), '%Y-%m-%d')
+                previous_day = (new_from_dt - timedelta(days=1)).date()
+            except ValueError:
+                print("Format tanggal salah")
+
+        if previous_day:
+            old_records = OsCard.query.filter(
+                or_(
+                    OsCard.card_number == data.get('card_number'),
+                    OsCard.employee_id == data.get('employee_id')
+                ),
+                OsCard.valid_to == None
+            ).all()
+            for record in old_records:
+                record.valid_to = previous_day
 
         new_OsCard = OsCard(
             employee_id = data.get('employee_id'),
