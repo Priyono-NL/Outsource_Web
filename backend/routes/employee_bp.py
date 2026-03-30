@@ -368,6 +368,19 @@ def export():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@employee_bp.route("/employee/stats", methods=['GET'])
+def get_employee_stats():
+    now = datetime.now()
+    total_active = OsEmployment.query.filter(OsEmployment.valid_to >= now).count()
+    total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
+    return jsonify({
+        "status": "success",
+        "data": {
+            "total_active": total_active,
+            "total_inactive": total_inactive,
+        }
+    }), 200
+
 # @employee_bp.before_request
 # @login_required
 # def before_request():

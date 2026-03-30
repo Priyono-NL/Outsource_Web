@@ -29,7 +29,7 @@ const Sidebar = () => {
       className="d-flex flex-column flex-shrink-0 text-white bg-dark shadow-lg" 
       style={{ 
         width: '230px', 
-        height: '100vh', 
+        height: '93vh', 
         position: 'sticky', 
         top: '0', 
         overflowY: 'auto',

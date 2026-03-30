@@ -1,0 +1,25 @@
+.custom-card {
+  background-color: #ffffff; 
+  border: 1px solid #000000;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s;
+}
+
+.custom-card:hover {
+  transform: translateY(-5px); /* Efek sedikit terangkat saat hover */
+}
+
+.icon-bg-shape {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+}
+
+.z-1 {
+  z-index: 1;
+}

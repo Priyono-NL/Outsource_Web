@@ -14,11 +14,13 @@ import OsCC from '../pages/OsCC';
 import OsGrade from '../pages/OsGrade';
 import Blacklist from '../pages/Blacklist';
 import Biodata from '../pages/Biodata';
+import Employement from '../pages/Employment';
 
 export const routesConfig = [
-  // Group 0: Dashboard
-  { path: "/", label: "Dashboard", element: <Dashboard />, group: 0 },  
-  // Group 1
+  // Group 0: 
+  { path: "/", label: "Dashboard", element: <Dashboard />, group: 0 }, 
+  // Group 1: Employement
+  { path: "/employment", label:"Employement", element: <Employement />, group: 1 }, 
   { path: "/biodata", label:"Biodata", element: <Biodata />, group: 1 }, 
   { path: "/alokasi", label: "Alokasi Kantin", element: <Alokasi />, group: 1 },  
   { path: "/card", label: "Absence Card", element: <OsCard />, group: 1 },
