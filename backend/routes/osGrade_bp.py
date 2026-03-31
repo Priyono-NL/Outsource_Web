@@ -17,6 +17,7 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
+        filter = request.args.get('filter', '', type=str)
         query = OsGrade.query
         if search:
             query = query.join(OsEmployment, OsGrade.employee_id == OsEmployment.employee_id) \
@@ -27,6 +28,11 @@ def index():
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )
+        now = datetime.now()
+        if filter == 'active':
+            query = query.filter((OsGrade.valid_to >= now) | (OsGrade.valid_to == None))
+        elif filter == 'inactive':
+            query = query.filter(OsGrade.valid_to < now)
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",

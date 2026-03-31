@@ -3,7 +3,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => { 
+const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => { 
        
     const [card, setCard] = useState([]);   
     const [error, setError] = useState(null);
@@ -13,7 +13,7 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/oscard?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
+            const response = await api.get(`/oscard?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
             const result = await response.data;
             if (result.status === 'success') { 
                 setCard(result.data);
@@ -50,11 +50,11 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, filterTerm]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm]);
+    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        

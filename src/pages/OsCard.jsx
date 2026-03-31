@@ -8,6 +8,7 @@ const OsCard = () => {
     const [editingData, setEditingData] = useState(null);
     const [searchInput, setSearchInput] = useState("");
     const [appliedSearch, setAppliedSearch] = useState("");
+    const [filterTerm, setFilterTerm] = useState("all");
     
     const handleSearch = () => { setAppliedSearch(searchInput); };
     const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
@@ -54,11 +55,31 @@ const OsCard = () => {
           />
         )}
         <div className="card border-0 shadow-sm">
+          <div className="card-body">
+            <div className="row g-3 align-items-end">
+
+              <div className="col-md-3">
+                <label className="form-label small fw-bold">Status</label>
+                <select 
+                  className="form-select"
+                  value={filterTerm} 
+                  onChange={(e) => setFilterTerm(e.target.value)}
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+            </div>
+          </div>
+
           <div className="card-body p-0">
               <OsCardTable 
                 refreshTrigger={refreshKey} 
                 onEditClick={handleEdit}
                 searchTerm={appliedSearch}
+                filterTerm={filterTerm}
               />          
           </div>
         </div>
