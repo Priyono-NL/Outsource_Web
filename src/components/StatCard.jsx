@@ -5,7 +5,7 @@ import './StatCard.css';
 const StatCard = ({ title, value, subtitle, icon, color = "#198754" }) => {
   return (
     <div className="card custom-card shadow-sm p-4 h-100">
-      {/* Background dekorasi yang warnanya mengikuti prop color */}
+
       <div 
         className="icon-bg-shape" 
         style={{ backgroundColor: color, opacity: 0.1 }}
@@ -24,7 +24,6 @@ const StatCard = ({ title, value, subtitle, icon, color = "#198754" }) => {
           {subtitle}
         </p>
 
-        {/* Icon di pojok kanan atas */}
         <div className="position-absolute top-0 end-0 m-3" style={{ color: color }}>
           <i className={`bi ${icon}`} style={{ fontSize: '1.6rem' }}></i>
         </div>

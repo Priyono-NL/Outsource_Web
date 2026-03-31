@@ -48,7 +48,7 @@ def index():
                 )
             )
         if filter == 'active':
-            query = query.filter(OsEmployment.valid_to >= now)
+            query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
         elif filter == 'inactive':
             query = query.filter(OsEmployment.valid_to < now)
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
@@ -371,7 +371,7 @@ def export():
 @employee_bp.route("/employee/stats", methods=['GET'])
 def get_employee_stats():
     now = datetime.now()
-    total_active = OsEmployment.query.filter(OsEmployment.valid_to >= now).count()
+    total_active = OsEmployment.query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
     total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
     return jsonify({
         "status": "success",

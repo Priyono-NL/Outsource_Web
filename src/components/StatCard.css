@@ -8,7 +8,7 @@
 }
 
 .custom-card:hover {
-  transform: translateY(-5px); /* Efek sedikit terangkat saat hover */
+  transform: translateY(-5px);
 }
 
 .icon-bg-shape {

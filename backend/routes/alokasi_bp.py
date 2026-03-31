@@ -28,7 +28,7 @@ def index():
                 )
             )
         if filter == 'active':
-            query = query.filter(Alokasi.valid_to >= now)
+            query = query.filter((Alokasi.valid_to >= now) | (Alokasi.valid_to == None))
         elif filter == 'inactive':
             query = query.filter(Alokasi.valid_to < now)
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
