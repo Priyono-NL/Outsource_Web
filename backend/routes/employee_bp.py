@@ -1,5 +1,4 @@
 import os, uuid, pandas as pd
-from pprint import pprint
 from werkzeug.utils import secure_filename
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -141,12 +140,9 @@ def add():
             ).all()
             if old_records:
                 for rec in old_records:
-                    pprint(rec)
                     rec.valid_to = adjusted_valid_to
                     db.session.add(rec)                        
         db.session.flush()
-
-        breakpoint()
         #employment        
         newEmployment = OsEmployment(
             employee_id = data.get('employee_id'),
@@ -193,7 +189,7 @@ def add():
             db.session.add(newAlokasi)            
         #commit all
         db.session.commit()
-        breakpoint()
+
         return jsonify({
             "status": "success",
             "message": f"Data berhasil disimpan!"
@@ -298,6 +294,45 @@ def upload():
                     if not exist_subCom:
                         raise ValueError(f"Sub Company '{subCom_name}' tidak terdaftar di sistem.")
                     
+                    #cek data lama
+                    raw_start_date = row.get('valid from')
+                    if isinstance(raw_start_date, str):
+                        new_start_date = datetime.strptime(raw_start_date.strip(), '%Y-%m-%d').date()
+                    else:
+                        new_start_date = raw_start_date.date()
+                    adjusted_valid_to = new_start_date - timedelta(days=1)
+                    current_employment = OsEmployment.query.filter(
+                        OsEmployment.person_id == person_id,
+                        (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
+                    ).first()
+                    active_emp_id = current_employment.employee_id if current_employment else str(row.get('employee_id')).strip()
+                    target_models = [
+                        {"model": OsEmployment, "filter_field": "person_id", "filter_value": person_id},
+                        {"model": OsCard, "filter_field": "card_number", "filter_value": row.get('card number')},
+                        {"model": OsGrade, "filter_field": "employee_id", "filter_value": active_emp_id},
+                        {"model": OsCostCenter, "filter_field": "employee_id", "filter_value": active_emp_id},
+                        {"model": Alokasi, "filter_field": "employee_id", "filter_value": active_emp_id},
+                    ]
+                    for item in target_models:
+                        Model = item["model"]
+                        field = item["filter_field"]
+                        val = item["filter_value"]
+                        old_records = Model.query.filter(
+                            getattr(Model, field) == val,
+                            (Model.valid_to >= new_start_date) | (Model.valid_to == None) 
+                        ).all()
+                        if old_records:
+                            for rec in old_records:
+                                rec.valid_to = adjusted_valid_to
+                                db.session.add(rec)                        
+                    db.session.flush()
+
+                    #employment
+                    existing_emp = OsEmployment.query.get(emp_id)
+                    if existing_emp:
+                        nama_lama = existing_emp.person.name if existing_emp.person else "Tidak diketahui"
+                        raise Exception(f"ID '{emp_id}' sudah digunakan oleh '{nama_lama}'.")
+
                     newEmployment = OsEmployment(
                         employee_id=emp_id,
                         sub_company_id=exist_subCom.sub_company_id,
@@ -354,7 +389,7 @@ def upload():
             except ValueError as ve:
                 errors.append(f"Baris {line_number}: {str(ve)}")
             except Exception as e:
-                errors.append(f"Baris {line_number}: Gagal diproses karena masalah teknis (Data mungkin sudah ada atau format salah).")
+                errors.append(f"Baris {line_number}: {str(e)}")
                 print(f"Detail Error Baris {line_number}: {str(e)}")
 
         db.session.commit()

@@ -68,7 +68,7 @@ const Employement = () => {
         if (status === 'partial_success') {
             Confirm.fire({
                 icon: 'warning',
-                title: 'Impor Selesai dengan Catatan',
+                title: 'Import Selesai dengan Catatan',
                 html: `
                     <p>${message}</p>
                     <div style="text-align: left; max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; font-size: 0.85em;">
@@ -89,7 +89,7 @@ const Employement = () => {
         if (errorList && errorList.length > 0) {
             Confirm.fire({
                 icon: 'error',
-                title: 'Gagal Impor Total',
+                title: 'Gagal Import',
                 html: `
                     <div style="text-align: left; max-height: 200px; overflow-y: auto; background: #fff1f0; padding: 10px; border: 1px solid #ffa39e; font-size: 0.85em;">
                         ${errorList.join('<br>')}
