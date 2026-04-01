@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Toast, Confirm } from "..//utils/sweetalert";
 import { saveAs } from 'file-saver';
 
 import api from '../api/api';
@@ -44,7 +45,10 @@ const Employement = () => {
         const { data } = await api.get('/employee/template', { responseType: 'blob' });
         saveAs(data, 'Template_Import.xlsx');
     } catch (error) {
-        alert("Gagal mengunduh template");
+      Toast.fire({
+        icon: 'error',
+        title: "Gagal Download Template Import"
+      })
     }    
   };
 
@@ -59,15 +63,45 @@ const Employement = () => {
         const response = await api.post('/employee/upload', formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
-        alert(response.data.message);
+        const { status, message, errors } = response.data;
+
+        if (status === 'partial_success') {
+            Confirm.fire({
+                icon: 'warning',
+                title: 'Impor Selesai dengan Catatan',
+                html: `
+                    <p>${message}</p>
+                    <div style="text-align: left; max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; font-size: 0.85em;">
+                        <strong>Detail Kesalahan:</strong><br>
+                        ${errors.join('<br>')}
+                    </div>
+                `,
+                confirmButtonText: 'Tutup',
+                showCancelButton: false
+            });
+        } else {
+            Toast.fire({ icon: 'success', title: message });
+        }
         handleRefresh();        
     } catch (error) {
         const serverResponse = error.response?.data;
         const errorList = serverResponse?.errors;
         if (errorList && errorList.length > 0) {
-            alert(`Gagal import:\n\n${errorList.join('\n')}`);
+            Confirm.fire({
+                icon: 'error',
+                title: 'Gagal Impor Total',
+                html: `
+                    <div style="text-align: left; max-height: 200px; overflow-y: auto; background: #fff1f0; padding: 10px; border: 1px solid #ffa39e; font-size: 0.85em;">
+                        ${errorList.join('<br>')}
+                    </div>
+                `,
+                confirmButtonText: 'Perbaiki Excel'
+            });
         } else {
-            alert("Gagal import: " + (serverResponse?.message || "Cek format file"));
+            Toast.fire({
+                icon: 'error',
+                title: serverResponse?.message || "Terjadi kesalahan saat upload"
+            })
         }
     } finally {
         setIsUploading(false); 

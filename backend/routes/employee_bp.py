@@ -1,7 +1,8 @@
 import os, uuid, pandas as pd
+from pprint import pprint
 from werkzeug.utils import secure_filename
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
 
@@ -113,10 +114,40 @@ def add():
                 target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"
 
         db.session.add(target_person)
-        db.session.flush()
+        db.session.flush()        
+        #cek data lama
         person_id = target_person.person_id
-        
-        #employment
+        new_start_date = datetime.strptime(data.get('valid_from'), '%Y-%m-%d').date()
+        adjusted_valid_to = new_start_date - timedelta(days=1)
+        current_employment = OsEmployment.query.filter(
+            OsEmployment.person_id == person_id,
+            (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
+        ).first()
+        active_emp_id = current_employment.employee_id if current_employment else data.get('employee_id')
+        target_models = [
+            {"model": OsEmployment, "filter_field": "person_id", "filter_value": person_id},
+            {"model": OsCard, "filter_field": "card_number", "filter_value": data.get('card_number')},
+            {"model": OsGrade, "filter_field": "employee_id", "filter_value": active_emp_id},
+            {"model": OsCostCenter, "filter_field": "employee_id", "filter_value": active_emp_id},
+            {"model": Alokasi, "filter_field": "employee_id", "filter_value": active_emp_id},
+        ]
+        for item in target_models:
+            Model = item["model"]
+            field = item["filter_field"]
+            val = item["filter_value"]
+            old_records = Model.query.filter(
+                getattr(Model, field) == val,
+                (Model.valid_to >= new_start_date) | (Model.valid_to == None) 
+            ).all()
+            if old_records:
+                for rec in old_records:
+                    pprint(rec)
+                    rec.valid_to = adjusted_valid_to
+                    db.session.add(rec)                        
+        db.session.flush()
+
+        breakpoint()
+        #employment        
         newEmployment = OsEmployment(
             employee_id = data.get('employee_id'),
             sub_company_id = data.get('sub_company_id'),
@@ -126,7 +157,7 @@ def add():
         )
         db.session.add(newEmployment)
         db.session.flush()
-        #card
+        #card        
         newCard = OsCard(
             employee_id = newEmployment.employee_id,
             card_number = data.get('card_number'),
@@ -134,7 +165,7 @@ def add():
             valid_to = data.get('c_valid_to')
         )
         db.session.add(newCard)
-        #grade
+        #grade        
         newGrade = OsGrade(
             employee_id = newEmployment.employee_id,
             grade = data.get('grade'),
@@ -162,6 +193,7 @@ def add():
             db.session.add(newAlokasi)            
         #commit all
         db.session.commit()
+        breakpoint()
         return jsonify({
             "status": "success",
             "message": f"Data berhasil disimpan!"
@@ -211,122 +243,140 @@ def template():
 def upload():
     file = request.files.get('file')
     if not file:
-        return jsonify({"message": 'Tidak ada file'}), 400
+        return jsonify({"message": 'Mohon pilih file Excel terlebih dahulu.'}), 400
     
     try:
-        df = pd.read_excel(file, dtype={'card number': str, 'employee_id': str, 'grade': str,})
+        df = pd.read_excel(file, dtype={'card number': str, 'employee_id': str, 'grade': str})
         df = df.where(pd.notnull(df), None)
+        
+        required_columns = ['nama', 'resident_id', 'employee_id', 'SubCompany', 'Department']
+        missing_cols = [col for col in required_columns if col not in df.columns]
+        if missing_cols:
+            return jsonify({"message": f"Format Excel salah. Kolom berikut tidak ditemukan: {', '.join(missing_cols)}"}), 400
+
         errors = []
         success_count = 0
+
         for index, row in df.iterrows():
+            line_number = index + 2  # Baris di Excel (index 0 + header)
             try:
                 with db.session.begin_nested():
+                    nama_input = str(row['nama']).strip() if row.get('nama') else None
+                    nik_input = str(row['resident_id']).strip() if row.get('resident_id') else None
+                    emp_id = str(row['employee_id']).strip() if row.get('employee_id') else None
+
+                    if not nama_input or not nik_input or not emp_id:
+                        raise ValueError("Nama, NIK, dan Employee ID tidak boleh kosong.")
+
                     person_id = None
-                    subCom_id = None                
-                    # --- PROSES PERSON ---
-                    nama_input = str(row['nama']).strip() if row['nama'] else ""
-                    nik_input = str(row['resident_id']).strip() if row['resident_id'] else ""                
                     existing_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
+                    
                     if existing_person:
-                        person_id = existing_person.person_id       
+                        person_id = existing_person.person_id 
                     else:
-                        person_by_name = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()            
+                        person_by_name = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()
                         if person_by_name:
                             person_id = person_by_name.person_id
-                            if not person_by_name.resident_id:                        
+                            if not person_by_name.resident_id:
                                 person_by_name.resident_id = nik_input
-                                db.session.add(person_by_name)
                         else:
                             newPerson = OsPerson(
                                 name=nama_input,
-                                gender=row['gender'],            
-                                pob=row['pob'],
-                                dob=row['dob'],
-                                religion=row['religion'],
+                                gender=row.get('gender'),
+                                pob=row.get('pob'),
+                                dob=row.get('dob'),
+                                religion=row.get('religion'),
                                 resident_id=nik_input,
-                                address=row['address']
+                                address=row.get('address')
                             )
                             db.session.add(newPerson)
                             db.session.flush()
                             person_id = newPerson.person_id
-                    # --- PROSES EMPLOYMENT & DEPENDENCIES ---
-                    subCom_name = str(row['SubCompany']).strip() if row['SubCompany'] else ""
-                    exist_subCom = SubCompany.query.filter(SubCompany.sub_company_name.ilike(subCom_name)).first()                
+
+                    subCom_name = str(row['SubCompany']).strip()
+                    exist_subCom = SubCompany.query.filter(SubCompany.sub_company_name.ilike(subCom_name)).first()
                     if not exist_subCom:
-                        raise Exception(f"Sub Company '{subCom_name}' tidak terdaftar.")
-                    subCom_id = exist_subCom.sub_company_id
-                    if person_id and subCom_id:
-                        newEmployment = OsEmployment(
-                            employee_id = row['employee_id'],
-                            sub_company_id = subCom_id,
-                            person_id = person_id,
-                            valid_from = row['valid from'],
-                            valid_to = row['valid to']
-                        )
-                        db.session.add(newEmployment)
-                        db.session.flush()
-                        # --- PROSES CARD, GRADE, CC (Hanya jika employment berhasil) ---
-                        # Card
-                        db.session.add(OsCard(
-                            employee_id = newEmployment.employee_id,
-                            card_number = clean_str(row['card number']),
-                            valid_from = row['card valid from'],
-                            valid_to = row['card valid to']
-                        ))                    
-                        # Grade
-                        db.session.add(OsGrade(
-                            employee_id = newEmployment.employee_id,
-                            grade = clean_str(row['grade']),
-                            valid_from = row['valid from'],
-                            valid_to = row['valid to']
+                        raise ValueError(f"Sub Company '{subCom_name}' tidak terdaftar di sistem.")
+                    
+                    newEmployment = OsEmployment(
+                        employee_id=emp_id,
+                        sub_company_id=exist_subCom.sub_company_id,
+                        person_id=person_id,
+                        valid_from=row.get('valid from'),
+                        valid_to=row.get('valid to')
+                    )
+                    db.session.add(newEmployment)
+                    db.session.flush()
+
+                    # Card
+                    db.session.add(OsCard(
+                        employee_id=emp_id,
+                        card_number=str(row.get('card number', '')).strip(),
+                        valid_from=row.get('card valid from'),
+                        valid_to=row.get('card valid to')
+                    ))
+
+                    # Grade
+                    db.session.add(OsGrade(
+                        employee_id=emp_id,
+                        grade=str(row.get('grade', '')).strip(),
+                        valid_from=row.get('valid from'),
+                        valid_to=row.get('valid to')
+                    ))
+
+                    # Cost Center (Department)
+                    cc_name = str(row['Department']).strip()
+                    exist_cc = costCenter.query.filter(costCenter.org_name.ilike(cc_name)).first()
+                    if not exist_cc:
+                        raise ValueError(f"Department/CC '{cc_name}' tidak ditemukan.")
+
+                    db.session.add(OsCostCenter(
+                        employee_id=emp_id,
+                        cc_id=exist_cc.cost_center,
+                        valid_from=row.get('valid from'),
+                        valid_to=row.get('valid to')
+                    ))
+
+                    # Canteen Allocation
+                    cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id)\
+                                          .filter(canteenDetail.cc_id == exist_cc.cost_center).first()
+                    if cc_def:
+                        db.session.add(Alokasi(
+                            employee_id=emp_id,
+                            canteen_id=cc_def.canteen_id,
+                            valid_from=row.get('valid from'),
+                            valid_to=row.get('valid to')
                         ))
-                        #CC
-                        cc_name = str(row['Department']).strip() if row['Department'] else ""
-                        exist_cc = costCenter.query.filter(costCenter.org_name.ilike(cc_name)).first()                
-                        if not exist_cc:
-                            raise Exception(f"Department '{cc_name}' tidak terdaftar.")
-                        subCom_id = exist_cc.cost_center
-                        db.session.add(OsCostCenter(
-                            employee_id = newEmployment.employee_id,
-                            cc_id = exist_cc.cost_center,
-                            valid_from = row['valid from'],
-                            valid_to = row['valid to']
-                        ))
-                        #canteen if exist cc
-                        #canteen
-                        if exist_cc:
-                            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(exist_cc.cost_center)).first()
-                            newAlokasi = Alokasi(
-                                employee_id = newEmployment.employee_id,
-                                canteen_id = cc_def.canteen_id,
-                                valid_from = row['valid from'],
-                                valid_to = row['valid to']
-                            )
-                            db.session.add(newAlokasi)
-                    else:
-                        raise Exception("Data person atau company tidak lengkap.")
+                
+                # JIKA SAMPAI SINI TANPA ERROR
+                success_count += 1
+
+            except ValueError as ve:
+                errors.append(f"Baris {line_number}: {str(ve)}")
             except Exception as e:
-                errors.append(f"Baris {index+2}: {str(e)}")
-                continue
-        # FINAL DECISION
+                errors.append(f"Baris {line_number}: Gagal diproses karena masalah teknis (Data mungkin sudah ada atau format salah).")
+                print(f"Detail Error Baris {line_number}: {str(e)}")
+
         db.session.commit()
+
         if success_count > 0:
+            status = "success" if not errors else "partial_success"
             msg = f"Berhasil mengimport {success_count} data."
-            if errors:
-                return jsonify({
-                    "status": "partial_success", 
-                    "message": f"{msg} Namun ada beberapa error.",
-                    "errors": errors
-                }), 200
-            return jsonify({"status": "success", "message": msg}), 200
+            return jsonify({
+                "status": status,
+                "message": msg,
+                "errors": errors
+            }), 200
         else:
             return jsonify({
-                "status": "error", 
-                "message": "Tidak ada data yang berhasil diimport.",
+                "status": "error",
+                "message": "Tidak ada data yang berhasil diimport. Silakan periksa file Anda.",
                 "errors": errors
             }), 400
+
     except Exception as e:
-        return jsonify({"message": f"Fatal Error: {str(e)}"}), 500
+        db.session.rollback()
+        return jsonify({"message": f"Terjadi kesalahan fatal saat membaca file: {str(e)}"}), 500
 
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():

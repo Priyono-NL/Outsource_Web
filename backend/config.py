@@ -1,8 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-# load_dotenv('online.env')
-load_dotenv('local.env')
+load_dotenv('online.env')
+# load_dotenv('local.env')
 
 class Config:    
     USER = os.getenv('DB_USER')
