@@ -18,7 +18,6 @@ from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
 from model.alokasi import Alokasi
 
-
 employee_bp = Blueprint('employee_bp', __name__)
 
 UPLOAD_FOLDER = 'static/uploads/photos'
@@ -36,21 +35,36 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
-        filter = request.args.get('filter', '', type=str)
+
+        status = request.args.get('status', 'all', type=str)
+        sub_company_id = request.args.get('sub_company', '', type=str)
+        department_id = request.args.get('department', '', type=str)
+
         query = OsEmployment.query
         now = datetime.now()
         if search:
-            query = query.join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            query = query.join(OsPerson)
+            query = query.join(OsCard)    
             query = query.filter(
                 or_(
                     OsEmployment.employee_id.cast(db.String).ilike(f"%{search}%"),
-                    OsPerson.name.ilike(f"%{search}%"),                    
+                    OsPerson.name.ilike(f"%{search}%"),
+                    OsCard.card_number.ilike(f"%{search}%")
                 )
             )
-        if filter == 'active':
+
+        if status == 'active':
             query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
-        elif filter == 'inactive':
+        elif status == 'inactive':
             query = query.filter(OsEmployment.valid_to < now)
+
+        if sub_company_id:
+            query = query.filter(OsEmployment.sub_company_id == sub_company_id)
+
+        if department_id:
+            query = query.join(OsCostCenter)
+            query = query.filter(OsCostCenter.cc_id == department_id)
+        
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
@@ -60,6 +74,8 @@ def index():
             "total_item": pagination.total
         }), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -153,7 +169,7 @@ def add():
         )
         db.session.add(newEmployment)
         db.session.flush()
-        #card        
+        #card
         newCard = OsCard(
             employee_id = newEmployment.employee_id,
             card_number = data.get('card_number'),
@@ -328,7 +344,9 @@ def upload():
                     db.session.flush()
 
                     #employment
-                    existing_emp = OsEmployment.query.get(emp_id)
+                    existing_emp = OsEmployment.query.filter(
+                        OsEmployment.id == emp_id,
+                        OsEmployment.valid_from < datetime.now() )
                     if existing_emp:
                         nama_lama = existing_emp.person.name if existing_emp.person else "Tidak diketahui"
                         raise Exception(f"ID '{emp_id}' sudah digunakan oleh '{nama_lama}'.")
@@ -416,9 +434,41 @@ def upload():
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():
     try:
-        master = OsEmployment.query.all()
+        search = request.args.get('search', '', type=str)
+        status = request.args.get('status', 'all', type=str)
+        sub_company_id = request.args.get('sub_company', '', type=str)
+        department_id = request.args.get('department', '', type=str)
+
+        query = OsEmployment.query
+        now = datetime.now()
+
+        if search:
+            query = query.join(OsPerson)
+            query = query.join(OsCard)    
+            query = query.filter(
+                or_(
+                    OsEmployment.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsPerson.name.ilike(f"%{search}%"),
+                    OsCard.card_number.ilike(f"%{search}%")
+                )
+            )
+
+        if status == 'active':
+            query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
+        elif status == 'inactive':
+            query = query.filter(OsEmployment.valid_to < now)
+
+        if sub_company_id:
+            query = query.filter(OsEmployment.sub_company_id == sub_company_id)
+
+        if department_id:
+            query = query.join(OsCostCenter)
+            query = query.filter(OsCostCenter.cc_id == department_id)
+        
+        filtered_employees = query.all()
+        
         data = []
-        for m in master:
+        for m in filtered_employees:
             d = m.to_dict()
             data.append({
                 "Name": d['person_name'],

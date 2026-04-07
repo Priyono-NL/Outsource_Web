@@ -10,7 +10,7 @@ class OsEmployment(db.Model, AuditMixin):
     valid_to = db.Column(db.Date)       
     
     person = db.relationship('OsPerson', backref='employments', lazy=True)
-    sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)   
+    sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)
 
     def to_dict(self):
         card = self.OsCard[0] if self.OsCard and len(self.OsCard) > 0 else None
@@ -35,10 +35,12 @@ class OsEmployment(db.Model, AuditMixin):
             'resident_id': self.person.resident_id,
             'address': self.person.address,
             'photo': self.person.photo,
-
             'v_dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
+
+            'grade': self.OsGrade[0].grade,
             'sub_con_name': self.sub_con.sub_company_name,
-            'type_company': self.sub_con.type_company,            
+            'type_company': self.sub_con.type_company,
+            'cc_id': self.OsCC[0].cc_id if self.OsCC and len(self.OsCC) > 0 else None,
             'cc_name': self.OsCC[0].cc_master.org_name if self.OsCC else None,
 
             'card_number': self.OsCard[0].card_number if self.OsCard else None,

@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
-import api from '../../api/api';
+import React from 'react';
 
 function ViewDetails({ onClose, initialData }) {
   const BASE_URL = 'http://localhost:5000';
@@ -7,11 +6,6 @@ function ViewDetails({ onClose, initialData }) {
     ? (initialData.photo.startsWith('http') ? initialData.photo : `${BASE_URL}${initialData.photo}`)
     : "/src/assets/no_image.png";
 
-  const maskResidentId = (id) => {
-    if (!id) return "-";
-    const strId = String(id);
-    return `${strId.substring(0, 4)}********${strId.slice(-2)}`;
-  };
   return (
     <>
       <div 
@@ -64,15 +58,17 @@ function ViewDetails({ onClose, initialData }) {
                     <div className="col-md-12 fw-bold text-primary border-bottom pb-1">Personal Information</div>
                     <div className="col-md-6 text-muted">Gender: <span className="text-dark">{initialData.gender}</span></div>
                     <div className="col-md-6 text-muted">Religion: <span className="text-dark">{initialData?.religion || "-"}</span></div>
-                    <div className="col-md-6 text-muted">POB: <span className="text-dark">{initialData?.pob || "-"}</span></div>
-                    <div className="col-md-6 text-muted">DOB: <span className="text-dark">{initialData?.dob || "-"}</span></div>
-                    <div className="col-md-12 text-muted">Resident ID: <span className="text-dark">{maskResidentId(initialData?.resident_id) || "-"}</span></div>
+                    <div className="col-md-6 text-muted">Place Of Birth: <span className="text-dark">{initialData?.pob || "-"}</span></div>
+                    <div className="col-md-6 text-muted">Date Of Birth: <span className="text-dark">{initialData?.dob || "-"}</span></div>
+                    <div className="col-md-12 text-muted">NIK: <span className="text-dark">{initialData?.resident_id || "-"}</span></div>
                     <div className="col-md-12 text-muted">Address: <span className="text-dark">{initialData?.address || "-"}</span></div>
 
                     {/* Employment Information */}
                     <div className="col-md-12 fw-bold text-primary border-bottom pb-1 mt-4">Employment Information</div>
                     <div className="col-md-6 text-muted">Department: <span className="text-dark">{initialData?.cc_name || "-"}</span></div>
                     <div className="col-md-6 text-muted">Sub Company: <span className="text-dark">{initialData.sub_con_name}</span></div>
+                    <div className="col-md-6 text-muted">Grade: <span className="text-dark">{initialData.grade}</span></div>
+                    <div className="col-md-6 text-muted"></div>
                     <div className="col-md-6 text-muted">Valid From: <span className="text-dark">{initialData.v_valid_from}</span></div>
                     <div className="col-md-6 text-muted">Valid To: <span className="text-dark">{initialData?.v_valid_to || "-"}</span></div>
 

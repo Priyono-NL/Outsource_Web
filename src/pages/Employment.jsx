@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Toast, Confirm } from "..//utils/sweetalert";
 import { saveAs } from 'file-saver';
+import Select from 'react-select';
 
 import api from '../api/api';
 import Datatable from '../components/employment/Datatable';
@@ -12,31 +13,69 @@ const Employement = () => {
   const [viewForm, setViewForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [editingData, setEditingData] = useState(null);
+
   const [searchInput, setSearchInput] = useState("");
+  const [statusInput, setStatusInput] = useState("all");
+  const [subCompanyInput, setSubCompanyInput] = useState("");
+  const [departmentInput, setDepartmentInput] = useState("");
+
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [filterTerm, setFilterTerm] = useState("all");
+  const [appliedStatus, setAppliedStatus] = useState("all");
+  const [appliedSubCompany, setAppliedSubCompany] = useState("");
+  const [appliedDepartment, setAppliedDepartment] = useState("");
+
+  const [subCompanies, setSubCompanies] = useState([]);
+  const [departments, setDepartments] = useState([]);
+
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleSearch = () => { setAppliedSearch(searchInput); };
-  const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
-  const handleAdd = () => {
-      setEditingData(null);
-      setShowForm(true);
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        const resSub = await api.get('/subcom?page=1&pageSize=200'); 
+        const resDept = await api.get('/costcenter?page=1&pageSize=200'); 
+
+        setSubCompanies(resSub.data.data);
+        setDepartments(resDept.data.data);
+      } catch (error) {
+        console.error("Gagal mengambil data dropdown filter:", error);
+      }
+    };
+    fetchFilterOptions();
+  }, []);
+
+  const handleApplyFilters = () => {
+    setAppliedSearch(searchInput);
+    setAppliedStatus(statusInput);
+    setAppliedSubCompany(subCompanyInput);
+    setAppliedDepartment(departmentInput);
   };
 
-  const handleView = (data) => {
-      setEditingData(data);
-      setViewForm(true);
-  };
+  const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
+  const handleAdd = () => { setEditingData(null); setShowForm(true); };
+  const handleView = (data) => { setEditingData(data); setViewForm(true); };
 
   const handleExport = async () => {
     try {
-        const response = await api.get('/employee/export', { responseType: 'blob' });
-        saveAs(response.data, 'Data OS.xlsx')
+        const queryParams = new URLSearchParams({
+            search: appliedSearch || "",
+            status: appliedStatus || "all",
+            sub_company: appliedSubCompany || "",
+            department: appliedDepartment || ""
+        }).toString();
+
+        const response = await api.get(`/employee/export?${queryParams}`, { 
+            responseType: 'blob' 
+        });
+        
+        saveAs(response.data, 'Data_OS_Filtered.xlsx');
     } catch (error) {
         console.error("Gagal export data:", error);
-        alert("Gagal mengunduh file Excel");
+        Toast.fire({
+            icon: 'error',
+            title: 'Gagal mengunduh file Excel'
+        });
     }
   };
 
@@ -108,6 +147,16 @@ const Employement = () => {
     }
   };
 
+  const subCompanyOptions = [
+    { value: "", label: "Semua Sub Company" },
+    ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+  ];
+
+  const departmentOptions = [
+    { value: "", label: "Semua Department" },
+    ...departments.map(dept => ({ value: dept.cost_center, label: dept.org_name }))
+  ];
+
   return (
     <div className="container-fluid px-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -119,12 +168,12 @@ const Employement = () => {
             <input 
               type="text" 
               className="form-control" 
-              placeholder="Cari ID atau Nama Karyawan..." 
+              placeholder="Cari ID / Nama Karyawan / Card Number..." 
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
             />
-            <button className="btn btn-outline-primary" onClick={handleSearch}>
+            <button className="btn btn-outline-primary" onClick={handleApplyFilters}>
               Cari
             </button>
           </div>
@@ -177,13 +226,13 @@ const Employement = () => {
       <div className="card border-0 shadow-sm">
         <div className="card-body">
           <div className="row g-3 align-items-end">
-
+            {/* Filter Status */}
             <div className="col-md-3">
               <label className="form-label small fw-bold">Status</label>
               <select 
                 className="form-select"
-                value={filterTerm} 
-                onChange={(e) => setFilterTerm(e.target.value)}
+                value={statusInput} 
+                onChange={(e) => setStatusInput(e.target.value)}
               >
                 <option value="all">Semua Status</option>
                 <option value="active">Active</option>
@@ -191,6 +240,41 @@ const Employement = () => {
               </select>
             </div>
 
+            {/* Filter Sub Company */}
+            <div className="col-md-3">
+              <label className="form-label small fw-bold">Sub Company</label>
+              <Select
+                options={subCompanyOptions}
+                placeholder="Cari Sub Company..."
+                value={subCompanyOptions.find(opt => opt.value === subCompanyInput) || subCompanyOptions[0]}
+                onChange={(selectedOption) => setSubCompanyInput(selectedOption ? selectedOption.value : "")}
+                isClearable={false}
+                isSearchable={true}
+              />
+            </div>
+
+            {/* Filter Departement */}
+            <div className="col-md-3">
+              <label className="form-label small fw-bold">Department</label>
+              <Select
+                options={departmentOptions}
+                placeholder="Cari Department..."
+                value={departmentOptions.find(opt => opt.value === departmentInput) || departmentOptions[0]}
+                onChange={(selectedOption) => setDepartmentInput(selectedOption ? selectedOption.value : "")}
+                isClearable={false}
+                isSearchable={true}
+              />
+            </div>
+
+            {/* Tombol Apply Filter di Paling Kanan */}
+            <div className="col-md-3 d-flex justify-content-end">
+              <button 
+                className="btn btn-primary w-100 fw-semibold" 
+                onClick={handleApplyFilters}
+              >
+                Terapkan Filter
+              </button>
+            </div>
           </div>
         </div>
         <div className="card-body p-0">
@@ -198,7 +282,9 @@ const Employement = () => {
             refreshTrigger={refreshKey} 
             onViewClick={handleView}
             searchTerm={appliedSearch}
-            filterTerm={filterTerm}
+            filterStatus={appliedStatus}
+            filterSubCompany={appliedSubCompany}
+            filterDepartment={appliedDepartment}
           />          
         </div>
       </div>

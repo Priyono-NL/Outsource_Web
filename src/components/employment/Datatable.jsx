@@ -3,8 +3,11 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => { 
-       
+const Datatable = ({ 
+    refreshTrigger, onViewClick
+    , searchTerm, filterStatus, 
+    filterSubCompany, filterDepartment
+}) => {
     const [employees, setEmployees] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
@@ -13,7 +16,16 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/employee?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
+            const queryParams = new URLSearchParams({
+                page: currentPage,
+                pageSize: itemsPerPage,
+                search: searchTerm || "",
+                status: filterStatus || "all",
+                sub_company: filterSubCompany || "",
+                department: filterDepartment || ""
+            }).toString();
+
+            const response = await api.get(`/employee?${queryParams}`);
             const result = await response.data;      
             if (result.status === 'success') { 
                 setEmployees(result.data);
@@ -27,11 +39,11 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, filterTerm]);
+    }, [searchTerm, filterStatus, filterSubCompany, filterDepartment]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
+    }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment]);
     
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -41,7 +53,10 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => {
                 <tr>
                     <th className="py-3">Employee ID</th>
                     <th className="py-3">Name Employee</th>
+                    <th className="py-3">Gender</th>
                     <th className="py-3">Sub Company</th>
+                    <th className="py-3">Departement</th>
+                    <th className="py-3">Card Number</th>
                     <th className="py-3">Valid From</th>
                     <th className="py-3">Valid To</th>
                     <th className="py-3">Action</th>
@@ -53,7 +68,10 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => {
                         <tr key={`row-${emp.employee_id || index}`} className="border-bottom">
                             <td className="ps-3">{emp.employee_id}</td>
                             <td>{emp.person_name}</td>
+                            <td>{emp.gender}</td>
                             <td>{emp.sub_con_name}</td>
+                            <td>{emp.cc_name}</td>
+                            <td>{emp.card_number}</td>
                             <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
                             <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>
                             <td className="text-center">
@@ -65,7 +83,7 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterTerm }) => {
                     ))
                 ) : (
                     <tr>
-                        <td colSpan="6" className="text-center py-5 text-muted">
+                        <td colSpan="9" className="text-center py-5 text-muted">
                             Data tidak ditemukan
                         </td>
                     </tr>
