@@ -98,7 +98,18 @@ def delete(id):
 @osTraining_bp.route('/ostraining/export', methods=['GET'])
 def export():
     try:
-        master = osTraining.query.all()
+        search = request.args.get('search', '', type=str)
+        query = osTraining.query
+        if search:
+            query = query.join(OsEmployment, osTraining.employee_id == OsEmployment.employee_id) \
+                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            query = query.filter(
+                or_(
+                    osTraining.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsPerson.name.ilike(f"%{search}%"),                    
+                )
+            )
+        master = query.all()
         data = []
         for m in master:
             d = m.to_dict()

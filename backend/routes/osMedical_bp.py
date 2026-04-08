@@ -96,7 +96,19 @@ def delete(id):
 @osMedical_bp.route('/osmedical/export', methods=['GET'])
 def export():
     try:
-        master = osMedical.query.all()
+        search = request.args.get('search', '', type=str)
+        query = osMedical.query
+        if search:
+            query = query.join(OsEmployment, osMedical.employee_id == OsEmployment.employee_id) \
+                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            query = query.filter(
+                or_(
+                    osMedical.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsPerson.name.ilike(f"%{search}%"),                    
+                )
+            )
+
+        master = query.all()
         data = []
         for m in master:
             d = m.to_dict()

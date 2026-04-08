@@ -39,12 +39,12 @@ const Biodata = () => {
               </button>
             </div>
           </div>
-        <button 
+        {/* <button 
           className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold`}
           onClick={handleAdd}
         >
           {showForm ? 'Close Form' : '+ Add New'}
-        </button>          
+        </button>           */}
       </div>
       {showForm && (
         <BiodataForm 

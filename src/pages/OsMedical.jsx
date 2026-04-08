@@ -25,11 +25,12 @@ const OsMedical = () => {
   };
   const handleExport = async () => {
     try {
-        const response = await api.get('/osmedical/export', { responseType: 'blob' });
-        saveAs(response.data, 'Data_OS_medical.xlsx')
+      const queryParams = new URLSearchParams({ search: appliedSearch || "", }).toString();
+      const response = await api.get(`/osmedical/export?${queryParams}`, { responseType: 'blob' });
+      saveAs(response.data, 'Data_OS_medical.xlsx')
     } catch (error) {
-        console.error("Gagal export data:", error);
-        alert("Gagal mengunduh file Excel");
+      console.error("Gagal export data:", error);
+      alert("Gagal mengunduh file Excel");
     }
   };
   const handleDownloadTemplate = async () => {

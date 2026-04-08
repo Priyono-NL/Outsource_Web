@@ -25,11 +25,12 @@ const OsTraining = () => {
   };
   const handleExport = async () => {
     try {
-        const response = await api.get('/ostraining/export', { responseType: 'blob' });
-        saveAs(response.data, 'Data_OS_Training.xlsx')
+      const queryParams = new URLSearchParams({ search: appliedSearch || "", }).toString();
+      const response = await api.get(`/ostraining/export?${queryParams}`, { responseType: 'blob' });
+      saveAs(response.data, 'Data_OS_Training.xlsx')
     } catch (error) {
-        console.error("Gagal export data:", error);
-        alert("Gagal mengunduh file Excel");
+      console.error("Gagal export data:", error);
+      alert("Gagal mengunduh file Excel");
     }
   };
   const handleDownloadTemplate = async () => {

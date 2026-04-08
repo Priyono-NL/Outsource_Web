@@ -159,7 +159,7 @@ def add():
                     rec.valid_to = adjusted_valid_to
                     db.session.add(rec)                        
         db.session.flush()
-        #employment        
+        #employment
         newEmployment = OsEmployment(
             employee_id = data.get('employee_id'),
             sub_company_id = data.get('sub_company_id'),
@@ -481,6 +481,7 @@ def export():
                 "Employee ID": d['employee_id'],
                 "Sub Company": d['sub_con_name'],
                 "Department": d['cc_name'],
+                "Grade": d['grade'],
                 "Valid From": d['v_valid_from'],
                 "Valid To": d['valid_to'],
                 "Card Number": d['card_number'],
