@@ -50,6 +50,11 @@ class OsEmployment(db.Model, AuditMixin):
             'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
 
             "is_blacklist": blacklist_data.to_dict()['status_text'] if blacklist_data else "No in Blacklist",
+
+            'created_date': self.created_date.strftime('%d %b %Y') if hasattr(self.created_date, 'strftime') else None,
+            'created_by': self.created_by,
+            'modified_date': self.modified_date.strftime('%d %b %Y') if hasattr(self.modified_date, 'strftime') else None,
+            'modified_by': self.modified_by,
         }
     
 AuditMixin.register_audit_events(OsEmployment)

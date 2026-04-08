@@ -77,6 +77,12 @@ function ViewDetails({ onClose, initialData }) {
                     <div className="col-md-12 text-muted">Absence Card: <span className="text-dark">{initialData?.card_number || "-"}</span></div>
                     <div className="col-md-6 text-muted">Valid From: <span className="text-dark">{initialData?.card_number_from || "-"}</span></div>
                     <div className="col-md-6 text-muted">Valid To: <span className="text-dark">{initialData?.card_number_to || "-"}</span></div>
+
+                    <div className="col-md-12 fw-bold text-primary border-bottom pb-1 mt-4">Change Log</div>
+                    <div className="col-md-6 text-muted">Created Date: <span className="text-dark">{initialData?.created_date || "-"}</span></div>
+                    <div className="col-md-6 text-muted">Created By: <span className="text-dark">{initialData?.created_by || "-"}</span></div>
+                    <div className="col-md-6 text-muted">Modified Date: <span className="text-dark">{initialData?.modified_date || "-"}</span></div>
+                    <div className="col-md-6 text-muted">Modified By: <span className="text-dark">{initialData?.modified_by || "-"}</span></div>
                   </div>
                 </div>
               </div>

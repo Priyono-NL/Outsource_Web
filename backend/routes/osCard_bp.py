@@ -22,11 +22,12 @@ def index():
         now = datetime.now()
         if search:
             query = query.join(OsEmployment, OsCard.employee_id == OsEmployment.id) \
-                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+                    .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
-                    OsPerson.name.ilike(f"%{search}%"),                    
+                    OsPerson.name.ilike(f"%{search}%"),
+                    OsCard.card_number.ilike(f"%{search}%"),
                 )
             )
         if filter == 'active':

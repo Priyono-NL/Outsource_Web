@@ -248,7 +248,7 @@ const Employement = () => {
                 placeholder="Cari Sub Company..."
                 value={subCompanyOptions.find(opt => opt.value === subCompanyInput) || subCompanyOptions[0]}
                 onChange={(selectedOption) => setSubCompanyInput(selectedOption ? selectedOption.value : "")}
-                isClearable={false}
+                isClearable={true}
                 isSearchable={true}
               />
             </div>
@@ -261,7 +261,7 @@ const Employement = () => {
                 placeholder="Cari Department..."
                 value={departmentOptions.find(opt => opt.value === departmentInput) || departmentOptions[0]}
                 onChange={(selectedOption) => setDepartmentInput(selectedOption ? selectedOption.value : "")}
-                isClearable={false}
+                isClearable={true}
                 isSearchable={true}
               />
             </div>

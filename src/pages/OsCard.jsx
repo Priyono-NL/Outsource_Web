@@ -30,7 +30,7 @@ const OsCard = () => {
               <input 
                 type="text" 
                 className="form-control" 
-                placeholder="Cari ID atau Nama Karyawan..." 
+                placeholder="Cari ID atau Nama Karyawan atau No Kartu ..." 
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

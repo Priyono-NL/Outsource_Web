@@ -7,6 +7,7 @@ from sqlalchemy import or_
 
 from extensions import db
 from .auth_bp import login_required
+from model.blacklist import OsBlacklist
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.subCompany import SubCompany
@@ -89,11 +90,11 @@ def search_employee(emp_id):
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
             .filter(
                 OsEmployment.employee_code == emp_id,
-                OsEmployment.valid_from <= now,
-                or_(
-                    OsEmployment.valid_to >= now,
-                    OsEmployment.valid_to == None
-                )
+                # OsEmployment.valid_from <= now,
+                # or_(
+                #     OsEmployment.valid_to >= now,
+                #     OsEmployment.valid_to == None
+                # )
             ) \
             .first()
         if result:
@@ -105,7 +106,28 @@ def search_employee(emp_id):
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():
     try:
-        data = request.json if request.is_json else request.form        
+        data = request.json if request.is_json else request.form
+
+        new_start_date = datetime.strptime(data.get('valid_from'), '%Y-%m-%d').date()
+        adjusted_valid_to = new_start_date - timedelta(days=1)
+        employee_code_input = data.get('employee_id')
+        card_number_input = data.get('card_number')
+
+        if card_number_input:
+            duplicate_card = OsCard.query.filter(
+                OsCard.card_number == card_number_input,
+                (OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None)
+            ).first()
+
+            if duplicate_card:
+                raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh record lain.")
+            
+        if not data.get('nama') or str(data.get('nama')).strip() == "":
+            return jsonify({"status": "error", "message": "Nama wajib diisi!"}), 400
+
+        if not data.get('employee_id') or str(data.get('employee_id')).strip() == "":
+            return jsonify({"status": "error", "message": "ID Karyawan wajib diisi!"}), 400
+        
         #person
         person_id = data.get('person_id')
         if not person_id or person_id == "" or person_id == "undefined":
@@ -139,39 +161,42 @@ def add():
         db.session.add(target_person)
         db.session.flush()
         person_id = target_person.person_id
-        #cek data lama        
-        new_start_date = datetime.strptime(data.get('valid_from'), '%Y-%m-%d').date()
-        adjusted_valid_to = new_start_date - timedelta(days=1)
-        employee_code_input = data.get('employee_id')
+
+        
+
         existing_active_emp = OsEmployment.query.filter(
             OsEmployment.employee_code == employee_code_input,
             (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
         ).first()
-        active_emp_pk_id = None
+
         if existing_active_emp:
-            existing_active_emp.valid_to = adjusted_valid_to
-            db.session.add(existing_active_emp)
             active_emp_pk_id = existing_active_emp.id
-        if active_emp_pk_id:
+            
             target_models = [
-                {"model": OsEmployment, "filter_field": "person_id", "filter_value": person_id},
-                {"model": OsCard, "filter_field": "card_number", "filter_value": data.get('card_number')},
-                {"model": OsGrade, "filter_field": "employee_id", "filter_value": active_emp_pk_id},
-                {"model": OsCostCenter, "filter_field": "employee_id", "filter_value": active_emp_pk_id},
-                {"model": Alokasi, "filter_field": "employee_id", "filter_value": active_emp_pk_id},
+                {"model": OsEmployment, "field": "person_id",   "val": person_id},
+                {"model": OsCard,       "field": "card_number", "val": card_number_input},
+                {"model": OsGrade,      "field": "employee_id", "val": active_emp_pk_id},
+                {"model": OsCostCenter, "field": "employee_id", "val": active_emp_pk_id},
+                {"model": Alokasi,      "field": "employee_id", "val": active_emp_pk_id},
             ]
-            for item in target_models:
+
+            for item in target_models:                
                 Model = item["model"]
-                field = item["filter_field"]
-                val = item["filter_value"]
+                field_name = item["field"]
+                value = item["val"]
+
+                if value is None:
+                    continue
+
                 old_records = Model.query.filter(
-                    getattr(Model, field) == val,
-                    (Model.valid_to >= new_start_date) | (Model.valid_to == None) 
+                    getattr(Model, field_name) == value,
+                    (Model.valid_to >= new_start_date) | (Model.valid_to == None)
                 ).all()
-                if old_records:
-                    for rec in old_records:
-                        rec.valid_to = adjusted_valid_to
-                        db.session.add(rec)                        
+
+                for rec in old_records:
+                    rec.valid_to = adjusted_valid_to
+                    db.session.add(rec)
+            
         db.session.flush()
         #employment
         newEmployment = OsEmployment(
@@ -273,8 +298,12 @@ def upload():
     
     try:
         df = pd.read_excel(file, dtype={'card number': str, 'employee_id': str, 'grade': str, 'resident_id': str})
-        df = df.where(pd.notnull(df), None)
-        
+
+        def clean(val):
+            if pd.isna(val) or val == 'nan' or val == 'NaN':
+                return None
+            return val
+
         required_columns = ['nama', 'resident_id', 'employee_id', 'SubCompany', 'Department', 'valid from']
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
@@ -287,61 +316,69 @@ def upload():
             line_number = index + 2
             try:
                 with db.session.begin_nested():
-                    nama_input = str(row['nama']).strip() if row.get('nama') else None
-                    nik_input = str(row['resident_id']).strip() if row.get('resident_id') else None
-                    emp_code_input = str(row['employee_id']).strip() if row.get('employee_id') else None
+                    nama_input = str(row['nama']).strip() if clean(row.get('nama')) else None
+                    nik_input = clean(row.get('resident_id'))
+                    emp_code_input = clean(row.get('employee_id'))
 
                     if not nama_input or not nik_input or not emp_code_input:
                         raise ValueError("Nama, NIK, dan Employee ID tidak boleh kosong.")
 
-                    # --- PERSON LOGIC ---
+                    # --- 1. PERSON LOGIC & BLACKLIST CHECK ---
                     person_id = None
                     existing_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
                     
                     if existing_person:
-                        person_id = existing_person.person_id 
+                        person_id = existing_person.person_id
+                        is_blacklisted = OsBlacklist.query.filter_by(person_id=person_id).first()
+                        if is_blacklisted:
+                            raise ValueError(f"Karyawan '{nama_input}' (NIK: {nik_input}) masuk daftar BLACKLIST.")
+                        if not existing_person.resident_id:
+                            existing_person.resident_id = nik_input
                     else:
                         person_by_name = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()
                         if person_by_name:
                             person_id = person_by_name.person_id
+                            is_blacklisted = OsBlacklist.query.filter_by(person_id=person_id).first()
+                            if is_blacklisted:
+                                raise ValueError(f"Karyawan '{nama_input}' masuk daftar BLACKLIST via Nama.")
                             if not person_by_name.resident_id:
                                 person_by_name.resident_id = nik_input
                         else:
                             newPerson = OsPerson(
                                 name=nama_input,
-                                gender=row.get('gender'),
-                                pob=row.get('pob'),
-                                dob=row.get('dob'),
-                                religion=row.get('religion'),
+                                gender=clean(row.get('gender')),
+                                pob=clean(row.get('pob')),
+                                dob=clean(row.get('dob')),
+                                religion=clean(row.get('religion')),
                                 resident_id=nik_input,
-                                address=row.get('address')
+                                address=clean(row.get('address'))
                             )
                             db.session.add(newPerson)
                             db.session.flush()
                             person_id = newPerson.person_id
 
-                    # --- SUBCOMPANY CHECK ---
-                    subCom_name = str(row['SubCompany']).strip()
+                    # --- 2. SUBCOMPANY & DEPARTMENT CHECK ---
+                    subCom_name = str(row['SubCompany']).strip() if clean(row.get('SubCompany')) else ""
                     exist_subCom = SubCompany.query.filter(SubCompany.sub_company_name.ilike(subCom_name)).first()
                     if not exist_subCom:
-                        raise ValueError(f"Sub Company '{subCom_name}' tidak terdaftar di sistem.")
+                        raise ValueError(f"Sub Company '{subCom_name}' tidak terdaftar.")
                     
-                    # --- DEPARTMENT CHECK ---
-                    cc_name = str(row['Department']).strip()
+                    cc_name = str(row['Department']).strip() if clean(row.get('Department')) else ""
                     exist_cc = costCenter.query.filter(costCenter.org_name.ilike(cc_name)).first()
                     if not exist_cc:
                         raise ValueError(f"Department/CC '{cc_name}' tidak ditemukan.")
 
-                    # --- SCD LOGIC: VALIDATION & HISTORY CLOSING ---
-                    raw_start_date = row.get('valid from')
+                    # --- 3. SCD LOGIC (HISTORY CLOSING) ---
+                    raw_start_date = clean(row.get('valid from'))
                     if not raw_start_date:
                         raise ValueError("Tanggal 'valid from' tidak boleh kosong.")
-                         
+                    
+                    # Parsing Date
                     if isinstance(raw_start_date, str):
                         new_start_date = datetime.strptime(raw_start_date.strip(), '%Y-%m-%d').date()
                     else:
-                        new_start_date = raw_start_date.date()
-                        
+                        new_start_date = raw_start_date.date() if hasattr(raw_start_date, 'date') else raw_start_date
+                    
                     adjusted_valid_to = new_start_date - timedelta(days=1)
                     
                     existing_active_emp = OsEmployment.query.filter(
@@ -350,50 +387,28 @@ def upload():
                     ).first()
 
                     active_emp_pk_id = None
-
                     if existing_active_emp:
                         existing_active_emp.valid_to = adjusted_valid_to
                         db.session.add(existing_active_emp)
-
                         active_emp_pk_id = existing_active_emp.id
-                        
-                        if existing_active_emp.person_id != person_id:
-                            print(f"INFO: ID {emp_code_input} diambil alih dari {existing_active_emp.person.name}")
 
-                    if active_emp_pk_id:
-                        target_models = [
-                            {"model": OsCard, "filter_field": "card_number", "filter_value": str(row.get('card number', '')).strip()},
-                            {"model": OsGrade, "filter_field": "employee_id", "filter_value": active_emp_pk_id},
-                            {"model": OsCostCenter, "filter_field": "employee_id", "filter_value": active_emp_pk_id},
-                            {"model": Alokasi, "filter_field": "employee_id", "filter_value": active_emp_pk_id},
-                        ]
-                        for item in target_models:
-                            Model = item["model"]
-                            field = item["filter_field"]
-                            val = item["filter_value"]
-                            
-                            filter_condition = getattr(Model, field) == val if field == "card_number" else Model.employee_id == active_emp_pk_id
-                            
-                            old_records = Model.query.filter(
-                                filter_condition,
-                                (Model.valid_to >= new_start_date) | (Model.valid_to == None) 
-                            ).all()
-                            
-                            if old_records:
-                                for rec in old_records:
-                                    rec.valid_to = adjusted_valid_to
-                                    db.session.add(rec)
+                        if active_emp_pk_id:
+                            for M in [OsCard, OsGrade, OsCostCenter, Alokasi]:
+                                field = "card_number" if M == OsCard else "employee_id"
+                                val = str(row.get('card number', '')).strip() if M == OsCard else active_emp_pk_id
+                                
+                                old_recs = M.query.filter(
+                                    getattr(M, field) == val,
+                                    (M.valid_to >= new_start_date) | (M.valid_to == None)
+                                ).all()
+                                for r in old_recs:
+                                    r.valid_to = adjusted_valid_to
+                                    db.session.add(r)
                                     
                     db.session.flush()
 
-                    # --- INSERT NEW RECORDS ---                    
-                    raw_valid_to = row.get('valid to')
-                    new_valid_to = None
-                    if raw_valid_to and pd.notna(raw_valid_to):
-                        if isinstance(raw_valid_to, str):
-                            new_valid_to = datetime.strptime(raw_valid_to.strip(), '%Y-%m-%d').date()
-                        else:
-                            new_valid_to = raw_valid_to.date()
+                    # --- 4. INSERT DATA BARU (Handling NaN untuk valid_to) ---
+                    new_valid_to = clean(row.get('valid to')) # Akan jadi None jika kosong/NaN
 
                     newEmployment = OsEmployment(
                         employee_code=emp_code_input,
@@ -406,39 +421,38 @@ def upload():
                     db.session.flush()
 
                     # Card
-                    card_num = str(row.get('card number', '')).strip()
-                    if card_num and card_num.lower() != 'none':
+                    card_num = clean(row.get('card number'))
+                    if card_num and str(card_num).lower() != 'none':
                         db.session.add(OsCard(
-                            employee_id=newEmployment.id, # Gunakan PK Baru
-                            card_number=card_num,
-                            valid_from=row.get('card valid from'),
-                            valid_to=row.get('card valid to')
+                            employee_id=newEmployment.id,
+                            card_number=str(card_num).strip(),
+                            valid_from=clean(row.get('card valid from')),
+                            valid_to=clean(row.get('card valid to')) # SEKARANG AMAN (None)
                         ))
 
                     # Grade
-                    grade_val = str(row.get('grade', '')).strip()
-                    if grade_val and grade_val.lower() != 'none':
+                    grade_val = clean(row.get('grade'))
+                    if grade_val:
                         db.session.add(OsGrade(
-                            employee_id=newEmployment.id, # Gunakan PK Baru
-                            grade=grade_val,
+                            employee_id=newEmployment.id,
+                            grade=str(grade_val).strip(),
                             valid_from=new_start_date,
                             valid_to=new_valid_to
                         ))
 
-                    # Cost Center
+                    # Cost Center & Alokasi (Gunakan new_valid_to yang sudah bersih)
                     db.session.add(OsCostCenter(
-                        employee_id=newEmployment.id, # Gunakan PK Baru
+                        employee_id=newEmployment.id,
                         cc_id=exist_cc.cost_center,
                         valid_from=new_start_date,
                         valid_to=new_valid_to
                     ))
 
-                    # Canteen Allocation
                     cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id)\
-                                          .filter(canteenDetail.cc_id == exist_cc.cost_center).first()
+                                        .filter(canteenDetail.cc_id == exist_cc.cost_center).first()
                     if cc_def:
                         db.session.add(Alokasi(
-                            employee_id=newEmployment.id, # Gunakan PK Baru
+                            employee_id=newEmployment.id,
                             canteen_id=cc_def.canteen_id,
                             valid_from=new_start_date,
                             valid_to=new_valid_to
@@ -450,7 +464,6 @@ def upload():
                 errors.append(f"Baris {line_number}: {str(ve)}")
             except Exception as e:
                 errors.append(f"Baris {line_number}: {str(e)}")
-                print(f"Detail Error Baris {line_number}: {str(e)}")
 
         db.session.commit()
 
@@ -469,9 +482,11 @@ def upload():
                 "errors": errors
             }), 400
 
+        return jsonify({"status": "success", "message": f"Berhasil mengimport {success_count} data.", "errors": errors}), 200
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({"message": f"Terjadi kesalahan fatal saat membaca file: {str(e)}"}), 500
+        return jsonify({"message": f"Terjadi kesalahan fatal: {str(e)}"}), 500
 
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():
@@ -558,6 +573,35 @@ def get_employee_stats():
             "total_inactive": total_inactive,
         }
     }), 200
+
+@employee_bp.route('/employee/deactivate/<int:pk_id>', methods=['PUT'])
+def deactivate_employee(pk_id):
+    try:
+        emp = OsEmployment.query.get(pk_id)
+        if not emp:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
+
+        yesterday = datetime.now().date() - timedelta(days=1)
+        emp.valid_to = yesterday
+        db.session.add(emp)
+
+        target_models = [OsCard, OsGrade, OsCostCenter, Alokasi]
+        for Model in target_models:
+            active_records = Model.query.filter(
+                Model.employee_id == pk_id,
+                (Model.valid_to >= yesterday) | (Model.valid_to == None)
+            ).all()            
+            for rec in active_records:
+                rec.valid_to = yesterday
+                db.session.add(rec)
+        db.session.commit()
+        return jsonify({
+            "status": "success", 
+            "message": f"Karyawan {emp.employee_code} berhasil dinonaktifkan per tanggal {yesterday.strftime('%d %b %Y')}"
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # @employee_bp.before_request
 # @login_required

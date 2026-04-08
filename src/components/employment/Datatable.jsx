@@ -44,6 +44,35 @@ const Datatable = ({
     useEffect(() => {
         fetchData();
     }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment]);
+
+    const handleDeactivate = async (pkId, empCode) => {
+        const result = await Confirm.fire({
+            title: `Nonaktifkan ${empCode}?`,
+            text: "Masa berlaku akan diakhiri per kemarin (H-1).",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Ya, Nonaktifkan!',
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
+            try {
+            const response = await api.put(`/employee/deactivate/${pkId}`);
+            if (response.data.status === 'success') {
+                Toast.fire({ icon: 'success', title: response.data.message });
+                // Panggil fungsi untuk refresh data tabel Anda (misal: fetchData())
+                fetchData(); 
+            }
+            } catch (error) {
+            Toast.fire({ 
+                icon: 'error', 
+                title: error.response?.data?.message || "Gagal menonaktifkan karyawan" 
+            });
+            }
+        }
+        };
     
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -75,9 +104,18 @@ const Datatable = ({
                             <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
                             <td>{emp.valid_to ? emp.v_valid_to : '-'}</td>
                             <td className="text-center">
-                                <button className="btn btn-sm btn-outline-primary" onClick={() => onViewClick(emp)}>
-                                    View
+                                <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onViewClick(emp)}>
+                                    <i className="bi bi-eye"></i> View
                                 </button>
+                                {(emp.valid_to === null || new Date(emp.valid_to) >= new Date()) && (
+                                    <button 
+                                        className="btn btn-sm btn-outline-danger me-2"
+                                        title="Nonaktifkan Karyawan"
+                                        onClick={() => handleDeactivate(emp.id, emp.employee_code)}
+                                    >
+                                        <i className="bi bi-person-x"></i> Deactivate
+                                    </button>
+                                )}
                             </td>
                         </tr>
                     ))
