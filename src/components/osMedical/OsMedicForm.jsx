@@ -5,6 +5,7 @@ import api from '../../api/api';
 function OsMedicForm({ onClose, onSuccess, initialData }) {
   const [medical, setMedical] = useState([]);
   const [empId, setEmpId] = useState('');
+  const [empPk, setEmpPk] = useState('');
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
@@ -26,13 +27,14 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
 
   useEffect(() => {
         if (initialData && formRef.current && medical.length > 0) {
-          setEmpId(initialData.employee_id);
-          formRef.current.employee_id.value = initialData.employee_id;
+          setEmpId(initialData.employee_code || ''); 
+          setEmpPk(initialData.employee_id || '');
+          formRef.current.employee_code.value = initialData.employee_code;
           formRef.current.medical_id.value = initialData.medical_id;
           formRef.current.medical_date.value = initialData.medical_date;
           formRef.current.medical_result.value = initialData.medical_result;
           formRef.current.medical_notes.value = initialData.medical_notes;
-          handleSearchEmployee(initialData.employee_id)
+          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
         }
     }, [initialData, , medical]);
 
@@ -40,10 +42,15 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
+    const payload = {
+      ...data,
+      employee_id: empPk
+    };
+    delete payload.employee_code;
     try {
       const response = initialData 
-            ? await api.put(`/osmedical/${initialData.osMedical_id}`, data) 
-            : await api.post('/osmedical/submit', data);
+            ? await api.put(`/osmedical/${initialData.osMedical_id}`, payload) 
+            : await api.post('/osmedical/submit', payload);
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
@@ -65,12 +72,14 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
       const response = await api.get(`/employee/search/${id}`);
       if (response.data.status === "success") { 
         setFullName(response.data.full_name);
+        setEmpPk(response.data.emp_pk_id);
         setIsEmployeeFound(true);
       }
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
+      setEmpPk('');
       setIsEmployeeFound(false);
-      toast.warning("ID Karyawan tidak ditemukan.");
+      Toast.warning("ID Karyawan tidak ditemukan.");
     } finally { setIsSearching(false); }
   };
 
@@ -80,6 +89,7 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
     if (value === "") {
       setIsEmployeeFound(false);
       setFullName("");
+      setEmpPk("");
       setFormData({
         canteen_id: "",
         valid_from: "",
@@ -120,7 +130,7 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
                         <label className="form-label small fw-bold">Employee ID</label>
                         <input 
                           type="text" 
-                          name="employee_id" 
+                          name="employee_code" 
                           className="form-control" 
                           required
                           value={empId}

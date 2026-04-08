@@ -84,9 +84,17 @@ def index():
 @employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
 def search_employee(emp_id):
     try:
+        now = datetime.now()
         result = db.session.query(OsPerson.name, OsEmployment.id) \
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
-            .filter(OsEmployment.employee_code == emp_id) \
+            .filter(
+                OsEmployment.employee_code == emp_id,
+                OsEmployment.valid_from <= now,
+                or_(
+                    OsEmployment.valid_to >= now,
+                    OsEmployment.valid_to == None
+                )
+            ) \
             .first()
         if result:
             return jsonify({"status": "success", "full_name": result.name, "emp_pk_id": result.id}), 200
