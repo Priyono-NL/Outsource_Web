@@ -6,6 +6,7 @@ import api from '../../api/api';
 function OsCCForm({ onClose, onSuccess, initialData }) {
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [empId, setEmpId] = useState('');
+  const [empPk, setEmpPk] = useState('');
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
@@ -15,15 +16,16 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
   
   useEffect(() => {
         if (initialData && formRef.current) {
-          setEmpId(initialData.employee_id);
+          setEmpId(initialData.employee_code || ''); 
+          setEmpPk(initialData.employee_id || '');
           setselectCCId(initialData.cc_id);
-          formRef.current.employee_id.value = initialData.employee_id;
+          formRef.current.employee_code.value = initialData.employee_code;
           formRef.current.cc_id.value = initialData.cc_id;
           formRef.current.valid_from.value = initialData.valid_from;
           formRef.current.valid_to.value = initialData.valid_to;
           const isNoLimitActive = !initialData.valid_to;
           setIsNoLimit(isNoLimitActive);
-          handleSearchEmployee(initialData.employee_id)
+          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
         }
     }, [initialData]);
 
@@ -33,12 +35,14 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     const payload = {
       ...data,
+      employee_id: empPk,
       valid_to: isNoLimit ? null : (data.valid_to || null) 
     };
+    delete payload.employee_code;
     try {
       const response = initialData 
             ? await api.put(`/oscc/${initialData.id_oscc}`, payload) 
-            : await api.post('/oscc/submit', data);
+            : await api.post('/oscc/submit', payload);
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
@@ -60,21 +64,24 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
       const response = await api.get(`/employee/search/${id}`);
       if (response.data.status === "success") { 
         setFullName(response.data.full_name);
+        setEmpPk(response.data.emp_pk_id);
         setIsEmployeeFound(true);
       }
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
+      setEmpPk('');
       setIsEmployeeFound(false);
-      toast.warning("ID Karyawan tidak ditemukan.");
+      Toast.warning("ID Karyawan tidak ditemukan.");
     } finally { setIsSearching(false); }
   };
 
   const handleIdChange = (e) => {
     const value = e.target.value;
-    setEmpId(value);
+    setEmpId(value);    
     if (value === "") {
       setIsEmployeeFound(false);
       setFullName("");
+      setEmpPk("");
       setFormData({
         cc_id: "",
         valid_from: "",
@@ -144,7 +151,7 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
                         <label className="form-label small fw-bold">Employee ID</label>
                         <input 
                           type="text" 
-                          name="employee_id" 
+                          name="employee_code" 
                           className="form-control" 
                           required
                           value={empId}

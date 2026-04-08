@@ -47,7 +47,7 @@ def index():
             query = query.join(OsCard)    
             query = query.filter(
                 or_(
-                    OsEmployment.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),
                     OsCard.card_number.ilike(f"%{search}%")
                 )
@@ -84,12 +84,12 @@ def index():
 @employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
 def search_employee(emp_id):
     try:
-        result = db.session.query(OsPerson.name) \
+        result = db.session.query(OsPerson.name, OsEmployment.id) \
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
-            .filter(OsEmployment.employee_id == emp_id) \
+            .filter(OsEmployment.employee_code == emp_id) \
             .first()
         if result:
-            return jsonify({"status": "success", "full_name": result.name}), 200
+            return jsonify({"status": "success", "full_name": result.name, "emp_pk_id": result.id}), 200
         return jsonify({"status": "error", "message": "Employee ID tidak Ada"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -138,7 +138,7 @@ def add():
             OsEmployment.person_id == person_id,
             (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
         ).first()
-        active_emp_id = current_employment.employee_id if current_employment else data.get('employee_id')
+        active_emp_id = current_employment.employee_code if current_employment else data.get('employee_code')
         target_models = [
             {"model": OsEmployment, "filter_field": "person_id", "filter_value": person_id},
             {"model": OsCard, "filter_field": "card_number", "filter_value": data.get('card_number')},
@@ -161,7 +161,7 @@ def add():
         db.session.flush()
         #employment
         newEmployment = OsEmployment(
-            employee_id = data.get('employee_id'),
+            employee_code = data.get('employee_id'),
             sub_company_id = data.get('sub_company_id'),
             person_id = person_id,
             valid_from = data.get('valid_from'),
@@ -171,7 +171,7 @@ def add():
         db.session.flush()
         #card
         newCard = OsCard(
-            employee_id = newEmployment.employee_id,
+            employee_id = newEmployment.id,
             card_number = data.get('card_number'),
             valid_from = data.get('c_valid_from'),
             valid_to = data.get('c_valid_to')
@@ -179,7 +179,7 @@ def add():
         db.session.add(newCard)
         #grade        
         newGrade = OsGrade(
-            employee_id = newEmployment.employee_id,
+            employee_id = newEmployment.id,
             grade = data.get('grade'),
             valid_from = data.get('valid_from'),
             valid_to = data.get('valid_to')
@@ -187,7 +187,7 @@ def add():
         db.session.add(newGrade)
         #org cost center
         newCC = OsCostCenter(
-            employee_id = newEmployment.employee_id,
+            employee_id = newEmployment.id,
             cc_id = data.get('cc_id'),
             valid_from = data.get('valid_from'),
             valid_to = data.get('valid_to')
@@ -197,7 +197,7 @@ def add():
         if (data.get('cc_id')):
             cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(data.get('cc_id'))).first()
             newAlokasi = Alokasi(
-                employee_id = newEmployment.employee_id,
+                employee_id = newEmployment.id,
                 canteen_id = cc_def.canteen_id,
                 valid_from = data.get('valid_from'),
                 valid_to = data.get('valid_to')
@@ -352,7 +352,7 @@ def upload():
                         raise Exception(f"ID '{emp_id}' sudah digunakan oleh '{nama_lama}'.")
 
                     newEmployment = OsEmployment(
-                        employee_id=emp_id,
+                        employee_code=emp_id,
                         sub_company_id=exist_subCom.sub_company_id,
                         person_id=person_id,
                         valid_from=row.get('valid from'),
@@ -363,7 +363,7 @@ def upload():
 
                     # Card
                     db.session.add(OsCard(
-                        employee_id=emp_id,
+                        employee_id=id,
                         card_number=str(row.get('card number', '')).strip(),
                         valid_from=row.get('card valid from'),
                         valid_to=row.get('card valid to')
@@ -371,7 +371,7 @@ def upload():
 
                     # Grade
                     db.session.add(OsGrade(
-                        employee_id=emp_id,
+                        employee_id=id,
                         grade=str(row.get('grade', '')).strip(),
                         valid_from=row.get('valid from'),
                         valid_to=row.get('valid to')
@@ -384,7 +384,7 @@ def upload():
                         raise ValueError(f"Department/CC '{cc_name}' tidak ditemukan.")
 
                     db.session.add(OsCostCenter(
-                        employee_id=emp_id,
+                        employee_id=id,
                         cc_id=exist_cc.cost_center,
                         valid_from=row.get('valid from'),
                         valid_to=row.get('valid to')
@@ -395,7 +395,7 @@ def upload():
                                           .filter(canteenDetail.cc_id == exist_cc.cost_center).first()
                     if cc_def:
                         db.session.add(Alokasi(
-                            employee_id=emp_id,
+                            employee_id=id,
                             canteen_id=cc_def.canteen_id,
                             valid_from=row.get('valid from'),
                             valid_to=row.get('valid to')
@@ -478,7 +478,7 @@ def export():
                 "Date of Birth": d['v_dob'],                
                 "Resident ID": d['resident_id'],
                 "Address": d['address'],
-                "Employee ID": d['employee_id'],
+                "Employee ID": d['employee_code'],
                 "Sub Company": d['sub_con_name'],
                 "Department": d['cc_name'],
                 "Grade": d['grade'],

@@ -17,7 +17,12 @@ def index():
         query = OsBlacklist.query
         if search:
             query = query.join(OsPerson, OsBlacklist.person_id == OsPerson.person_id)   
-            query = query.filter(OsPerson.name.ilike(f"%{search}%"))
+            query = query.filter(
+                or_(
+                    OsPerson.name.ilike(f"%{search}%"),
+                    OsPerson.resident_id.ilike(f"%{search}%")
+                )
+            )
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",

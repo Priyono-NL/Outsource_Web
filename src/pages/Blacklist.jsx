@@ -29,7 +29,7 @@ const Blacklist = () => {
               <input 
                 type="text" 
                 className="form-control" 
-                placeholder="Cari ID atau Nama Karyawan..." 
+                placeholder="Cari NIK atau Nama Karyawan..." 
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

@@ -19,11 +19,11 @@ def index():
         query = Alokasi.query
         now = datetime.now()
         if search:
-            query = query.join(OsEmployment, Alokasi.employee_id == OsEmployment.employee_id) \
+            query = query.join(OsEmployment, Alokasi.employee_id == OsEmployment.id) \
                      .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
-                    Alokasi.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )

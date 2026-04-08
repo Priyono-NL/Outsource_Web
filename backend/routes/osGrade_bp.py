@@ -20,11 +20,11 @@ def index():
         filter = request.args.get('filter', '', type=str)
         query = OsGrade.query
         if search:
-            query = query.join(OsEmployment, OsGrade.employee_id == OsEmployment.employee_id) \
+            query = query.join(OsEmployment, OsGrade.employee_id == OsEmployment.id) \
                      .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
-                    OsGrade.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )

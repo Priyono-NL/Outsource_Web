@@ -5,6 +5,7 @@ import api from '../../api/api';
 function OsGradeForm({ onClose, onSuccess, initialData }) {
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [empId, setEmpId] = useState('');
+  const [empPk, setEmpPk] = useState('');
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
@@ -12,14 +13,15 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
   
   useEffect(() => {
         if (initialData && formRef.current) {
-          setEmpId(initialData.employee_id);
-          formRef.current.employee_id.value = initialData.employee_id;
+          setEmpId(initialData.employee_code || ''); 
+          setEmpPk(initialData.employee_id || '');
+          formRef.current.employee_code.value = initialData.employee_code;
           formRef.current.grade.value = initialData.grade;
           formRef.current.valid_from.value = initialData.valid_from;
           formRef.current.valid_to.value = initialData.valid_to;
           const isNoLimitActive = !initialData.valid_to;
           setIsNoLimit(isNoLimitActive);
-          handleSearchEmployee(initialData.employee_id)
+          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
         }
     }, [initialData]);
 
@@ -29,12 +31,14 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     const payload = {
       ...data,
+      employee_id: empPk,
       valid_to: isNoLimit ? null : (data.valid_to || null) 
     };
+    delete payload.employee_code;
     try {
       const response = initialData 
             ? await api.put(`/osgrade/${initialData.grade_id}`, payload) 
-            : await api.post('/osgrade/submit', data);
+            : await api.post('/osgrade/submit', payload);
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
@@ -56,12 +60,14 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
       const response = await api.get(`/employee/search/${id}`);
       if (response.data.status === "success") { 
         setFullName(response.data.full_name);
+        setEmpPk(response.data.emp_pk_id);
         setIsEmployeeFound(true);
       }
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
+      setEmpPk('');
       setIsEmployeeFound(false);
-      toast.warning("ID Karyawan tidak ditemukan.");
+      Toast.warning("ID Karyawan tidak ditemukan.");
     } finally { setIsSearching(false); }
   };
 
@@ -71,6 +77,7 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
     if (value === "") {
       setIsEmployeeFound(false);
       setFullName("");
+      setEmpPk("");
       setFormData({
         grade: "",
         valid_from: "",
@@ -119,7 +126,7 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
                         <label className="form-label small fw-bold">Employee ID</label>
                         <input 
                           type="text" 
-                          name="employee_id" 
+                          name="employee_code" 
                           className="form-control" 
                           required
                           value={empId}

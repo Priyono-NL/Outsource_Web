@@ -6,6 +6,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
   const [canteens, setCanteens] = useState([]);
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [empId, setEmpId] = useState('');
+  const [empPk, setEmpPk] = useState('');
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
@@ -27,14 +28,15 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
 
   useEffect(() => {
         if (initialData && formRef.current && canteens.length > 0) {
-          setEmpId(initialData.employee_id);
-          formRef.current.employee_id.value = initialData.employee_id;
+          setEmpId(initialData.employee_code || ''); 
+          setEmpPk(initialData.employee_id || '');
+          formRef.current.employee_code.value = initialData.employee_code;
           formRef.current.canteen_id.value = initialData.canteen_id;
           formRef.current.valid_from.value = initialData.valid_from;
           formRef.current.valid_to.value = initialData.valid_to;
           const isNoLimitActive = !initialData.valid_to;
           setIsNoLimit(isNoLimitActive);
-          handleSearchEmployee(initialData.employee_id)
+          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
         }
     }, [initialData, , canteens]);
 
@@ -44,12 +46,14 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     const payload = {
       ...data,
+      employee_id: empPk,
       valid_to: isNoLimit ? null : (data.valid_to || null) 
     };
+    delete payload.employee_code;
     try {
       const response = initialData 
             ? await api.put(`/alokasi/${initialData.alokasi_id}`, payload) 
-            : await api.post('/alokasi/submit', data);
+            : await api.post('/alokasi/submit', payload);
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
@@ -71,10 +75,12 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
       const response = await api.get(`/employee/search/${id}`);
       if (response.data.status === "success") { 
         setFullName(response.data.full_name);
+        setEmpPk(response.data.emp_pk_id);  
         setIsEmployeeFound(true);
       }
     } catch (err) {
       setFullName('Karyawan ID tidak terdaftar!');
+      setEmpPk('');
       setIsEmployeeFound(false);
       Toast.fire({ icon: 'warning', title: 'ID Karyawan tidak ditemukan' });
     } finally { setIsSearching(false); }
@@ -86,6 +92,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     if (value === "") {
       setIsEmployeeFound(false);
       setFullName("");
+      setEmpPk("");
       setFormData({
         canteen_id: "",
         valid_from: "",
@@ -134,7 +141,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
                         <label className="form-label small fw-bold">Employee ID</label>
                         <input 
                           type="text" 
-                          name="employee_id" 
+                          name="employee_code" 
                           className="form-control" 
                           required
                           value={empId}
