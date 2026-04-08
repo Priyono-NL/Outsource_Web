@@ -62,8 +62,8 @@ const BlacklistTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
             <table className="table align-middle mb-0">
             <thead className="table">
                 <tr>
-                    <th className="py-3">ID Person</th>
                     <th className="py-3">Name Person</th>
+                    <th className="py-3">NIK</th>
                     <th className="py-3">Blacklist</th>
                     <th className="py-3">Reason</th>
                     <th className='py-3'>Action</th>
@@ -71,9 +71,9 @@ const BlacklistTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
             </thead>
             <tbody>{                  
                 blacklist.map((emp, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{emp.person_id}</td>
+                    <tr key={`row-${index+1}`} className="border-bottom">                        
                         <td>{emp.person_name}</td>
+                        <td>{emp.resident_id}</td>
                         <td>{emp.status_text}</td>
                         <td>{emp.block_status ? emp.block_status : '-'}</td>
                         <td>

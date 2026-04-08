@@ -75,7 +75,7 @@ def index():
         }), 200
     except Exception as e:
         import traceback
-        traceback.print_exc()
+        traceback.print_exc()    
         return jsonify({
             "status": "error",
             "message": str(e)

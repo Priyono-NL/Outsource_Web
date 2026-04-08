@@ -75,7 +75,7 @@ const OsTrainingTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
             <tbody>{                  
                 osTraining.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{emp.employee_id}</td>
+                        <td>{emp.employee_code}</td>
                         <td>{emp.employee_name}</td>
                         <td>{emp.training_name}</td>
                         <td>{emp.v_training_date_from ? emp.v_training_date_from : '-'}</td>

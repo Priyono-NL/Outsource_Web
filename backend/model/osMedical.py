@@ -4,7 +4,7 @@ from model.base import AuditMixin
 class osMedical(db.Model, AuditMixin):
     __tablename__ = 'os_employee_medical'
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
+    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.id'))
     medical_id = db.Column(db.String(10), db.ForeignKey('medical_master.medical_id'))
     medical_date = db.Column(db.Date)
     medical_result = db.Column(db.String(50))
@@ -22,6 +22,7 @@ class osMedical(db.Model, AuditMixin):
             'medical_result': self.medical_result,
             'medical_notes': self.medical_notes,
 
+            "employee_code": self.employement.employee_code,
             "medical_name": self.medical_m.medical_name,
             "employee_name": self.employement.person.name,            
             'v_medical_date': self.medical_date.strftime('%d %b %Y') if hasattr(self.medical_date, 'strftime') else None

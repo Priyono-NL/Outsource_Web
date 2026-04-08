@@ -4,7 +4,7 @@ from model.base import AuditMixin
 class osTraining(db.Model, AuditMixin):
     __tablename__ = 'os_employee_training'
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
+    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.id'))
     training_id = db.Column(db.String(10), db.ForeignKey('training_master.training_id'))
     training_date_from = db.Column(db.Date)
     training_date_to = db.Column(db.Date)
@@ -24,6 +24,7 @@ class osTraining(db.Model, AuditMixin):
             'training_result': self.training_result,
             'training_score': self.training_score,
 
+            "employee_code": self.employement.employee_code,
             "training_name": self.training_m.training_name,
             "employee_name": self.employement.person.name,            
             'v_training_date_from': self.training_date_from.strftime('%d %b %Y') if hasattr(self.training_date_from, 'strftime') else None,

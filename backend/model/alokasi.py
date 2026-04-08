@@ -4,7 +4,7 @@ from model.base import AuditMixin
 class Alokasi(db.Model, AuditMixin):
     __tablename__ = 'os_employee_canteen'
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.employee_id'))
+    employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.id'))
     canteen_id = db.Column(db.String(10), db.ForeignKey('canteen_master.canteen_id'))
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)
@@ -17,6 +17,7 @@ class Alokasi(db.Model, AuditMixin):
             "alokasi_id": self.id,
             "canteen_id": self.canteen_id,
             "employee_id": self.employee_id,
+            "employee_code": self.employement.employee_code,
             'valid_from': self.valid_from.strftime('%Y-%m-%d'),
             'valid_to': self.valid_to.strftime('%Y-%m-%d') if self.valid_to else None,
 

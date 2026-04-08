@@ -1,6 +1,7 @@
 import os, uuid
 from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify
+from sqlalchemy import or_
 
 from extensions import db
 from model.person import OsPerson
@@ -19,7 +20,11 @@ def search_person():
     if len(query_str) < 3:
         return jsonify({"status": "success", "data": []})
     persons = OsPerson.query.outerjoin(OsBlacklist, OsPerson.person_id == OsBlacklist.person_id).filter(
-            OsPerson.name.ilike(f"%{query_str}%")).limit(10).all() 
+    or_(
+        OsPerson.name.ilike(f"%{query_str}%"),
+        OsPerson.resident_id.ilike(f"%{query_str}%")
+    )
+).limit(20).all()
     data_result = []
     for p in persons:
         blist = p.OsBlist[0] if (p.OsBlist and len(p.OsBlist) > 0) else None

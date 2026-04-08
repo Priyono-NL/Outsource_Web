@@ -3,7 +3,8 @@ from model.base import AuditMixin
 
 class OsEmployment(db.Model, AuditMixin):
     __tablename__ = 'os_employment'
-    employee_id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    employee_code = db.Column(db.Integer)
     person_id = db.Column(db.Integer, db.ForeignKey('os_person.person_id'))
     sub_company_id = db.Column(db.String(10), db.ForeignKey('sub_company.sub_company_id')) 
     valid_from = db.Column(db.Date)
@@ -18,7 +19,8 @@ class OsEmployment(db.Model, AuditMixin):
         card_from = card.valid_from if card else None
         card_to = card.valid_to if card else None
         return {
-            'employee_id': self.employee_id,
+            'id': self.id,
+            'employee_code': self.employee_code,
             'sub_company_id': self.sub_company_id,            
             'person_id': self.person_id,
             'valid_from': self.valid_from.strftime('%Y-%m-%d') if hasattr(self.valid_from, 'strftime') else None,

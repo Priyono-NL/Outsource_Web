@@ -18,7 +18,10 @@ const Sidebar = () => {
               paddingLeft: '12px'
             }}
           >
-            {route.label}
+            {route.icon && (
+                <i className={`bi ${route.icon}`} style={{ width: 16, textAlign: 'center', flexShrink: 0 }}></i>
+              )}
+            <span>  {route.label}</span>
           </NavLink>
         </li>
       ));

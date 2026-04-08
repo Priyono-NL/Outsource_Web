@@ -65,8 +65,8 @@ const Datatable = ({
             <tbody>
                 {employees.length > 0 ? (
                     employees.map((emp, index) => (
-                        <tr key={`row-${emp.employee_id || index}`} className="border-bottom">
-                            <td className="ps-3">{emp.employee_id}</td>
+                        <tr key={`row-${emp.id || index}`} className="border-bottom">
+                            <td className="ps-3">{emp.employee_code}</td>
                             <td>{emp.person_name}</td>
                             <td>{emp.gender}</td>
                             <td>{emp.sub_con_name}</td>

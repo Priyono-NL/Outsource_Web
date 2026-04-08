@@ -41,9 +41,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
       const response = await api.get(`/person/search?q=${searchTerm}`);
       const data = response.data.data;
       setResults(data);
-      if (data.length === 1) {
-        handleSelect(data[0]);
-      }
+      // if (data.length === 1) handleSelect(data[0]);
     } catch (err) {
       const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
       Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
@@ -115,7 +113,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
                         <input
                           type="text"
                           className="form-control"
-                          placeholder="Ketik minimal 3 karakter untuk mencari..."
+                          placeholder="Ketik minimal 3 karakter untuk mencari NIK atau Nama..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                           disabled={!!selectedPerson} // Kunci jika sudah terpilih
@@ -137,7 +135,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
                               className="list-group-item list-group-item-action"
                               onClick={() => handleSelect(p)}
                             >
-                              {p.name}
+                              {p.name} <small className="text-muted">({p.resident_id})</small>
                             </button>
                           ))}
                         </ul>

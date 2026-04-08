@@ -73,7 +73,7 @@ const OsGradeTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
             <tbody>{                  
                 card.map((emp, index) => (
                     <tr key={`row-${index+1}`} className="border-bottom">
-                        <td>{emp.employee_id}</td>
+                        <td>{emp.employee_code}</td>
                         <td>{emp.employee_name}</td>
                         <td>{emp.grade}</td>
                         <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>

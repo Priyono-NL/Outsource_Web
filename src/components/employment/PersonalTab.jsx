@@ -33,7 +33,7 @@ function PersonelTab({ onPersonSelect }) {
             const response = await api.get(`/person/search?q=${searchTerm}`);
             const data = response.data.data;
             setResults(data);
-            if (data.length === 1) handleSelect(data[0]);
+            // if (data.length === 1) handleSelect(data[0]);
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
             Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
@@ -79,7 +79,7 @@ function PersonelTab({ onPersonSelect }) {
                         type="text"
                         name='nama'
                         className="form-control"
-                        placeholder="Ketik nama untuk mencari..."
+                        placeholder="Ketik Nama atau NIK untuk mencari..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         disabled={!!selectedPerson}
@@ -103,7 +103,7 @@ function PersonelTab({ onPersonSelect }) {
                             {p.is_blacklist === "Blacklist" && (
                                 <span className="badge bg-danger">Blacklist</span>
                             )}
-                            {p.name}                            
+                            {p.name} <small className="text-muted">({p.resident_id})</small>                            
                         </button>
                         ))}
                     </ul>
