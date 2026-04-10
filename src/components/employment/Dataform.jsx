@@ -79,7 +79,7 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
     const customConfig = { headers: { 'Content-Type': 'multipart/form-data', } };
     const formData = new FormData(formRef.current);
     if (selectedFile) { formData.append('photo', selectedFile); }
-
+    console.log(Object.fromEntries(formData));
     try {
       const response = await api.post('/employee/submit', formData, customConfig);
       if (response.data.status === 'success') {

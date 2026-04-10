@@ -108,6 +108,12 @@ def add():
     try:
         data = request.json if request.is_json else request.form
 
+        if not data.get('nama') or str(data.get('nama')).strip() == "":
+            return jsonify({"status": "error", "message": "Nama wajib diisi!"}), 400
+
+        if not data.get('employee_id') or str(data.get('employee_id')).strip() == "":
+            return jsonify({"status": "error", "message": "ID Karyawan wajib diisi!"}), 400
+
         new_start_date = datetime.strptime(data.get('valid_from'), '%Y-%m-%d').date()
         adjusted_valid_to = new_start_date - timedelta(days=1)
         employee_code_input = data.get('employee_id')
@@ -121,12 +127,6 @@ def add():
 
             if duplicate_card:
                 raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh record lain.")
-            
-        if not data.get('nama') or str(data.get('nama')).strip() == "":
-            return jsonify({"status": "error", "message": "Nama wajib diisi!"}), 400
-
-        if not data.get('employee_id') or str(data.get('employee_id')).strip() == "":
-            return jsonify({"status": "error", "message": "ID Karyawan wajib diisi!"}), 400
         
         #person
         person_id = data.get('person_id')

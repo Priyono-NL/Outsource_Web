@@ -52,8 +52,8 @@ function EmployTab() {
     <div className="fade show active">
         <div className="row g-3">
             <div className="mb-3 col-6">
-                <label className="form-label small fw-bold">No Induk Karyawan</label>
-                <input type="text" name="employee_id" className="form-control" required />
+                <label className="form-label small fw-bold">No Induk Karyawan<span className="text-danger">*</span></label>
+                <input type="text" name="employee_id" className="form-control"/>
             </div>
             <div className="mb-3 col-3">
                 <label className="form-label small fw-bold">Grade</label>
@@ -89,7 +89,7 @@ function EmployTab() {
             </div>
             <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Valid From</label>
-                <input type="date" name="valid_from" className="form-control" required />
+                <input type="date" name="valid_from" className="form-control" />
             </div>
             <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Valid To</label>                        

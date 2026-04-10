@@ -73,22 +73,22 @@ function PersonelTab({ onPersonSelect }) {
         <div className="fade show active">
             <div className="row g-3">
                 <div className="col-md-12 position-relative">
-                    <label className="form-label fw-bold">Nama Lengkap</label>
+                    <label className="form-label fw-bold">Nama Lengkap<span className="text-danger">*</span></label>
                     <div className="input-group">
-                    <input
-                        type="text"
-                        name='nama'
-                        className="form-control"
-                        placeholder="Ketik Nama atau NIK untuk mencari..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        disabled={!!selectedPerson}
-                    />
-                    {selectedPerson && (
-                        <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
-                        Reset
-                        </button>
-                    )}
+                        <input
+                            type="text"
+                            name='nama'
+                            className="form-control"
+                            placeholder="Ketik Nama atau NIK untuk mencari..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            readOnly={!!selectedPerson}
+                        />
+                        {selectedPerson && (
+                            <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
+                            Reset
+                            </button>
+                        )}
                     </div>                    
                     <input type="hidden" name="person_id" value={selectedPerson?.person_id || ""} />
                     {results.length > 0 && (
@@ -116,7 +116,7 @@ function PersonelTab({ onPersonSelect }) {
                 <div className="mb-3 col-6">
                     <label className="form-label small fw-bold"> Jenis Kelamin</label>
                     <select 
-                        name="gender" className="form-select" required 
+                        name="gender" className="form-select"  
                         value={formData.gender} 
                         onChange={handleInputChange}
                     >
@@ -127,7 +127,7 @@ function PersonelTab({ onPersonSelect }) {
                 <div className="mb-3 col-6">
                     <label className="form-label small fw-bold">Agama</label>
                     <select 
-                        name="religion" className="form-select" required 
+                        name="religion" className="form-select"  
                         value={formData.religion} 
                         onChange={handleInputChange}
                     >

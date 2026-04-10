@@ -31,9 +31,9 @@ export const routesConfig = [
   { path: "/os-medical", label: "Medical", icon: "bi-heart-pulse", element: <OsMedical />, group: 2 },
   { path: "/os-training", label: "Training", icon: "bi-mortarboard", element: <OsTraining />, group: 2 },
   // Group 3
-  { path: "/sub-company", label: "Sub Company", icon: "bi-building", element: <SubCompany />, group: 3 },
-  { path: "/training-m", label: "Training", icon: "bi-book", element: <Training_m />, group: 3 },
-  { path: "/medical-m", label: "Medical", icon: "bi-hospital", element: <Medical_m />, group: 3 },
-  { path: "/canteen", label: "Kantin", icon: "bi-cup-hot", element: <Canteen />, group: 3 },
-  { path: "/costcenter", label: "Cost Center", icon: "bi-cash-stack", element: <CostCenter />, group: 3 },
+  { path: "/sub-company", label: "Master Sub Company", icon: "bi-building", element: <SubCompany />, group: 3 },
+  { path: "/training-m", label: "Master Training", icon: "bi-book", element: <Training_m />, group: 3 },
+  { path: "/medical-m", label: "Master Medical", icon: "bi-hospital", element: <Medical_m />, group: 3 },
+  { path: "/canteen", label: "Master Kantin", icon: "bi-cup-hot", element: <Canteen />, group: 3 },
+  { path: "/costcenter", label: "Master Cost Center", icon: "bi-cash-stack", element: <CostCenter />, group: 3 },
 ];

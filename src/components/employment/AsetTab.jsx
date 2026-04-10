@@ -11,12 +11,12 @@ function AsetTab() {
     <div className="fade show active">
         <div className="row g-3">
             <div className="mb-3 col-7">
-                <label className="form-label small fw-bold">Absence Card Number</label>
-                <input type="text" name="card_number" className="form-control" required />
+                <label className="form-label small fw-bold">Absence Card Number<span className="text-danger">*</span></label>
+                <input type="text" name="card_number" className="form-control" />
             </div>
             <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Absence Card Valid From</label>
-                <input type="date" name="c_valid_from" className="form-control" required />
+                <input type="date" name="c_valid_from" className="form-control" />
             </div>
             <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Absence Card Valid To</label>                        
