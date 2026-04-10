@@ -39,7 +39,7 @@ class OsEmployment(db.Model, AuditMixin):
             'photo': self.person.photo,
             'v_dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
 
-            'grade': self.OsGrade[0].grade,
+            'grade': self.OsGrade[0].grade if self.OsGrade else None,
             'sub_con_name': self.sub_con.sub_company_name,
             'type_company': self.sub_con.type_company,
             'cc_id': self.OsCC[0].cc_id if self.OsCC and len(self.OsCC) > 0 else None,
