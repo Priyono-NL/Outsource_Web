@@ -1,0 +1,208 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Toast } from '../../utils/sweetalert';
+import api from '../../api/api';
+
+function OsTypeForm({ onClose, onSuccess, initialData }) {
+  const [isNoLimit, setIsNoLimit] = useState(false);
+  const [empId, setEmpId] = useState('');
+  const [empPk, setEmpPk] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [isEmployeeFound, setIsEmployeeFound] = useState(false);
+  const formRef = useRef(null);
+  
+  useEffect(() => {
+        if (initialData && formRef.current) {
+          console.log(initialData);
+          setEmpId(initialData.employee_code || ''); 
+          setEmpPk(initialData.employee_id || '');
+          formRef.current.employee_code.value = initialData.employee_code;
+          formRef.current.type_worker.value = initialData.type_worker;
+          formRef.current.posisi.value = initialData.posisi;
+          formRef.current.valid_from.value = initialData.valid_from;
+          formRef.current.valid_to.value = initialData.valid_to;
+          const isNoLimitActive = !initialData.valid_to;
+          setIsNoLimit(isNoLimitActive);
+          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
+        }
+    }, [initialData]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(formRef.current);
+    const data = Object.fromEntries(formData.entries());
+    const payload = {
+      ...data,
+      employee_id: empPk,
+      valid_to: isNoLimit ? null : (data.valid_to || null) 
+    };
+    delete payload.employee_code;
+    try {
+      const response = initialData 
+            ? await api.put(`/ostype/${initialData.id_ostype}`, payload) 
+            : await api.post('/ostype/submit', payload);
+      if (response.data.status === 'success') {
+        formRef.current.reset();
+        Toast.fire({ icon: 'success', title: response.data.message });
+        onSuccess?.();
+        onClose?.();
+      }
+    } catch (error) {
+      Toast.fire({ icon: 'error', title: error.response?.data?.message || "Terjadi kesalahan server" });
+    }    
+  };
+
+  const handleSearchEmployee = async (id) => {
+    if (!id) {
+      setFullName('');
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const response = await api.get(`/employee/search/${id}`);
+      if (response.data.status === "success") { 
+        setFullName(response.data.full_name);
+        setEmpPk(response.data.emp_pk_id);
+        setIsEmployeeFound(true);
+      }
+    } catch (err) {
+      setFullName('Karyawan ID tidak terdaftar!');
+      setEmpPk('');
+      setIsEmployeeFound(false);
+      Toast.warning("ID Karyawan tidak ditemukan.");
+    } finally { setIsSearching(false); }
+  };
+
+  const handleIdChange = (e) => {
+    const value = e.target.value;
+    setEmpId(value);    
+    if (value === "") {
+      setIsEmployeeFound(false);
+      setFullName("");
+      setEmpPk("");
+      setFormData({
+        type_worker: "",
+        posisi: "",
+        valid_from: "",
+        valid_to: ""
+      });
+    } else {
+      setIsEmployeeFound(false);
+    }
+  };
+
+  const handleNoLimitToggle = (e) => {
+    const checked = e.target.checked;
+    setIsNoLimit(checked);
+    if (checked) {
+        if (formRef.current) formRef.current.valid_to.value = ""; 
+    }
+  };
+
+  return (
+    <>
+      <div 
+        className="modal-backdrop fade show" 
+        style={{ zIndex: 1050 }}
+        onClick={onClose}
+      ></div>
+
+      <div 
+        className="modal fade show d-block" 
+        tabIndex="-1" 
+        style={{ zIndex: 1055 }}
+      >
+        <div className="modal-dialog modal-xl">
+          <div className="modal-content border-0 shadow-lg">
+            
+            <div className="card shadow-sm border-0">
+              <div className="card-header bg-white pt-3 border-bottom-0">
+                <div className="d-flex justify-content-between align-items-center mb-3 px-2">
+                  <h5 className="fw-bold mb-0">{initialData ? 'Edit Data' : 'Add New Data'}</h5>
+                  <button type="button" className="btn-close" onClick={onClose}></button>
+                </div>                
+              </div>
+              <form ref={formRef} onSubmit={handleSave}>
+                <div className="card-body border-top">
+                  <div className="row g-3">
+                    <div className="mb-3 col-3">
+                        <label className="form-label small fw-bold">Employee ID</label>
+                        <input 
+                          type="text" 
+                          name="employee_code" 
+                          className="form-control" 
+                          required
+                          value={empId}
+                          onChange={handleIdChange}
+                          onBlur={(e) => handleSearchEmployee(e.target.value)}
+                        />
+                    </div>
+                    <div className="mb-3 col-9">
+                      <label className="form-label fw-bold">Name</label>
+                      <input 
+                        type="text" 
+                        className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
+                        value={isSearching ? "Mencari..." : fullName}
+                        readOnly
+                        style={{ backgroundColor: '#e9ecef' }} 
+                      />
+                      {isSearching && <div className="spinner-border spinner-border-sm text-primary mt-1" role="status"></div>}
+                    </div>
+                  </div>
+                  <div className="row g-3">
+                    <div className="mb-3 col-5">
+                        <label className="form-label small fw-bold">Type Worker</label>
+                        <select name="type_worker" className='form-control' disabled={!isEmployeeFound || isSearching} required >
+                          <option value="DAILYWAGE">Daily Wage</option>
+                          <option value="PIECERATE">Piece Rate</option>
+                        </select>
+                    </div>
+                    <div className="mb-3 col-5">
+                        <label className="form-label small fw-bold">Posisi/Jabatan</label>
+                        <input type="text" name="posisi" className="form-control" disabled={!isEmployeeFound || isSearching} required />
+                    </div>
+                    <div className="mb-3 col-5">
+                        <label className="form-label small fw-bold">Valid From</label>
+                        <input type="date" name="valid_from" className="form-control" disabled={!isEmployeeFound || isSearching} required />
+                    </div>
+                    <div className="mb-3 col-5">
+                        <label className="form-label small fw-bold">Valid To</label>                        
+                        <input 
+                          type="date" 
+                          name="valid_to" 
+                          id="valid_to" 
+                          className="form-control" 
+                          required
+                          disabled={isNoLimit || !isEmployeeFound || isSearching}
+                          defaultValue={initialData?.valid_to}                          
+                        />
+                        <input 
+                          type="checkbox" 
+                          id="no_limit" 
+                          className="form-check-input"
+                          checked={isNoLimit}
+                          onChange={handleNoLimitToggle}
+                        />
+                        <label className="form-check-label" htmlFor="no_limit">
+                          No Limit
+                        </label> 
+                    </div>
+                  </div>
+                </div>              
+              <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
+                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
+                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold" disabled={!isEmployeeFound || isSearching}>
+                  <i className="bi bi-check-lg me-1"></i> Simpan Data
+                </button>
+              </div>
+              </form>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default OsTypeForm;

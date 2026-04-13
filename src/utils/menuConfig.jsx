@@ -15,6 +15,7 @@ import OsGrade from '../pages/OsGrade';
 import Blacklist from '../pages/Blacklist';
 import Biodata from '../pages/Biodata';
 import Employement from '../pages/Employment';
+import OsType from '../pages/OsType';
 
 export const routesConfig = [
   // Group 0: 
@@ -26,6 +27,7 @@ export const routesConfig = [
   { path: "/card", label: "Absence Card", icon: "bi-credit-card", element: <OsCard />, group: 1 },
   { path: "/oscc", label: "Department", icon: "bi-diagram-3", element: <OsCC />, group: 1 },
   { path: "/grade", label: "Grade", icon: "bi-bar-chart", element: <OsGrade />, group: 1 },
+  { path: "/type", label: "Type Work", icon: "bi-bar-chart", element: <OsType />, group: 1 },
   { path: "/blacklist", label: "Blacklist", icon: "bi-slash-circle", element: <Blacklist />, group: 1 },  
   // Group 2
   { path: "/os-medical", label: "Medical", icon: "bi-heart-pulse", element: <OsMedical />, group: 2 },
