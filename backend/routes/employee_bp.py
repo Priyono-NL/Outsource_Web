@@ -13,7 +13,7 @@ from model.person import OsPerson
 from model.subCompany import SubCompany
 from model.costCenter import costCenter
 from model.canteen import canteen, canteenDetail
-
+from model.osType import osType
 from model.card import OsCard
 from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
@@ -160,9 +160,7 @@ def add():
 
         db.session.add(target_person)
         db.session.flush()
-        person_id = target_person.person_id
-
-        
+        person_id = target_person.person_id        
 
         existing_active_emp = OsEmployment.query.filter(
             OsEmployment.employee_code == employee_code_input,
@@ -176,6 +174,7 @@ def add():
                 {"model": OsEmployment, "field": "person_id",   "val": person_id},
                 {"model": OsCard,       "field": "card_number", "val": card_number_input},
                 {"model": OsGrade,      "field": "employee_id", "val": active_emp_pk_id},
+                {"model": osType,      "field": "employee_id", "val": active_emp_pk_id},
                 {"model": OsCostCenter, "field": "employee_id", "val": active_emp_pk_id},
                 {"model": Alokasi,      "field": "employee_id", "val": active_emp_pk_id},
             ]
@@ -190,7 +189,8 @@ def add():
 
                 old_records = Model.query.filter(
                     getattr(Model, field_name) == value,
-                    (Model.valid_to >= new_start_date) | (Model.valid_to == None)
+                    (Model.valid_to >= new_start_date) | (Model.valid_to == None),
+                    Model.valid_from <= adjusted_valid_to
                 ).all()
 
                 for rec in old_records:
@@ -224,6 +224,15 @@ def add():
             valid_to = data.get('valid_to')
         )       
         db.session.add(newGrade)
+        #type
+        newType = osType(
+            employee_id = newEmployment.id,
+            type_worker = data.get('type_worker'),
+            posisi = data.get('posisi'),
+            valid_from = data.get('valid_from'),
+            valid_to = data.get('valid_to')
+        )
+        db.session.add(newType)
         #org cost center
         newCC = OsCostCenter(
             employee_id = newEmployment.id,
@@ -271,6 +280,8 @@ def template():
             "grade": "1",
             "SubCompany":"",
             "Department": "",
+            "Type Worker": "DAILYWAGE / PIECERATE",
+            "Posisi": "",
             "valid from": "2026-03-10",
             "valid to": "2026-03-11",
             "card number": "12345.12345",
@@ -393,13 +404,14 @@ def upload():
                         active_emp_pk_id = existing_active_emp.id
 
                         if active_emp_pk_id:
-                            for M in [OsCard, OsGrade, OsCostCenter, Alokasi]:
+                            for M in [OsCard, OsGrade, osType, OsCostCenter, Alokasi]:
                                 field = "card_number" if M == OsCard else "employee_id"
                                 val = str(row.get('card number', '')).strip() if M == OsCard else active_emp_pk_id
                                 
                                 old_recs = M.query.filter(
                                     getattr(M, field) == val,
-                                    (M.valid_to >= new_start_date) | (M.valid_to == None)
+                                    (M.valid_to >= new_start_date) | (M.valid_to == None),
+                                    M.valid_from <= adjusted_valid_to
                                 ).all()
                                 for r in old_recs:
                                     r.valid_to = adjusted_valid_to

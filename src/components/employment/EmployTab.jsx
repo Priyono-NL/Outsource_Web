@@ -88,6 +88,17 @@ function EmployTab() {
                 <input type="hidden" name="cc_id" value={selectCCId || ''} />
             </div>
             <div className="mb-3 col-6">
+                <label className="form-label small fw-bold">Type Work</label>
+                <select name="type_worker" className='form-control' >
+                    <option value="DAILYWAGE">Daily Wage</option>
+                    <option value="PIECERATE">Piece Rate</option>
+                </select>
+            </div>
+            <div className="mb-3 col-6">
+                <label className="form-label small fw-bold">Posisi/Jabatan</label>
+                <input type="text" name="posisi" className="form-control" />
+            </div>
+            <div className="mb-3 col-6">
                 <label className="form-label small fw-bold">Valid From</label>
                 <input type="date" name="valid_from" className="form-control" />
             </div>

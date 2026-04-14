@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-
+import { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import { routesConfig } from './utils/menuConfig';
 import { useAuth } from './utils/useAuth';
@@ -7,6 +7,11 @@ import { useAuth } from './utils/useAuth';
 
 function App() {
   const { authState, handleLogout } = useAuth();
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+
+  const handleToggleSidebar = () => {
+    setIsSidebarExpanded(!isSidebarExpanded);
+  };
 
   if (authState.loading) {
     return (
@@ -24,9 +29,18 @@ function App() {
       <div className="d-flex flex-column vh-100 bg-light">
 
         {/* --- 1. NAVBAR (ATAS) --- */}
-        <nav className="navbar navbar-dark bg-dark shadow-sm z-1">
+        <nav className="navbar navbar-dark bg-dark shadow-sm z-1">          
           <div className="container-fluid px-4">
-            <span className="navbar-brand mb-0 h1 fw-bold">Manajemen OS</span>
+            <div className="d-flex align-items-center">
+              <span className="navbar-brand mb-0 h1 fw-bold">Manajemen OS</span>
+              <button 
+                onClick={handleToggleSidebar} 
+                className="btn btn-dark text-white border-0 p-1 me-2" // me-2 memberi jarak dengan teks
+                title="Toggle Sidebar"
+              >
+                <i className="bi bi-list" style={{ fontSize: '1.5rem' }}></i>
+              </button>              
+            </div>
             {authState.isAuthenticated && (
               <div className="d-flex align-items-center">
                 <div className="text-end me-3">
@@ -50,7 +64,7 @@ function App() {
 
         {/* --- 2. AREA BAWAH (KIRI & KANAN) --- */}
         <div className="d-flex flex-grow-1 overflow-hidden">
-          <Sidebar />
+          <Sidebar isExpanded={isSidebarExpanded} />
           <div className="flex-grow-1 overflow-auto p-4">
             <Routes>
               {routesConfig.map((route, index) => (
