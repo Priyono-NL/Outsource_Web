@@ -90,11 +90,6 @@ def search_employee(emp_id):
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
             .filter(
                 OsEmployment.employee_code == emp_id,
-                # OsEmployment.valid_from <= now,
-                # or_(
-                #     OsEmployment.valid_to >= now,
-                #     OsEmployment.valid_to == None
-                # )
             ) \
             .first()
         if result:
@@ -258,6 +253,137 @@ def add():
             "status": "success",
             "message": f"Data berhasil disimpan!"
         }), 201     
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "Terjadi kesalahan pada server: " + str(e)
+        }), 500
+
+from datetime import datetime
+from flask import request, jsonify
+import os
+import uuid
+
+@employee_bp.route('/employee/<int:id>', methods=['PUT'])
+def edit(id):
+    try:
+        data = request.json if request.is_json else request.form
+
+        if not data.get('nama') or str(data.get('nama')).strip() == "":
+            return jsonify({"status": "error", "message": "Nama wajib diisi!"}), 400
+
+        if not data.get('employee_id') or str(data.get('employee_id')).strip() == "":
+            return jsonify({"status": "error", "message": "ID Karyawan wajib diisi!"}), 400
+
+        employee_code_input = data.get('employee_id')
+        card_number_input = data.get('card_number')
+        valid_from_input = data.get('valid_from')
+        new_start_date = datetime.strptime(valid_from_input, '%Y-%m-%d').date() if valid_from_input else None
+
+        target_emp = OsEmployment.query.get(id)
+        if not target_emp:
+            return jsonify({"status": "error", "message": "Data Employment tidak ditemukan!"}), 404
+
+        if card_number_input:
+            duplicate_card = OsCard.query.filter(
+                OsCard.card_number == card_number_input,
+                OsCard.employee_id != id,
+                ((OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None))
+            ).first()
+
+            if duplicate_card:
+                raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
+
+        target_person = OsPerson.query.get(target_emp.person_id)
+        if target_person:
+            target_person.name = data.get('nama', target_person.name)
+            target_person.gender = data.get('gender', target_person.gender)
+            target_person.pob = data.get('pob', target_person.pob)
+            target_person.dob = data.get('dob') or target_person.dob or None
+            target_person.religion = data.get('religion', target_person.religion)
+            target_person.resident_id = data.get('resident_id', target_person.resident_id)
+            target_person.address = data.get('address', target_person.address)
+
+            if 'photo' in request.files:
+                file = request.files['photo']
+                if file.filename != '':
+                    ext = os.path.splitext(file.filename)[1].lower()
+                    new_filename = f"{uuid.uuid4().hex}{ext}"
+                    file_path = os.path.join(UPLOAD_FOLDER, new_filename)
+                    file.save(file_path)
+                    target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"
+            
+            db.session.add(target_person)
+
+        target_emp.employee_code = employee_code_input
+        target_emp.sub_company_id = data.get('sub_company_id')
+        target_emp.valid_from = data.get('valid_from') or None
+        target_emp.valid_to = data.get('valid_to') or None
+        db.session.add(target_emp)
+
+        target_card = OsCard.query.filter_by(employee_id=id).first()
+        if target_card:
+            target_card.card_number = card_number_input
+            target_card.valid_from = data.get('c_valid_from') or None
+            target_card.valid_to = data.get('c_valid_to') or None
+            db.session.add(target_card)
+        elif card_number_input:
+            newCard = OsCard(
+                employee_id=id, 
+                card_number=card_number_input, 
+                valid_from=data.get('c_valid_from') or None, 
+                valid_to=data.get('c_valid_to') or None
+            )
+            db.session.add(newCard)
+
+        target_grade = OsGrade.query.filter_by(employee_id=id).first()
+        if target_grade:
+            target_grade.grade = data.get('grade')
+            target_grade.valid_from = data.get('valid_from') or None
+            target_grade.valid_to = data.get('valid_to') or None
+            db.session.add(target_grade)
+
+        target_type = osType.query.filter_by(employee_id=id).first()
+        if target_type:
+            target_type.type_worker = data.get('type_worker')
+            target_type.posisi = data.get('posisi')
+            target_type.valid_from = data.get('valid_from') or None
+            target_type.valid_to = data.get('valid_to') or None
+            db.session.add(target_type)
+
+        target_cc = OsCostCenter.query.filter_by(employee_id=id).first()
+        if target_cc:
+            target_cc.cc_id = data.get('cc_id')
+            target_cc.valid_from = data.get('valid_from') or None
+            target_cc.valid_to = data.get('valid_to') or None
+            db.session.add(target_cc)
+        
+        if data.get('cc_id'):
+            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(data.get('cc_id'))).first()
+            if cc_def:
+                target_alokasi = Alokasi.query.filter_by(employee_id=id).first()
+                if target_alokasi:
+                    target_alokasi.canteen_id = cc_def.canteen_id
+                    target_alokasi.valid_from = data.get('valid_from') or None
+                    target_alokasi.valid_to = data.get('valid_to') or None
+                    db.session.add(target_alokasi)
+                else:
+                    newAlokasi = Alokasi(
+                        employee_id=id, 
+                        canteen_id=cc_def.canteen_id, 
+                        valid_from=data.get('valid_from') or None, 
+                        valid_to=data.get('valid_to') or None
+                    )
+                    db.session.add(newAlokasi)
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": "Data berhasil diperbarui!"
+        }), 200
+
     except Exception as e:
         db.session.rollback()
         return jsonify({
