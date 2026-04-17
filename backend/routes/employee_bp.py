@@ -516,7 +516,7 @@ def export():
             query = query.join(OsCard)    
             query = query.filter(
                 or_(
-                    OsEmployment.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),
                     OsCard.card_number.ilike(f"%{search}%")
                 )

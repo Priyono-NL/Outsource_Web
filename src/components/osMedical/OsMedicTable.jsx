@@ -82,12 +82,12 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
                         <td>{emp.medical_notes ? emp.medical_notes : '-'}</td>
                         <td>
                             <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
-                                Edit
+                                <i class="bi bi-pencil-square"></i>
                             </button>
                             <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(emp.osMedical_id, emp.employee_name)}
                             >
-                                Delete
+                                <i class="bi bi-trash"></i>
                             </button>
                         </td>
                     </tr>

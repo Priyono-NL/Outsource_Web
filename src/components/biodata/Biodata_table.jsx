@@ -76,12 +76,12 @@ const BiodataTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                         <td>{can.address}</td>
                         <td>
                             <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(can)}>
-                                Edit
+                                <i class="bi bi-pencil-square"></i>
                             </button>
                             <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(can.person_id, can.person_name)}
                             >
-                                Delete
+                                <i class="bi bi-trash"></i>
                             </button>
                         </td>
                     </tr>

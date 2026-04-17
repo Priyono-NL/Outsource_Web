@@ -74,12 +74,12 @@ const CCTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                         <td>{cc.org_name}</td>
                         <td>
                             <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(cc)}>
-                                Edit
+                                <i class="bi bi-pencil-square"></i>
                             </button>
                             <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(cc.cost_center, cc.org_name)}
                             >
-                                Delete
+                                <i class="bi bi-trash"></i>
                             </button>
                         </td>
                     </tr>

@@ -76,12 +76,12 @@ const SubComTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                         <td>{sub.type_company}</td>
                         <td>
                             <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(sub)}>
-                                Edit
+                                <i class="bi bi-pencil-square"></i>
                             </button>
                             <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(sub.sub_company_id, sub.sub_company_name)}
                             >
-                                Delete
+                                <i class="bi bi-trash"></i>
                             </button>
                         </td>
                     </tr>

@@ -75,7 +75,7 @@ const Datatable = ({ refreshTrigger, onViewClick, searchTerm, filterStatus, filt
                 <td>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onViewClick(emp)}>
-                      <i className="bi bi-eye" /> View
+                      <i className="bi bi-eye" />
                     </button>
                     {(emp.valid_to === null || new Date(emp.valid_to) >= new Date()) && (
                       <button className="btn-app btn-danger-app btn-sm-app" onClick={() => handleDeactivate(emp.id, emp.employee_code)}>
