@@ -99,11 +99,11 @@ def export():
         search = request.args.get('search', '', type=str)
         query = osMedical.query
         if search:
-            query = query.join(OsEmployment, osMedical.employee_id == OsEmployment.employee_id) \
+            query = query.join(OsEmployment, osMedical.employee_id == OsEmployment.id) \
                      .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
-                or_(
-                    osMedical.employee_code.cast(db.String).ilike(f"%{search}%"),
+            or_(
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )
@@ -113,7 +113,7 @@ def export():
         for m in master:
             d = m.to_dict()
             data.append({
-                "ID Karyawan": d['employee_id'],
+                "ID Karyawan": d['employee_code'],
                 "Nama Karyawan": d['employee_name'],
                 "Jenis Medical": d['medical_name'],
                 "Tanggal": d['v_medical_date'],

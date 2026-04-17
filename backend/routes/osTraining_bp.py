@@ -101,11 +101,11 @@ def export():
         search = request.args.get('search', '', type=str)
         query = osTraining.query
         if search:
-            query = query.join(OsEmployment, osTraining.employee_id == OsEmployment.employee_id) \
+            query = query.join(OsEmployment, osTraining.employee_id == OsEmployment.id) \
                      .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
-                    osTraining.employee_code.cast(db.String).ilike(f"%{search}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )
@@ -114,7 +114,7 @@ def export():
         for m in master:
             d = m.to_dict()
             data.append({
-                "ID Employee": d['employee_id'],
+                "ID Employee": d['employee_code'],
                 "Name Employee": d['employee_name'],
                 "Training Name": d['training_name'],
                 "Date From": d['v_training_date_from'],
