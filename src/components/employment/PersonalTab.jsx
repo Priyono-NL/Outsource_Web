@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Toast, Confirm } from '../../utils/sweetalert';
+import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function PersonelTab({ onPersonSelect }) {
@@ -31,11 +31,9 @@ function PersonelTab({ onPersonSelect }) {
         setIsSearching(true);
         try {
             const response = await api.get(`/person/search?q=${searchTerm}`);
-            const data = response.data.data;
-            setResults(data);
-            // if (data.length === 1) handleSelect(data[0]);
+            setResults(response.data.data);
         } catch (err) {
-            const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
+            const errorMsg = err.response?.data?.message || "Gagal mencari personel";
             Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
         } finally {
             setIsSearching(false);
@@ -70,64 +68,81 @@ function PersonelTab({ onPersonSelect }) {
     };
 
     return (
-        <div className="fade show active">
+        <div className="animate__animated animate__fadeIn">
             <div className="row g-3">
                 <div className="col-md-12 position-relative">
-                    <label className="form-label fw-bold">Nama Lengkap<span className="text-danger">*</span></label>
+                    <label className="form-label small fw-bold text-muted">Cari Personel (Berdasarkan Nama atau NIK)</label>
                     <div className="input-group">
+                        <span className="input-group-text bg-white border-end-0">
+                            <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`}></i>
+                        </span>
                         <input
                             type="text"
                             name='nama'
-                            className="form-control"
-                            placeholder="Ketik Nama atau NIK untuk mencari..."
+                            className={`form-control border-start-0 ps-0 ${selectedPerson ? 'bg-light fw-bold' : ''}`}
+                            placeholder="Ketik minimal 3 karakter..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             readOnly={!!selectedPerson}
+                            autoComplete="off"
                         />
                         {selectedPerson && (
                             <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
-                            Reset
+                                <i className="bi bi-x-circle me-1"></i> Ganti
                             </button>
                         )}
-                    </div>                    
-                    <input type="hidden" name="person_id" value={selectedPerson?.person_id || ""} />
+                    </div>
+
                     {results.length > 0 && (
-                    <ul className="list-group position-absolute w-100 shadow-lg" style={{ zIndex: 1000, top: '100%' }}>
-                        {results.map((p) => (
-                        <button
-                            key={p.person_id}
-                            type="button"
-                            className="list-group-item list-group-item-action"
-                            onClick={() => handleSelect(p)}
-                        >
-                            {p.is_blacklist === "Blacklist" && (
-                                <span className="badge bg-danger">Blacklist</span>
-                            )}
-                            {p.name} <small className="text-muted">({p.resident_id})</small>                            
-                        </button>
-                        ))}
-                    </ul>
+                        <div className="list-group position-absolute w-100 shadow-lg border-0 mt-1" style={{ zIndex: 1100, borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                            {results.map((p) => (
+                                <button
+                                    key={p.person_id}
+                                    type="button"
+                                    className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2 px-3"
+                                    onClick={() => handleSelect(p)}
+                                >
+                                    <div>
+                                        <div className="fw-bold text-dark">{p.name}</div>
+                                        <small className="text-muted"><i className="bi bi-card-text me-1"></i>{p.resident_id}</small>
+                                    </div>
+                                    {p.is_blacklist === "Blacklist" ? (
+                                        <span className="badge bg-danger">Blacklisted</span>
+                                    ) : (
+                                        <i className="bi bi-chevron-right text-muted small"></i>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
                     )}
-                    {isSearching && <small className="text-primary">Mencari...</small>}
-                </div>                
+                </div>
             </div>
-            <hr />
+
+            <div className="hr-text text-muted small fw-bold my-4">
+                <span className="bg-white px-2">Data Detail Personel</span>
+            </div>
+
             <div className="row g-3">
-                <div className="mb-3 col-6">
-                    <label className="form-label small fw-bold"> Jenis Kelamin</label>
+                <input type="hidden" name="person_id" value={selectedPerson?.person_id || ""} />
+                
+                <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Jenis Kelamin</label>
                     <select 
-                        name="gender" className="form-select"  
+                        name="gender" 
+                        className="form-select"  
                         value={formData.gender} 
                         onChange={handleInputChange}
                     >
                         <option value="L">Laki - laki</option>
                         <option value="P">Perempuan</option>
-                    </select>                            
+                    </select>
                 </div>
-                <div className="mb-3 col-6">
-                    <label className="form-label small fw-bold">Agama</label>
+
+                <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Agama</label>
                     <select 
-                        name="religion" className="form-select"  
+                        name="religion" 
+                        className="form-select"  
                         value={formData.religion} 
                         onChange={handleInputChange}
                     >
@@ -137,42 +152,48 @@ function PersonelTab({ onPersonSelect }) {
                         <option value="hindu">Hindu</option>
                         <option value="budha">Budha</option>
                         <option value="khonghucu">Khonghucu</option>
-                    </select> 
+                    </select>
                 </div>
-                <div className="mb-3 col-6">
-                    <label className="form-label small fw-bold">Tempat Lahir</label>
+
+                <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Tempat Lahir</label>
                     <input 
                         type="text" name="pob" className="form-control" 
+                        placeholder="Contoh: Jakarta"
                         value={formData.pob} 
                         onChange={handleInputChange} 
                     />
                 </div>
-                <div className="mb-3 col-6">
-                    <label className="form-label small fw-bold">Tanggal Lahir</label>
+
+                <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Tanggal Lahir</label>
                     <input 
                         type="date" name="dob" className="form-control"
                         value={formData.dob} 
                         onChange={handleInputChange}
                     />
-                </div>                    
-                
-                <div className="mb-3 col-6">
-                    <label className="form-label small fw-bold">Nomor KTP</label>
+                </div>
+
+                <div className="col-md-12">
+                    <label className="form-label small fw-bold text-muted">Nomor KTP (NIK)</label>
                     <input 
                         type="text" name="resident_id" className="form-control" 
+                        placeholder="16 Digit Nomor Induk Kependudukan"
                         value={formData.resident_id} 
                         onChange={handleInputChange}
-                    />                        
+                    />
                 </div>
-            </div>        
-            <div className="mb-3 col-12">
-                <label className="form-label small fw-bold">Alamat</label>
-                <textarea 
-                    rows="3" name="address" className='form-control' 
-                    value={formData.address} 
-                    onChange={handleInputChange}
-                ></textarea>
-            </div>        
+
+                <div className="col-md-12">
+                    <label className="form-label small fw-bold text-muted">Alamat Lengkap (KTP)</label>
+                    <textarea 
+                        rows="2" name="address" className='form-control' 
+                        placeholder="Nama jalan, RT/RW, Kec, Kab/Kota..."
+                        value={formData.address} 
+                        onChange={handleInputChange}
+                    ></textarea>
+                </div>
+            </div>
         </div>
     );
 }

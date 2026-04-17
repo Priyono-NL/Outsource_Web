@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Toast, Confirm } from '../../utils/sweetalert';
+import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function OsMedicForm({ onClose, onSuccess, initialData }) {
@@ -10,6 +10,7 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
   const formRef = useRef(null);
+  const isEditMode = !!initialData;
   
   useEffect(() => {
     const fetchOsMedical = async () => {
@@ -19,24 +20,24 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
           setMedical(response.data.data);
         }
       } catch (error) {
-        console.error("Gagal mengambil data:", error);
+        console.error("Gagal mengambil data medical:", error);
       }
     };
     fetchOsMedical();
-  }, []) // get medical select
+  }, []);
 
   useEffect(() => {
-        if (initialData && formRef.current && medical.length > 0) {
-          setEmpId(initialData.employee_code || ''); 
-          setEmpPk(initialData.employee_id || '');
-          formRef.current.employee_code.value = initialData.employee_code;
-          formRef.current.medical_id.value = initialData.medical_id;
-          formRef.current.medical_date.value = initialData.medical_date;
-          formRef.current.medical_result.value = initialData.medical_result;
-          formRef.current.medical_notes.value = initialData.medical_notes;
-          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
-        }
-    }, [initialData, , medical]);
+    if (initialData && formRef.current && medical.length > 0) {
+      setEmpId(initialData.employee_code || ''); 
+      setEmpPk(initialData.employee_id || '');
+      formRef.current.employee_code.value = initialData.employee_code;
+      formRef.current.medical_id.value = initialData.medical_id;
+      formRef.current.medical_date.value = initialData.medical_date;
+      formRef.current.medical_result.value = initialData.medical_result;
+      formRef.current.medical_notes.value = initialData.medical_notes;
+      handleSearchEmployee(initialData.employee_code || initialData.employee_id);
+    }
+  }, [initialData, medical]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -79,22 +80,18 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
       setFullName('Karyawan ID tidak terdaftar!');
       setEmpPk('');
       setIsEmployeeFound(false);
-      Toast.warning("ID Karyawan tidak ditemukan.");
+      Toast.fire({ icon: 'warning', title: 'Pencarian Gagal', text: "ID Karyawan tidak ditemukan." });
     } finally { setIsSearching(false); }
   };
 
   const handleIdChange = (e) => {
+    if (isEditMode) return;
     const value = e.target.value;
     setEmpId(value);
     if (value === "") {
       setIsEmployeeFound(false);
       setFullName("");
       setEmpPk("");
-      setFormData({
-        canteen_id: "",
-        valid_from: "",
-        valid_to: ""
-      });
     } else {
       setIsEmployeeFound(false);
     }
@@ -104,86 +101,138 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
     <>
       <div 
         className="modal-backdrop fade show" 
-        style={{ zIndex: 1050 }}
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }}
         onClick={onClose}
       ></div>
 
-      <div 
-        className="modal fade show d-block" 
-        tabIndex="-1" 
-        style={{ zIndex: 1055 }}
-      >
-        <div className="modal-dialog modal-xl">
-          <div className="modal-content border-0 shadow-lg">
+      <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+        <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             
-            <div className="card shadow-sm border-0">
-              <div className="card-header bg-white pt-3 border-bottom-0">
-                <div className="d-flex justify-content-between align-items-center mb-3 px-2">
-                  <h5 className="fw-bold mb-0">{initialData ? 'Edit Data' : 'Add New Data'}</h5>
-                  <button type="button" className="btn-close" onClick={onClose}></button>
-                </div>                
-              </div>
-              <form ref={formRef} onSubmit={handleSave}>
-                <div className="card-body border-top">
-                  <div className="row g-3">
-                    <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Employee ID</label>
-                        <input 
-                          type="text" 
-                          name="employee_code" 
-                          className="form-control" 
-                          required
-                          value={empId}
-                          onChange={handleIdChange}
-                          onBlur={(e) => handleSearchEmployee(e.target.value)}
-                        />
+            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
+              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+                <i className={`bi ${isEditMode ? 'bi-heart-pulse-fill' : 'bi-plus-circle'} me-2`}></i>
+                {isEditMode ? 'Edit Riwayat Medis' : 'Input Medical Check-up'}
+              </h5>
+              <button type="button" className="btn-close" onClick={onClose}></button>
+            </div>
+
+            <form ref={formRef} onSubmit={handleSave}>
+              <div className="modal-body p-4 bg-white">
+                
+                <div className="row g-3 mb-4">
+                  <div className="col-md-4">
+                    <label className="form-label small fw-bold text-muted">Employee ID</label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light text-muted"><i className="bi bi-person-badge"></i></span>
+                      <input 
+                        type="text" 
+                        name="employee_code" 
+                        className={`form-control ${isEditMode ? 'bg-light fw-bold' : ''}`} 
+                        placeholder="Ketik ID..."
+                        required
+                        value={empId}
+                        onChange={handleIdChange}
+                        onBlur={(e) => !isEditMode && handleSearchEmployee(e.target.value)}
+                        readOnly={isEditMode}
+                        style={isEditMode ? { cursor: 'not-allowed' } : {}}
+                      />
                     </div>
-                    <div className="mb-3 col-9">
-                      <label className="form-label fw-bold">Nama Lengkap</label>
+                  </div>
+                  <div className="col-md-8">
+                    <label className="form-label small fw-bold text-muted">Nama Lengkap</label>
+                    <div className="position-relative">
                       <input 
                         type="text" 
                         className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
-                        value={isSearching ? "Mencari..." : fullName}
+                        value={isSearching ? "Sedang mencari..." : fullName}
                         readOnly
-                        style={{ backgroundColor: '#e9ecef' }} 
+                        placeholder="Nama otomatis..."
+                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600' }} 
                       />
-                      {isSearching && <div className="spinner-border spinner-border-sm text-primary mt-1" role="status"></div>}
+                      {isSearching && (
+                        <div className="position-absolute end-0 top-50 translate-middle-y me-3">
+                          <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="row g-3">
-                    <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Medical Check Name</label>
-                        <select name="medical_id" className="form-select"  disabled={!isEmployeeFound || isSearching} required>
-                            {medical.map((medical) => (
-                                <option key={medical.medical_id} value={medical.medical_id}>
-                                    {medical.medical_name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Date</label>
-                        <input type="date" name="medical_date" className="form-control" disabled={!isEmployeeFound || isSearching} required />
-                    </div>
-                    <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Result</label>
-                        <input type="text" name="medical_result" className="form-control" disabled={!isEmployeeFound || isSearching} required />
-                    </div>
-                    <div className="mb-3 col-6">
-                        <label className="form-label small fw-bold">Notes</label>
-                        <input type="text" name="medical_notes" className="form-control" disabled={!isEmployeeFound || isSearching} />
+                </div>
+
+                <div className="hr-text text-muted small fw-bold mb-4">
+                  <span className="bg-white px-2">Hasil Pemeriksaan Medis</span>
+                </div>
+
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Jenis Pemeriksaan</label>
+                    <select 
+                      name="medical_id" 
+                      className="form-select" 
+                      disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                      required
+                    >
+                      <option value="">-- Pilih Jenis MCU --</option>
+                      {medical.map((m) => (
+                        <option key={m.medical_id} value={m.medical_id}>
+                          {m.medical_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Tanggal Pemeriksaan</label>
+                    <input 
+                      type="date" 
+                      name="medical_date" 
+                      className="form-control" 
+                      disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                      required 
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Hasil (Result)</label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light text-muted"><i className="bi bi-clipboard2-check"></i></span>
+                      <input 
+                        type="text" 
+                        name="medical_result" 
+                        className="form-control" 
+                        placeholder="Contoh: Fit / Unfit / Fit with Note"
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                        required 
+                      />
                     </div>
                   </div>
-                </div>              
-              <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
-                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn-app btn-primary-app px-4 shadow-sm fw-semibold" disabled={!isEmployeeFound || isSearching}>
-                  <i className="bi bi-check-lg me-1"></i> Simpan Data
+
+                  <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Catatan (Notes)</label>
+                    <input 
+                      type="text" 
+                      name="medical_notes" 
+                      className="form-control" 
+                      placeholder="Catatan tambahan dokter..."
+                      disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Modal */}
+              <div className="modal-footer bg-light border-top p-3 px-4">
+                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
+                <button 
+                  type="submit" 
+                  className="btn-app btn-primary-app px-4" 
+                  disabled={(!isEmployeeFound && !isEditMode) || isSearching}
+                >
+                  <i className="bi bi-save me-2"></i>
+                  {isEditMode ? 'Update Data' : 'Simpan Data Medis'}
                 </button>
               </div>
-              </form>
-            </div>
-
+            </form>
           </div>
         </div>
       </div>

@@ -8,6 +8,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
   const [results, setResults] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
+  const isEditMode = !!initialData;
   
   useEffect(() => {
     if (initialData) {
@@ -41,7 +42,6 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
       const response = await api.get(`/person/search?q=${searchTerm}`);
       const data = response.data.data;
       setResults(data);
-      // if (data.length === 1) handleSelect(data[0]);
     } catch (err) {
       const errorMsg = err.response?.data?.message || "Gagal menghubungi server pencarian";
       Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
@@ -57,9 +57,10 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
   };
 
   const handleReset = () => {
+    if (isEditMode) return;
     setSelectedPerson(null);
     setSearchTerm("");
-    setResults([]);
+    setResults([]);    
   };
 
   const handleSave = async (e) => {
@@ -85,7 +86,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
     <>
       <div 
         className="modal-backdrop fade show" 
-        style={{ zIndex: 1050 }}
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} 
         onClick={onClose}
       ></div>
 
@@ -94,83 +95,106 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
         tabIndex="-1" 
         style={{ zIndex: 1055 }}
       >
-        <div className="modal-dialog modal-xl">
-          <div className="modal-content border-0 shadow-lg">
+        <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             
-            <div className="card shadow-sm border-0">
-              <div className="card-header bg-white pt-3 border-bottom-0">
-                <div className="d-flex justify-content-between align-items-center mb-3 px-2">
-                  <h5 className="fw-bold mb-0">{initialData ? 'Edit Data' : 'Add New Data'}</h5>
-                  <button type="button" className="btn-close" onClick={onClose}></button>
-                </div>                
-              </div>
-              <form ref={formRef} onSubmit={handleSave}>
-                <div className="card-body border-top">
-                  <div className="row g-3">
-                    <div className="col-md-12 position-relative">
-                      <label className="form-label fw-bold">Name Person</label>
-                      <div className="input-group">
-                        <input
-                          type="text"
-                          className="form-control"
-                          placeholder="Ketik minimal 3 karakter untuk mencari NIK atau Nama..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          disabled={!!selectedPerson} // Kunci jika sudah terpilih
-                          required
-                        />
-                        {selectedPerson && (
-                          <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
-                            Reset
-                          </button>
-                        )}
-                      </div>                      
-                      <input type="hidden" name="person_id" value={selectedPerson?.person_id || ""} />
-                      {results.length > 0 && (
-                        <ul className="list-group position-absolute w-100 shadow-lg" style={{ zIndex: 1000, top: '100%' }}>
-                          {results.map((p) => (
-                            <button
-                              key={p.person_id}
-                              type="button"
-                              className="list-group-item list-group-item-action"
-                              onClick={() => handleSelect(p)}
-                            >
-                              {p.name} <small className="text-muted">({p.resident_id})</small>
-                            </button>
-                          ))}
-                        </ul>
-                      )}
-                      {isSearching && <small className="text-primary">Mencari...</small>}
-                    </div>
-                  </div>
-                  <hr />
-                  <div className={`row g-3 ${!selectedPerson ? 'opacity-50' : ''}`} style={{ pointerEvents: selectedPerson ? 'auto' : 'none' }}>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Blacklist Status</label>
-                        <select name="status" className="form-select" required>
-                          <option value="0">Aman (Tidak Diblacklist)</option>
-                          <option value="1">Blacklist</option>
-                        </select>
-                    </div>
-                    <div className="mb-3 col-8">
-                        <label className="form-label small fw-bold">Reason</label>
-                        <input type="text" name="block_status" className="form-control" />
-                    </div>
-                  </div>
-                </div>              
-              <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
-                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
-                <button 
-                    type="submit" 
-                    className="btn-app btn-primary-app px-4 shadow-sm fw-semibold"
-                    disabled={!selectedPerson}
-                  >
-                    <i className="bi bi-check-lg me-1"></i> Simpan Data
-                  </button>
-              </div>
-              </form>
+            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
+              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+                <i className="bi bi-shield-exclamation me-2"></i>
+                {initialData ? 'Update Status Blacklist' : 'Input Status Blacklist'}
+              </h5>
+              <button type="button" className="btn-close" onClick={onClose}></button>
             </div>
 
+            <form ref={formRef} onSubmit={handleSave}>
+              <div className="modal-body p-4 bg-white">
+                
+                <div className="row g-3 mb-4">
+                  <div className="col-md-12 position-relative">
+                    <label className="form-label small fw-bold text-muted">Cari Personel (Nama atau NIK)</label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light border-end-0">
+                        <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`}></i>
+                      </span>
+                      <input
+                        type="text"
+                        className={`form-control border-start-0 ps-0 ${selectedPerson ? 'bg-light fw-bold' : ''}`}
+                        placeholder="Ketik minimal 3 karakter untuk mencari..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        readOnly={isEditMode || !!selectedPerson} 
+                        autoComplete="off"
+                        required
+                        style={isEditMode ? { backgroundColor: '#e9ecef', cursor: 'not-allowed' } : {}}
+                      />
+                      {selectedPerson && !isEditMode && (
+                        <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
+                          <i className="bi bi-arrow-counterclockwise me-1"></i> Reset
+                        </button>
+                      )}
+                    </div>
+
+                    {results.length > 0 && (
+                      <div className="list-group position-absolute w-100 shadow-lg border-0 mt-1" style={{ zIndex: 1100, borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                        {results.map((p) => (
+                          <button
+                            key={p.person_id}
+                            type="button"
+                            className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2 px-3"
+                            onClick={() => handleSelect(p)}
+                          >
+                            <div>
+                              <div className="fw-bold text-dark">{p.name}</div>
+                              <small className="text-muted"><i className="bi bi-card-text me-1"></i>{p.resident_id}</small>
+                            </div>
+                            <i className="bi bi-plus-circle text-primary"></i>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="hr-text text-muted small fw-bold mb-4">
+                  <span className="bg-white px-2">Detail Status Keamanan</span>
+                </div>
+
+                <div className={`row g-3 transition-opacity ${!selectedPerson ? 'opacity-50' : ''}`} style={{ pointerEvents: selectedPerson ? 'auto' : 'none' }}>
+                  <input type="hidden" name="person_id" value={selectedPerson?.person_id || ""} />
+                  
+                  <div className="col-md-4">
+                    <label className="form-label small fw-bold text-muted">Status Blacklist</label>
+                    <select name="status" className="form-select" required style={{ borderRadius: 'var(--radius-md)' }}>
+                      <option value="0">✅ AMAN (Clean)</option>
+                      <option value="1">🚫 BLACKLIST</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-8">
+                    <label className="form-label small fw-bold text-muted">Alasan / Keterangan (Reason)</label>
+                    <input 
+                      type="text" 
+                      name="block_status" 
+                      className="form-control" 
+                      placeholder="Contoh: Mengundurkan diri tidak baik-baik, dll..."
+                      required={selectedPerson && formRef.current?.status?.value === "1"}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer bg-light border-top p-3 px-4">
+                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
+                <button 
+                  type="submit" 
+                  className="btn-app btn-primary-app px-5 shadow-sm"
+                  disabled={!selectedPerson}
+                >
+                  <i className="bi bi-check-lg me-2"></i>
+                  {initialData ? 'Update Data' : 'Simpan Status'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>

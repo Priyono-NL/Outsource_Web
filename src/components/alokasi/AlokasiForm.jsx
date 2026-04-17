@@ -11,6 +11,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
   const formRef = useRef(null);
+  const isEditMode = !!initialData;
   
   useEffect(() => {
     const fetchCanteens = async () => {
@@ -24,21 +25,21 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
       }
     };
     fetchCanteens();
-  }, []) // get canteen select
+  }, [])
 
   useEffect(() => {
-        if (initialData && formRef.current && canteens.length > 0) {
-          setEmpId(initialData.employee_code || ''); 
-          setEmpPk(initialData.employee_id || '');
-          formRef.current.employee_code.value = initialData.employee_code;
-          formRef.current.canteen_id.value = initialData.canteen_id;
-          formRef.current.valid_from.value = initialData.valid_from;
-          formRef.current.valid_to.value = initialData.valid_to;
-          const isNoLimitActive = !initialData.valid_to;
-          setIsNoLimit(isNoLimitActive);
-          handleSearchEmployee(initialData.employee_code || initialData.employee_id)
-        }
-    }, [initialData, , canteens]);
+    if (initialData && formRef.current && canteens.length > 0) {
+      setEmpId(initialData.employee_code || ''); 
+      setEmpPk(initialData.employee_id || '');
+      formRef.current.employee_code.value = initialData.employee_code;
+      formRef.current.canteen_id.value = initialData.canteen_id;
+      formRef.current.valid_from.value = initialData.valid_from;
+      formRef.current.valid_to.value = initialData.valid_to;
+      const isNoLimitActive = !initialData.valid_to;
+      setIsNoLimit(isNoLimitActive);
+      handleSearchEmployee(initialData.employee_code || initialData.employee_id)
+    }
+  }, [initialData, canteens]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -87,17 +88,13 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
   };
 
   const handleIdChange = (e) => {
+    if (isEditMode) return;
     const value = e.target.value;
     setEmpId(value);
     if (value === "") {
       setIsEmployeeFound(false);
       setFullName("");
       setEmpPk("");
-      setFormData({
-        canteen_id: "",
-        valid_from: "",
-        valid_to: ""
-      });
     } else {
       setIsEmployeeFound(false);
     }
@@ -115,7 +112,7 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
     <>
       <div 
         className="modal-backdrop fade show" 
-        style={{ zIndex: 1050 }}
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }}
         onClick={onClose}
       ></div>
 
@@ -124,91 +121,136 @@ function AlokasiForm({ onClose, onSuccess, initialData }) {
         tabIndex="-1" 
         style={{ zIndex: 1055 }}
       >
-        <div className="modal-dialog modal-xl">
-          <div className="modal-content border-0 shadow-lg">
+        <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             
-            <div className="card shadow-sm border-0">
-              <div className="card-header bg-white pt-3 border-bottom-0">
-                <div className="d-flex justify-content-between align-items-center mb-3 px-2">
-                  <h5 className="fw-bold mb-0">{initialData ? 'Edit Data' : 'Add New Data'}</h5>
-                  <button type="button" className="btn-close" onClick={onClose}></button>
-                </div>                
-              </div>
-              <form ref={formRef} onSubmit={handleSave}>
-                <div className="card-body border-top">
-                  <div className="row g-3">
-                    <div className="mb-3 col-3">
-                        <label className="form-label small fw-bold">Employee ID</label>
-                        <input 
-                          type="text" 
-                          name="employee_code" 
-                          className="form-control" 
-                          required
-                          value={empId}
-                          onChange={handleIdChange}
-                          onBlur={(e) => handleSearchEmployee(e.target.value)}
-                        />
+            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
+              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+                <i className={`bi ${initialData ? 'bi-pencil-square' : 'bi-plus-circle'} me-2`}></i>
+                {initialData ? 'Edit Alokasi Kantin' : 'Tambah Alokasi Kantin'}
+              </h5>
+              <button type="button" className="btn-close" onClick={onClose}></button>
+            </div>
+
+            <form ref={formRef} onSubmit={handleSave}>
+              <div className="modal-body p-4 bg-white">
+                
+                <div className="row g-3 mb-4">
+                  <div className="col-md-4">
+                    <label className="form-label small fw-bold text-muted">ID Karyawan (Employee ID)</label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light"><i className="bi bi-person-badge"></i></span>
+                      <input 
+                        type="text" 
+                        name="employee_code" 
+                        className="form-control" 
+                        placeholder="Ketik ID..."
+                        required
+                        value={empId}
+                        onChange={handleIdChange}
+                        onBlur={(e) => handleSearchEmployee(e.target.value)}
+                        readOnly={isEditMode}
+                        style={isEditMode ? { cursor: 'not-allowed' } : {}}
+                      />
                     </div>
-                    <div className="mb-3 col-9">
-                      <label className="form-label fw-bold">Nama Lengkap</label>
+                  </div>
+                  <div className="col-md-8">
+                    <label className="form-label small fw-bold text-muted">Nama Lengkap Karyawan</label>
+                    <div className="position-relative">
                       <input 
                         type="text" 
                         className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
-                        value={isSearching ? "Mencari..." : fullName}
+                        value={isSearching ? "Sedang mencari data..." : fullName}
                         readOnly
-                        style={{ backgroundColor: '#e9ecef' }} 
+                        placeholder="Nama akan muncul otomatis..."
+                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600' }} 
                       />
-                      {isSearching && <div className="spinner-border spinner-border-sm text-primary mt-1" role="status"></div>}
+                      {isSearching && (
+                        <div className="position-absolute end-0 top-50 translate-middle-y me-3">
+                          <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="row g-3">
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Canteen Name</label>
-                        <select name="canteen_id" className="form-select" disabled={!isEmployeeFound || isSearching} required>
-                            {canteens.map((canteen) => (
-                                <option key={canteen.canteen_id} value={canteen.canteen_id}>
-                                    {canteen.canteen_name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Valid From</label>
-                        <input type="date" name="valid_from" className="form-control" disabled={!isEmployeeFound || isSearching} required />
-                    </div>
-                    <div className="mb-3 col-4">
-                        <label className="form-label small fw-bold">Valid To</label>                        
-                        <input 
-                          type="date" 
-                          name="valid_to" 
-                          id="valid_to" 
-                          className="form-control" 
-                          required
-                          disabled={isNoLimit || !isEmployeeFound || isSearching}
-                          defaultValue={initialData?.valid_to}                          
-                        />
+                </div>
+
+                <div className="hr-text text-muted small fw-bold mb-4">
+                  <span className="bg-white px-2">Konfigurasi Alokasi</span>
+                </div>
+
+                <div className="row g-3">
+                  <div className="col-md-12">
+                    <label className="form-label small fw-bold text-muted">Nama Kantin (Canteen Name)</label>
+                    <select 
+                      name="canteen_id" 
+                      className="form-select" 
+                      disabled={!isEmployeeFound || isSearching} 
+                      required
+                      style={{ borderRadius: 'var(--radius-md)' }}
+                    >
+                      <option value="">-- Pilih Kantin --</option>
+                      {canteens.map((canteen) => (
+                        <option key={canteen.canteen_id} value={canteen.canteen_id}>
+                          {canteen.canteen_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label small fw-bold text-muted">Mulai Berlaku (Valid From)</label>
+                    <input 
+                      type="date" 
+                      name="valid_from" 
+                      className="form-control" 
+                      disabled={!isEmployeeFound || isSearching} 
+                      required 
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <div className="d-flex justify-content-between">
+                      <label className="form-label small fw-bold text-muted">Selesai Berlaku (Valid To)</label>
+                      <div className="form-check">
                         <input 
                           type="checkbox" 
                           id="no_limit" 
                           className="form-check-input"
                           checked={isNoLimit}
                           onChange={handleNoLimitToggle}
+                          disabled={!isEmployeeFound || isSearching}
                         />
-                        <label className="form-check-label" htmlFor="no_limit">
+                        <label className="form-check-label small fw-bold text-primary" htmlFor="no_limit" style={{ cursor: 'pointer' }}>
                           No Limit
-                        </label> 
+                        </label>
+                      </div>
                     </div>
+                    <input 
+                      type="date" 
+                      name="valid_to" 
+                      id="valid_to" 
+                      className="form-control" 
+                      required={!isNoLimit}
+                      disabled={isNoLimit || !isEmployeeFound || isSearching}
+                      defaultValue={initialData?.valid_to}
+                      style={isNoLimit ? { backgroundColor: '#f1f3f5', opacity: 0.6 } : {}}
+                    />
                   </div>
-                </div>              
-              <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
-                <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn-app btn-primary-app px-4 shadow-sm fw-semibold" disabled={!isEmployeeFound || isSearching}>
-                  <i className="bi bi-check-lg me-1"></i> Simpan Data
+                </div>
+              </div>
+
+              <div className="modal-footer bg-light border-top p-3 px-4">
+                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
+                <button 
+                  type="submit" 
+                  className="btn-app btn-primary-app px-4" 
+                  disabled={!isEmployeeFound || isSearching}
+                >
+                  <i className="bi bi-save me-2"></i>
+                  {initialData ? 'Update Alokasi' : 'Simpan Alokasi'}
                 </button>
               </div>
-              </form>
-            </div>
-
+            </form>
           </div>
         </div>
       </div>

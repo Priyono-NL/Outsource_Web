@@ -103,7 +103,7 @@ def export():
                      .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
-                    osMedical.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    osMedical.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )

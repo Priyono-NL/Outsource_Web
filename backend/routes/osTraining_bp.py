@@ -105,7 +105,7 @@ def export():
                      .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
-                    osTraining.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    osTraining.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
                 )
             )
@@ -183,7 +183,7 @@ def upload():
                 errors.append(f"Baris {index+2}: ID Employee '{e_id}' tidak terdaftar di sistem.")
                 continue
             if not m_id:
-                errors.append(f"Baris {index+2}: Jenis Medical '{row['Training Name']}' tidak ditemukan.")
+                errors.append(f"Baris {index+2}: Jenis Training '{row['Training Name']}' tidak ditemukan.")
                 continue
             raw_result = str(row['Result']).strip().lower()
             if raw_result == 'lulus':

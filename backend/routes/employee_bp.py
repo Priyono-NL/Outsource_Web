@@ -494,8 +494,6 @@ def upload():
                 "errors": errors
             }), 400
 
-        return jsonify({"status": "success", "message": f"Berhasil mengimport {success_count} data.", "errors": errors}), 200
-
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": f"Terjadi kesalahan fatal: {str(e)}"}), 500
