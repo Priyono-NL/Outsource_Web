@@ -2,12 +2,23 @@ import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import api from '../../api/api';
 
-function EmployTab() {
+function EmployTab({ initialData }) {
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [subcom, setSubcom] = useState([]);
   const [costCenter, setCostCenter] = useState([]);
   const [selectSubComId, setSelectSubComId] = useState(null);
   const [selectCCId, setselectCCId] = useState(null);
+
+  const [formData, setFormData] = useState({
+    employee_id: '',
+    grade: '',
+    type_worker: 'DAILYWAGE',
+    posisi: '',
+    valid_from: '',
+    valid_to: ''
+  });
+
+  const isEditMode = !!initialData;
 
   useEffect(() => {
     const fetchSubCom = async () => {
@@ -29,6 +40,27 @@ function EmployTab() {
     fetchSubCom();
     fetchCC();
   }, []);
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        employee_id: initialData.employee_code || initialData.employee_id || '',
+        grade: initialData.grade || '',
+        type_worker: initialData.type_worker || '',
+        posisi: initialData.posisi || '',
+        valid_from: initialData.valid_from || '',
+        valid_to: initialData.valid_to || ''
+      });
+      setSelectSubComId(initialData.sub_company_id || null);
+      setselectCCId(initialData.cc_id || null);
+      setIsNoLimit(!initialData.valid_to); // Jika valid_to kosong, berarti No Limit
+    }
+  }, [initialData]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
   const subcomOptions = subcom.map((item) => ({
     value: item.sub_company_id,
@@ -65,12 +97,29 @@ function EmployTab() {
       <div className="row g-3">
         <div className="col-md-8">
           <label className="form-label small fw-bold text-muted">No Induk Karyawan (NRP)<span className="text-danger">*</span></label>
-          <input type="text" name="employee_id" className="form-control" placeholder="Contoh: 123456" />
+          <input 
+            type="text" 
+            name="employee_id" 
+            className={`form-control ${isEditMode ? 'bg-light fw-bold' : ''}`} 
+            placeholder="Contoh: 123456" 
+            value={formData.employee_id}
+            onChange={handleInputChange}
+            readOnly={isEditMode}
+            style={isEditMode ? { cursor: 'not-allowed' } : {}}
+            required
+          />
         </div>
         
         <div className="col-md-4">
           <label className="form-label small fw-bold text-muted">Grade</label>
-          <input type="text" name="grade" className="form-control" placeholder="Pilih Grade" />
+          <input 
+            type="text" 
+            name="grade" 
+            className="form-control" 
+            placeholder="Pilih Grade"
+            value={formData.grade}
+            onChange={handleInputChange} 
+          />
         </div>
 
         <div className="col-md-6">
@@ -78,7 +127,7 @@ function EmployTab() {
           <Select
             options={subcomOptions}
             isSearchable={true}
-            placeholder="Pilih Sub Co..."
+            placeholder="Pilih Sub Company..."
             styles={customSelectStyles}
             value={subcomOptions.find(opt => opt.value === selectSubComId) || null}
             onChange={(opt) => setSelectSubComId(opt ? opt.value : null)}
@@ -101,7 +150,13 @@ function EmployTab() {
 
         <div className="col-md-6">
           <label className="form-label small fw-bold text-muted">Type Worker</label>
-          <select name="type_worker" className='form-select'>
+          <select 
+            name="type_worker" 
+            className='form-select'
+            value={formData.type_worker}
+            onChange={handleInputChange}
+          >
+            <option value="">-- Pilih Type Worker --</option>
             <option value="DAILYWAGE">Daily Wage</option>
             <option value="PIECERATE">Piece Rate</option>
           </select>
@@ -109,12 +164,25 @@ function EmployTab() {
 
         <div className="col-md-6">
           <label className="form-label small fw-bold text-muted">Posisi / Jabatan</label>
-          <input type="text" name="posisi" className="form-control" placeholder="Contoh: Operator Produksi" />
+          <input 
+            type="text" 
+            name="posisi" 
+            className="form-control" 
+            placeholder="Contoh: Operator Produksi" 
+            value={formData.posisi}
+            onChange={handleInputChange}
+          />
         </div>
 
         <div className="col-md-6">
           <label className="form-label small fw-bold text-muted">Mulai Kontrak (Valid From)</label>
-          <input type="date" name="valid_from" className="form-control" />
+          <input 
+            type="date" 
+            name="valid_from" 
+            className="form-control" 
+            value={formData.valid_from}
+            onChange={handleInputChange}
+          />
         </div>
 
         <div className="col-md-6">
@@ -126,7 +194,12 @@ function EmployTab() {
                 id="no_limit"
                 className="form-check-input"
                 checked={isNoLimit}
-                onChange={(e) => setIsNoLimit(e.target.checked)}
+                onChange={(e) => {
+                  setIsNoLimit(e.target.checked);
+                  if (e.target.checked) {
+                    setFormData(prev => ({ ...prev, valid_to: '' }));
+                  }
+                }}
               />
               <label className="form-check-label small fw-bold text-primary" htmlFor="no_limit" style={{ cursor: 'pointer' }}>
                 No Limit
@@ -138,6 +211,8 @@ function EmployTab() {
             name="valid_to"
             className="form-control"
             disabled={isNoLimit}
+            value={formData.valid_to}
+            onChange={handleInputChange}
             style={isNoLimit ? { backgroundColor: '#f1f3f5', opacity: 0.6 } : {}}
           />
         </div>

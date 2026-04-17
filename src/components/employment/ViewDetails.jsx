@@ -6,7 +6,6 @@ function ViewDetails({ onClose, initialData }) {
     ? (initialData.photo.startsWith('http') ? initialData.photo : `${BASE_URL}${initialData.photo}`)
     : "/src/assets/no_image.png";
 
-  console.log(initialData);
   return (
     <>
       <div 

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Toast, Confirm } from '../../utils/sweetalert';
+import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 import PersonelTab from './PersonalTab';
 import EmployTab from './EmployTab';
 import AsetTab from './AsetTab';
 
-function DataFrom({ onClose, onSuccess, initialData: propsData }) {
+function DataForm({ onClose, onSuccess, initialData: propsData }) {
   const [activeTab, setActiveTab] = useState(0);
   const formRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -14,7 +14,8 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
   const [initialData, setInitialData] = useState(propsData || { is_blacklist: "No in Blacklist" });
   const [previewUrl, setPreviewUrl] = useState("/no_image.png");
   const BASE_URL = 'http://localhost:5000';
-  
+  const isEditMode = !!propsData;
+
   useEffect(() => {
     if (initialData?.photo) {
       const fullUrl = initialData.photo.startsWith('http') 
@@ -60,6 +61,7 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
 
   const handlePersonSelect = (person) => {
     setInitialData({
+      ...initialData,
       is_blacklist: person.is_blacklist,
       photo: person.photo
     });
@@ -67,14 +69,20 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    const customConfig = { headers: { 'Content-Type': 'multipart/form-data', } };
+    const customConfig = { headers: { 'Content-Type': 'multipart/form-data' } };
     const formData = new FormData(formRef.current);
-    if (selectedFile) { formData.append('photo', selectedFile); }
+    
+    if (selectedFile) { 
+      formData.append('photo', selectedFile); 
+    }
     
     try {
-      const response = await api.post('/employee/submit', formData, customConfig);
+      const response = isEditMode 
+        ? await api.put(`/employee/${propsData.id}`, formData, customConfig)
+        : await api.post('/employee/submit', formData, customConfig);
+        
       if (response.data.status === 'success') {
-        Toast.fire({ icon: 'success', title: response.data.message });
+        Toast.fire({ icon: 'success', title: response.data.message || 'Data berhasil disimpan' });
         onSuccess?.();
         onClose?.();
       }
@@ -93,8 +101,8 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
             
             <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
               <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
-                <i className="bi bi-pencil-square me-2"></i>
-                Form Input Data Employment
+                <i className={`bi ${isEditMode ? 'bi-person-gear' : 'bi-pencil-square'} me-2`}></i>
+                {isEditMode ? 'Edit Data Employment' : 'Form Input Data Employment'}
               </h5>
               <button type="button" className="btn-close" onClick={onClose}></button>
             </div>
@@ -162,13 +170,13 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
 
                     <div className="tab-content-container" style={{ minHeight: '380px' }}>
                       <div className={activeTab === 0 ? '' : 'd-none'}>
-                        <PersonelTab onPersonSelect={handlePersonSelect} />
+                        <PersonelTab onPersonSelect={handlePersonSelect} initialData={propsData} />
                       </div>
                       <div className={activeTab === 1 ? '' : 'd-none'}>
-                        <EmployTab />
+                        <EmployTab initialData={propsData} />
                       </div>
                       <div className={activeTab === 2 ? '' : 'd-none'}>
-                        <AsetTab />
+                        <AsetTab initialData={propsData} />
                       </div>
                     </div>
                   </div>
@@ -199,7 +207,7 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
                     </button>
                   ) : (
                     <button type="submit" className="btn-app btn-success-app px-4">
-                      <i className="bi bi-save me-2"></i> Simpan Data Employment
+                      <i className="bi bi-save me-2"></i> {isEditMode ? 'Update Data' : 'Simpan Data'}
                     </button>
                   )}
                 </div>
@@ -213,4 +221,4 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
   );
 }
 
-export default DataFrom;
+export default DataForm;

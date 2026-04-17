@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
-function PersonelTab({ onPersonSelect }) {
+function PersonelTab({ onPersonSelect, initialData }) {
     const [searchTerm, setSearchTerm] = useState("");
     const [results, setResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -16,16 +16,38 @@ function PersonelTab({ onPersonSelect }) {
         address: ""
     });
 
+    const isEditMode = !!initialData;
+
+    useEffect(() => {
+        if (initialData) {
+            setSelectedPerson({
+                person_id: initialData.person_id,
+                name: initialData.person_name || initialData.name,
+                is_blacklist: initialData.is_blacklist
+            });
+            setSearchTerm(initialData.person_name || initialData.name || "");
+            
+            setFormData({
+                gender: initialData.gender || "L",
+                religion: initialData.religion || "islam",
+                pob: initialData.pob || "",
+                dob: initialData.dob || "",
+                resident_id: initialData.resident_id || "",
+                address: initialData.address || ""
+            });
+        }
+    }, [initialData]);
+
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
-            if (searchTerm.length >= 3 && !selectedPerson) {
+            if (searchTerm.length >= 3 && !selectedPerson && !isEditMode) {
                 fetchPersons();
             } else {
                 setResults([]);
             }
         }, 500);
         return () => clearTimeout(delayDebounceFn);
-    }, [searchTerm, selectedPerson]);
+    }, [searchTerm, selectedPerson, isEditMode]);
 
     const fetchPersons = async () => {
         setIsSearching(true);
@@ -56,6 +78,7 @@ function PersonelTab({ onPersonSelect }) {
     };
 
     const handleReset = () => {
+        if (isEditMode) return;
         setSelectedPerson(null);
         setSearchTerm("");
         setFormData({ gender: "L", religion: "islam", pob: "", dob: "", resident_id: "", address: "" });
@@ -79,15 +102,16 @@ function PersonelTab({ onPersonSelect }) {
                         <input
                             type="text"
                             name='nama'
-                            className={`form-control border-start-0 ps-0 ${selectedPerson ? 'bg-light fw-bold' : ''}`}
+                            className={`form-control border-start-0 ps-0 ${selectedPerson ? 'bg-light fw-bold text-primary' : ''} ${isEditMode ? 'opacity-75' : ''}`}
                             placeholder="Ketik minimal 3 karakter..."
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            readOnly={!!selectedPerson}
+                            onChange={(e) => !isEditMode && setSearchTerm(e.target.value)}
+                            readOnly={isEditMode || !!selectedPerson}
                             autoComplete="off"
+                            style={isEditMode ? { backgroundColor: '#e9ecef', cursor: 'not-allowed' } : {}}
                         />
-                        {selectedPerson && (
-                            <button className="btn btn-outline-danger" type="button" onClick={handleReset}>
+                        {selectedPerson && !isEditMode && (
+                            <button className="btn btn-outline-danger" type="button" onClick={handleReset} title="Ganti Personel">
                                 <i className="bi bi-x-circle me-1"></i> Ganti
                             </button>
                         )}
@@ -123,7 +147,7 @@ function PersonelTab({ onPersonSelect }) {
             </div>
 
             <div className="row g-3">
-                <input type="hidden" name="person_id" value={selectedPerson?.person_id || ""} />
+                <input type="hidden" name="person_id" value={selectedPerson?.person_id || initialData?.person_id || ""} />
                 
                 <div className="col-md-6">
                     <label className="form-label small fw-bold text-muted">Jenis Kelamin</label>

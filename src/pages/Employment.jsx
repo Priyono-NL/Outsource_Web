@@ -13,6 +13,7 @@ const Employment = () => {
   const crud = useCrudPage();
   const [viewForm, setViewForm]       = useState(false);
   const [viewData, setViewData]       = useState(null);
+  const [editData, setEditData]       = useState(null);
 
   const [statusInput, setStatusInput]           = useState('all');
   const [subCompanyInput, setSubCompanyInput]   = useState('');
@@ -48,6 +49,21 @@ const Employment = () => {
   };
 
   const handleView = (data) => { setViewData(data); setViewForm(true); };
+
+  const handleEdit = (data) => {
+    setEditData(data);
+    crud.handleAdd();
+  };
+
+  const handleAddNew = () => {
+    setEditData(null);
+    crud.handleAdd();
+  };
+
+  const handleCloseForm = () => {
+    setEditData(null);
+    crud.handleClose();
+  };
 
   const handleExport = async () => {
     try {
@@ -133,13 +149,13 @@ const Employment = () => {
         </button>
         <button
           className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
-          onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
+          onClick={crud.showForm ? handleCloseForm : handleAddNew}
         >
           {crud.showForm ? <><i className="bi bi-x" /> Tutup</> : <><i className="bi bi-plus" /> Tambah</>}
         </button>
       </PageHeader>
 
-      {crud.showForm && <Dataform onClose={crud.handleClose} onSuccess={crud.handleRefresh} />}
+      {crud.showForm && <Dataform onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />}
       {viewForm && <ViewDetails onClose={() => setViewForm(false)} initialData={viewData} />}
 
       <div className="app-card">
@@ -180,9 +196,12 @@ const Employment = () => {
             </button>
           </div>
         </div>
+        
+        {/* Tambahkan properti onEditClick ke Datatable */}
         <Datatable
           refreshTrigger={crud.refreshKey}
           onViewClick={handleView}
+          onEditClick={handleEdit} 
           searchTerm={crud.appliedSearch}
           filterStatus={appliedStatus}
           filterSubCompany={appliedSubCompany}
@@ -192,4 +211,5 @@ const Employment = () => {
     </div>
   );
 };
+
 export default Employment;
