@@ -79,6 +79,7 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
     const customConfig = { headers: { 'Content-Type': 'multipart/form-data', } };
     const formData = new FormData(formRef.current);
     if (selectedFile) { formData.append('photo', selectedFile); }
+    console.log(Object.fromEntries(formData));
     try {
       const response = await api.post('/employee/submit', formData, customConfig);
       if (response.data.status === 'success') {
@@ -205,7 +206,7 @@ function DataFrom({ onClose, onSuccess, initialData: propsData }) {
                       {initialData?.is_blacklist === 'Blacklist' ? 'Blacklist' : 'Selanjutnya'}
                     </button>
                   ) : (
-                    <button type="submit" className="btn btn-success px-5 shadow-sm fw-bold">
+                    <button type="submit" className="btn-app btn-success-app px-5 shadow-sm fw-bold">
                       <i className="bi bi-check-lg me-1"></i> Simpan Data
                     </button>
                   )}

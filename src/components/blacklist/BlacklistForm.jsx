@@ -162,7 +162,7 @@ function BlacklistForm({ onClose, onSuccess, initialData }) {
                 <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
                 <button 
                     type="submit" 
-                    className="btn btn-primary px-4 shadow-sm fw-semibold"
+                    className="btn-app btn-primary-app px-4 shadow-sm fw-semibold"
                     disabled={!selectedPerson}
                   >
                     <i className="bi bi-check-lg me-1"></i> Simpan Data

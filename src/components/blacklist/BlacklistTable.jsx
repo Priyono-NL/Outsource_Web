@@ -59,28 +59,28 @@ const BlacklistTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Name Person</th>
-                    <th className="py-3">NIK</th>
-                    <th className="py-3">Blacklist</th>
-                    <th className="py-3">Reason</th>
-                    <th className='py-3'>Action</th>
+                    <th>Name Person</th>
+                    <th>NIK</th>
+                    <th>Blacklist</th>
+                    <th>Reason</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 blacklist.map((emp, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">                        
+                    <tr key={`row-${index+1}`} >                        
                         <td>{emp.person_name}</td>
                         <td>{emp.resident_id}</td>
                         <td>{emp.status_text}</td>
                         <td>{emp.block_status ? emp.block_status : '-'}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(emp.id, emp.person_name)}
                             >
                                 Delete

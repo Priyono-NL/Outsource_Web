@@ -59,24 +59,24 @@ const CCTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Cost Center</th>
-                    <th className="py-3">Cost Center Name</th>
-                    <th className='py-3'>Action</th>
+                    <th>Cost Center</th>
+                    <th>Cost Center Name</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 costCenter.map((cc, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{cc.cost_center}</td>
                         <td>{cc.org_name}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(cc)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(cc)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(cc.cost_center, cc.org_name)}
                             >
                                 Delete

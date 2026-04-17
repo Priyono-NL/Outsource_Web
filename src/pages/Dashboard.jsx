@@ -3,49 +3,40 @@ import StatCard from '../components/StatCard';
 import api from '../api/api';
 
 const Dashboard = () => {
-  const [totalActive, setTotalActive] = useState(0);
-  const [totalInctive, setTotalInctive] = useState(0);
-  const fetchStats = async () => {
-      try {
-          const response = await api.get('/employee/stats');
-          if (response.data.status === 'success') {
-              setTotalActive(response.data.data.total_active);
-              setTotalInctive(response.data.data.total_inactive);
-          }
-      } catch (err) {
-          console.error("Gagal mengambil data statistik:", err);
-      }
-  };
+  const [stats, setStats] = useState({ total_active: 0, total_inactive: 0 });
 
   useEffect(() => {
-      fetchStats();
+    api.get('/employee/stats')
+      .then(res => { if (res.data.status === 'success') setStats(res.data.data); })
+      .catch(err => console.error('Gagal mengambil statistik:', err));
   }, []);
+
   return (
-    <div className="container-fluid px-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h3 className="text-dark mb-0">Dashboard</h3>
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Dashboard</h1>
       </div>
-      <div className='row md-3'>
-        <div className="col-md-3">
-          <StatCard 
-            title="Karyawan Aktif" 
-            value={totalActive} 
-            subtitle="Per Hari Ini" 
-            icon="bi-person-check" 
-            color="#00ff00" 
+      <div className="row g-3">
+        <div className="col-md-4 col-lg-3">
+          <StatCard
+            title="Karyawan Aktif"
+            value={stats.total_active}
+            subtitle="Per hari ini"
+            icon="bi-person-check"
+            color="#22c55e"
           />
         </div>
-        <div className="col-md-3">
-          <StatCard 
-            title="Karyawan Tidak Aktif" 
-            value={totalInctive} 
-            subtitle="Per Hari Ini" 
-            icon="bi-people" 
-            color="#ff0000" 
+        <div className="col-md-4 col-lg-3">
+          <StatCard
+            title="Karyawan Tidak Aktif"
+            value={stats.total_inactive}
+            subtitle="Per hari ini"
+            icon="bi-person-dash"
+            color="#ef4444"
           />
         </div>
-      </div>      
-  </div>
+      </div>
+    </div>
   );
-}
+};
 export default Dashboard;

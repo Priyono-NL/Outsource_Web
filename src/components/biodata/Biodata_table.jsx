@@ -59,26 +59,26 @@ const BiodataTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>                    
-                    <th className="py-3">Name</th>
-                    <th className="py-3">Gender</th>
-                    <th className="py-3">Address</th>
-                    <th className='py-3'>Action</th>
+                    <th>Name</th>
+                    <th>Gender</th>
+                    <th>Address</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 person.map((can, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{can.name}</td>
                         <td>{can.gender}</td>
                         <td>{can.address}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(can)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(can)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(can.person_id, can.person_name)}
                             >
                                 Delete

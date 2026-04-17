@@ -59,22 +59,22 @@ const OsTrainingTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Employee ID</th>
-                    <th className="py-3">Employee Name</th>
-                    <th className="py-3">Training Name</th>
-                    <th className="py-3">Date From</th>
-                    <th className="py-3">Date To</th>
-                    <th className="py-3">Result</th>
-                    <th className="py-3">Score</th>
-                    <th className='py-3'>Action</th>
+                    <th>Employee ID</th>
+                    <th>Employee Name</th>
+                    <th>Training Name</th>
+                    <th>Date From</th>
+                    <th>Date To</th>
+                    <th>Result</th>
+                    <th>Score</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 osTraining.map((emp, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{emp.employee_code}</td>
                         <td>{emp.employee_name}</td>
                         <td>{emp.training_name}</td>
@@ -88,10 +88,10 @@ const OsTrainingTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
                         </td>                        
                         <td>{emp.training_score ? emp.training_score : '-'}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(emp.osTraining_id, emp.employee_name)}
                             >
                                 Delete

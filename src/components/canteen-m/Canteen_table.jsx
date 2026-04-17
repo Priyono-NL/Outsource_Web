@@ -55,24 +55,24 @@ const CanteenTable = ({ refreshTrigger, onEditClick }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Canteen ID</th>
-                    <th className="py-3">Canteen Name</th>
-                    <th className='py-3'>Action</th>
+                    <th>Canteen ID</th>
+                    <th>Canteen Name</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 Canteen.map((can, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{can.canteen_id}</td>
                         <td>{can.canteen_name}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(can)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(can)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(can.Canteen_id, can.Canteen_name)}
                             >
                                 Delete

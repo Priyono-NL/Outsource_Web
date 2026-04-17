@@ -59,26 +59,26 @@ const Medic_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Medical Id</th>
-                    <th className="py-3">Medical Name</th>
-                    <th className="py-3">Fasilitas Kesehatan</th>
-                    <th className='py-3'>Action</th>
+                    <th>Medical Id</th>
+                    <th>Medical Name</th>
+                    <th>Fasilitas Kesehatan</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 Medical.map((sub, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{sub.medical_id}</td>
                         <td>{sub.medical_name}</td>
                         <td>{sub.faskes}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(sub)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(sub)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(sub.medical_id, sub.medical_name)}
                             >
                                 Delete

@@ -72,7 +72,7 @@ function SubComForm({ onClose, onSuccess, initialData }) {
                 </div>              
               <div className="card-footer bg-white d-flex justify-content-end py-3 border-top-0">
                 <button type="button" className="btn btn-light me-2 fw-semibold" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn btn-primary px-4 shadow-sm fw-semibold">
+                <button type="submit" className="btn-app btn-primary-app px-4 shadow-sm fw-semibold">
                   <i className="bi bi-check-lg me-1"></i> Simpan Data
                 </button>
               </div>

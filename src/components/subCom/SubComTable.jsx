@@ -59,26 +59,26 @@ const SubComTable = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Sub Company Id</th>
-                    <th className="py-3">Sub Company Name</th>
-                    <th className="py-3">Company Type</th>
-                    <th className='py-3'>Action</th>
+                    <th>Sub Company Id</th>
+                    <th>Sub Company Name</th>
+                    <th>Company Type</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 SubCom.map((sub, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{sub.sub_company_id}</td>
                         <td>{sub.sub_company_name}</td>
                         <td>{sub.type_company}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(sub)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(sub)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(sub.sub_company_id, sub.sub_company_name)}
                             >
                                 Delete

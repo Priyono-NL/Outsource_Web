@@ -1,90 +1,44 @@
 import React, { useState } from 'react';
+import { useCrudPage } from '../utils/useCrudPage';
+import PageHeader from '../components/PageHeader';
 import OsCardForm from '../components/osCard/OsCardForm';
 import OsCardTable from '../components/osCard/OsCardTable';
 
 const OsCard = () => {
-    const [showForm, setShowForm] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [editingData, setEditingData] = useState(null);
-    const [searchInput, setSearchInput] = useState("");
-    const [appliedSearch, setAppliedSearch] = useState("");
-    const [filterTerm, setFilterTerm] = useState("all");
-    
-    const handleSearch = () => { setAppliedSearch(searchInput); };
-    const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
-    const handleAdd = () => {
-        setEditingData(null);
-        setShowForm(true);
-    };
-    const handleEdit = (data) => {
-        setEditingData(data);
-        setShowForm(true);
-    };
+  const crud = useCrudPage();
+  const [filterTerm, setFilterTerm] = useState('all');
 
-     return (
-        <div className="container-fluid px-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="text-dark mb-0">Absence Card</h3>
-          <div className="flex-grow-1 mx-4" style={{ maxWidth: '500px' }}>
-            <div className="input-group">
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="Cari ID atau Nama Karyawan atau No Kartu ..." 
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              />
-              <button className="btn btn-outline-primary" onClick={handleSearch}>
-                Cari
-              </button>
-            </div>
-          </div>
-          <button 
-            className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold`}
-            onClick={handleAdd}
-          >
-            {showForm ? 'Close Form' : '+ Add New'}
-          </button>
-        </div>
-        {showForm && (
-          <OsCardForm 
-            onClose={() => setShowForm(false)} 
-            onSuccess={handleRefresh} 
-            initialData={editingData}
-          />
-        )}
-        <div className="card border-0 shadow-sm">
-          <div className="card-body">
-            <div className="row g-3 align-items-end">
-
-              <div className="col-md-3">
-                <label className="form-label small fw-bold">Status</label>
-                <select 
-                  className="form-select"
-                  value={filterTerm} 
-                  onChange={(e) => setFilterTerm(e.target.value)}
-                >
-                  <option value="all">Semua Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
-            </div>
-          </div>
-
-          <div className="card-body p-0">
-              <OsCardTable 
-                refreshTrigger={refreshKey} 
-                onEditClick={handleEdit}
-                searchTerm={appliedSearch}
-                filterTerm={filterTerm}
-              />          
+  return (
+    <div>
+      <PageHeader
+        title="Absence Card"
+        searchPlaceholder="Cari Nomor / Nama..."
+        searchValue={crud.searchInput}
+        onSearchChange={crud.setSearchInput}
+        onSearch={crud.handleSearch}
+      >
+        <button
+          className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
+          onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
+        >
+          {crud.showForm ? <><i className="bi bi-x" /> Tutup</> : <><i className="bi bi-plus" /> Tambah</>}
+        </button>
+      </PageHeader>
+      {crud.showForm && <OsCardForm onClose={crud.handleClose} onSuccess={crud.handleRefresh} initialData={crud.editingData} />}
+      <div className="app-card">
+        <div className="filter-bar">
+          <div className="filter-group">
+            <label>Status</label>
+            <select value={filterTerm} onChange={e => setFilterTerm(e.target.value)}>
+              <option value="all">Semua</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
           </div>
         </div>
-
+        <OsCardTable refreshTrigger={crud.refreshKey} onEditClick={crud.handleEdit} searchTerm={crud.appliedSearch} filterTerm={filterTerm} />
       </div>
-     );
-}
+    </div>
+  );
+};
 export default OsCard;

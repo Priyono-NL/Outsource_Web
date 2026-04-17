@@ -1,50 +1,38 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useCrudPage } from '../utils/useCrudPage';
+import PageHeader from '../components/PageHeader';
 import CanteenTable from '../components/canteen-m/Canteen_table';
 import CanteenForm from '../components/canteen-m/Canteen_form';
 
 const Canteen = () => {
-    const [showForm, setShowForm] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [editingData, setEditingData] = useState(null);
+  const crud = useCrudPage();
 
-    const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
-    const handleAdd = () => {
-        setEditingData(null);
-        setShowForm(true);
-    };
-    const handleEdit = (data) => {
-        setEditingData(data);
-        setShowForm(true);
-    };
+  return (
+    <div>
+      <PageHeader title="Master Kantin">
+        <button
+          className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
+          onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
+        >
+          {crud.showForm ? <><i className="bi bi-x" /> Tutup</> : <><i className="bi bi-plus" /> Tambah</>}
+        </button>
+      </PageHeader>
 
-     return (
-        <div className="container-fluid px-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="text-dark mb-0">Master Kantin</h3>
-          <button 
-            className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold`}
-            onClick={handleAdd}
-          >
-            {showForm ? 'Close Form' : '+ Add New'}
-          </button>          
-        </div>
-        {showForm && (
-          <CanteenForm 
-            onClose={() => setShowForm(false)} 
-            onSuccess={handleRefresh} 
-            initialData={editingData}
-          />
-        )}
-        <div className="card border-0 shadow-sm">
-          <div className="card-body p-0">
-              <CanteenTable 
-                refreshTrigger={refreshKey} 
-                onEditClick={handleEdit}
-              />
-          </div>
-        </div>
+      {crud.showForm && (
+        <CanteenForm
+          onClose={crud.handleClose}
+          onSuccess={crud.handleRefresh}
+          initialData={crud.editingData}
+        />
+      )}
 
+      <div className="app-card">
+        <CanteenTable
+          refreshTrigger={crud.refreshKey}
+          onEditClick={crud.handleEdit}
+        />
       </div>
-     );
-}
+    </div>
+  );
+};
 export default Canteen;

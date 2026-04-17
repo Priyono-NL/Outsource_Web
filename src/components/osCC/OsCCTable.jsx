@@ -59,30 +59,30 @@ const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Employee ID</th>
-                    <th className="py-3">Employee Name</th>
-                    <th className="py-3">Department</th>
-                    <th className="py-3">Valid From</th>
-                    <th className="py-3">Valid To</th>
-                    <th className='py-3'>Action</th>
+                    <th>Employee ID</th>
+                    <th>Employee Name</th>
+                    <th>Department</th>
+                    <th>Valid From</th>
+                    <th>Valid To</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 OsCC.map((emp, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{emp.employee_code}</td>
                         <td>{emp.employee_name}</td>
                         <td>{emp.cc_name}</td>
                         <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
                         <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(emp.id_oscc, emp.employee_name)}
                             >
                                 Delete

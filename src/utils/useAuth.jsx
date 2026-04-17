@@ -1,99 +1,110 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../api/api';
 import { Toast } from './sweetalert';
 
-const SSO_API_URL = "https://sso.ceresnl.com:50443/api/session";
-const SSO_VALIDATE_URL = "https://sso.ceresnl.com:50443/api/validate-token";
-const SSO_LOGIN_URL = "https://sso.ceresnl.com";
-const SSO_LOGOUT_URL = "https://sso.ceresnl.com/Logout";
-
 export function useAuth() {
-    const authState = {
-        isAuthenticated: true,
-        loading: false,
-        user: { fname: "Admin Lokal" }
-    };
+  const authState = {
+      isAuthenticated: true,
+      loading: false,
+      user: { fname: "Admin Lokal", role: "admin" }
+  };
 
-    const handleLogout = () => console.log("Logout (dev mode)");
-//   const [authState, setAuthState] = useState({
-//     isAuthenticated: false,
-//     loading: true,
-//     user: null,
-//   });
+  const handleLogout = () => console.log("Logout (dev mode)");
 
-//   // --- Cek & inisialisasi sesi saat pertama load ---
-//   useEffect(() => {
-//     const handleAuth = async () => {
-//       try {
-//         const params = new URLSearchParams(window.location.search);
-//         const tokenFromUrl = params.get('token');
+  // const [authState, setAuthState] = useState({
+  //   isAuthenticated: false,
+  //   loading: true,
+  //   user: null,
+  // });
 
-//         if (tokenFromUrl) {
-//           localStorage.setItem('sso_token', tokenFromUrl);
-//           window.history.replaceState({}, document.title, window.location.pathname);
+  // -----------------------------------------------------------
+  // Cek status login ke backend saat pertama load
+  // Backend yang pegang token SSO (server-side session)
+  // -----------------------------------------------------------
+  // const checkAuth = useCallback(async () => {
+  //   try {
+  //     const res = await api.get('/auth/me');
+  //     if (res.data.logged_in) {
+  //       setAuthState({
+  //         isAuthenticated: true,
+  //         loading: false,
+  //         user: res.data.user,
+  //       });
+  //     } else {
+  //       redirectToSSO();
+  //     }
+  //   } catch (err) {
+  //     // 401 = belum login, redirect ke SSO
+  //     if (err.response?.status === 401) {
+  //       redirectToSSO();
+  //     } else {
+  //       console.error('Auth check error:', err);
+  //       setAuthState({ isAuthenticated: false, loading: false, user: null });
+  //     }
+  //   }
+  // }, []);
 
-//           const valRes = await api.post(SSO_VALIDATE_URL, { token: tokenFromUrl });
-//           if (!valRes.data.isAuthenticated) {
-//             throw new Error("Token tidak valid");
-//           }
-//           Toast.fire({ icon: 'success', title: 'Login Berhasil!', text: 'Selamat datang.' });
-//         }
+  // useEffect(() => {
+  //   checkAuth();
+  // }, [checkAuth]);
 
-//         const res = await api.get(SSO_API_URL);
-//         if (res.data.isAuthenticated === true) {
-//           await api.post('/sync-session', {
-//             isAuthenticated: true,
-//             user: res.data,
-//           });
-//           setAuthState({ isAuthenticated: true, loading: false, user: res.data });
-//         } else {
-//           redirectToSSO();
-//         }
-//       } catch (err) {
-//         console.error("Auth failed:", err);
-//         redirectToSSO();
-//       }
-//     };
+  // -----------------------------------------------------------
+  // Sinkronisasi sesi — pastikan token masih valid
+  // -----------------------------------------------------------
+  // useEffect(() => {
+  //   if (!authState.isAuthenticated) return;
 
-//     handleAuth();
-//   }, []);
+  //   const interval = setInterval(async () => {
+  //     try {
+  //       const res = await api.get('/auth/me');
+  //       if (!res.data.logged_in) {
+  //         Toast.fire({ icon: 'warning', title: 'Sesi Anda telah berakhir.' });
+  //         redirectToSSO();
+  //       }
+  //     } catch (err) {
+  //       if (err.response?.status === 401) {
+  //         Toast.fire({ icon: 'warning', title: 'Sesi Anda telah berakhir.' });
+  //         redirectToSSO();
+  //       }
+  //     }
+  //   }, 30 * 60 * 1000); // 30 menit
 
-//   // --- Sinkronisasi sesi setiap 60 detik ---
-//   useEffect(() => {
-//     if (!authState.isAuthenticated) return;
+  //   return () => clearInterval(interval);
+  // }, [authState.isAuthenticated]);
 
-//     const syncWithSSO = setInterval(async () => {
-//       try {
-//         const res = await api.get(SSO_API_URL);
-//         if (res.data && res.data.isAuthenticated === false) {
-//           Toast.fire({ icon: 'warning', title: 'Sesi Anda telah berakhir.' });
-//           await api.get('/logout');
-//           redirectToSSO();
-//         }
-//       } catch (err) {
-//         console.error("Gagal sinkronisasi sesi:", err);
-//       }
-//     }, 60000);
+  // -----------------------------------------------------------
+  // Logout — revoke token di SSO, clear session backend
+  // -----------------------------------------------------------
+  // const handleLogout = async () => {
+  //   try {
+  //     await api.post('/auth/logout');
+  //     Toast.fire({ icon: 'info', title: 'Anda telah keluar.' });
+  //   } catch (err) {
+  //     console.error('Logout error:', err);
+  //   } finally {
+  //     setAuthState({ isAuthenticated: false, loading: false, user: null });
+  //     // Redirect ke halaman login SSO
+  //     const res = await api.get('/auth/sso-url').catch(() => null);
+  //     if (res?.data?.url) {
+  //       window.location.href = res.data.url;
+  //     } else {
+  //       window.location.reload();
+  //     }
+  //   }
+  // };
 
-//     return () => clearInterval(syncWithSSO);
-//   }, [authState.isAuthenticated]);
-
-//   // --- Logout ---
-//   const handleLogout = async () => {
-//     try {
-//       await api.get('/logout');
-//       Toast.fire({ icon: 'info', title: 'Anda telah keluar.' });
-//     } catch (error) {
-//       console.error("Gagal logout di server:", error);
-//     } finally {
-//       window.location.href = SSO_LOGOUT_URL;
-//     }
-//   };
-
-//   const redirectToSSO = () => {
-//     const currentUrl = window.location.origin;
-//     window.location.href = `${SSO_LOGIN_URL}/?returnUrl=${encodeURIComponent(currentUrl)}`;
-//   };
+  // -----------------------------------------------------------
+  // Redirect ke SSO login
+  // -----------------------------------------------------------
+  // const redirectToSSO = async () => {
+  //   try {
+  //     const res = await api.get('/auth/sso-url');
+  //     window.location.href = res.data.url;
+  //   } catch (err) {
+  //     console.error('Gagal ambil SSO URL:', err);
+  //     setAuthState({ isAuthenticated: false, loading: false, user: null });
+  //   }
+  // };
 
   return { authState, handleLogout };
 }

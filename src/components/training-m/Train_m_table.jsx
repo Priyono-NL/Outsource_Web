@@ -59,26 +59,26 @@ const Train_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Training Id</th>
-                    <th className="py-3">Training Name</th>
-                    <th className="py-3">Organizer</th>
-                    <th className='py-3'>Action</th>
+                    <th>Training Id</th>
+                    <th>Training Name</th>
+                    <th>Organizer</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 Training.map((sub, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{sub.training_id}</td>
                         <td>{sub.training_name}</td>
                         <td>{sub.organizer}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(sub)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(sub)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(sub.training_id, sub.training_name)}
                             >
                                 Delete

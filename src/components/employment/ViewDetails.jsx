@@ -20,9 +20,9 @@ function ViewDetails({ onClose, initialData }) {
         style={{ zIndex: 1055 }}
       >
         <div className="modal-dialog modal-xl">
-          <div className="modal-content border-0 shadow-lg">
-            <div className="card shadow-sm border-0">
-            <div className="card-header bg-white pt-3 border-bottom-0">
+          <div className="modal-content" style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+            <div className="app-card" style={{ border: "none" }}>
+            <div className="" style={{ padding: "16px 20px", borderBottom: "1px solid var(--color-border)" }}>
               <div className="d-flex justify-content-between align-items-center mb-3 px-2">
                 <h5 className="fw-bold mb-0">Data Details</h5>
                 <button type="button" className="btn-close" onClick={onClose}></button>

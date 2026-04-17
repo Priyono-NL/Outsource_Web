@@ -59,21 +59,21 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
         <div className="table-responsive">
-            <table className="table align-middle mb-0">
-            <thead className="table">
+            <table className="app-table">
+            <thead>
                 <tr>
-                    <th className="py-3">Employee ID</th>
-                    <th className="py-3">Employee Name</th>
-                    <th className="py-3">Medical Check</th>
-                    <th className="py-3">Date</th>
-                    <th className="py-3">Result</th>
-                    <th className="py-3">Notes</th>
-                    <th className='py-3'>Action</th>
+                    <th>Employee ID</th>
+                    <th>Employee Name</th>
+                    <th>Medical Check</th>
+                    <th>Date</th>
+                    <th>Result</th>
+                    <th>Notes</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 osmedical.map((emp, index) => (
-                    <tr key={`row-${index+1}`} className="border-bottom">
+                    <tr key={`row-${index+1}`} >
                         <td>{emp.employee_code}</td>
                         <td>{emp.employee_name}</td>
                         <td>{emp.medical_name}</td>
@@ -81,10 +81,10 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
                         <td>{emp.medical_result}</td>                        
                         <td>{emp.medical_notes ? emp.medical_notes : '-'}</td>
                         <td>
-                            <button className="btn btn-sm btn-outline-primary me-2" onClick={() => onEditClick(emp)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
                                 Edit
                             </button>
-                            <button className="btn btn-sm btn-outline-danger"
+                            <button className="btn-app btn-danger-app btn-sm-app"
                                 onClick={() => handleDelete(emp.osMedical_id, emp.employee_name)}
                             >
                                 Delete

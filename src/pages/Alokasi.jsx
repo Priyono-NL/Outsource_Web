@@ -1,89 +1,57 @@
 import React, { useState } from 'react';
+import { useCrudPage } from '../utils/useCrudPage';
+import PageHeader from '../components/PageHeader';
 import AlokasiForm from '../components/alokasi/AlokasiForm';
 import AlokasiTable from '../components/alokasi/AlokasiTable';
 
 const Alokasi = () => {
-    const [showForm, setShowForm] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [editingData, setEditingData] = useState(null);
-    const [searchInput, setSearchInput] = useState("");
-    const [appliedSearch, setAppliedSearch] = useState("");
-    const [filterTerm, setFilterTerm] = useState("all");
-    
-    const handleSearch = () => { setAppliedSearch(searchInput); };
-    const handleRefresh = () => { setRefreshKey((oldKey) => oldKey + 1); };
-    const handleAdd = () => {
-        setEditingData(null);
-        setShowForm(true);
-    };
-    const handleEdit = (data) => {
-        setEditingData(data);
-        setShowForm(true);
-    };
+  const crud = useCrudPage();
+  const [filterTerm, setFilterTerm] = useState('all');
 
-     return (
-        <div className="container-fluid px-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="text-dark mb-0">Alokasi Kantin</h3>
-          <div className="flex-grow-1 mx-4" style={{ maxWidth: '500px' }}>
-            <div className="input-group">
-              <input 
-                type="text" 
-                className="form-control" 
-                placeholder="Cari ID atau Nama Karyawan..." 
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              />
-              <button className="btn btn-outline-primary" onClick={handleSearch}>
-                Cari
-              </button>
-            </div>
-          </div>
-          <button 
-            className={`btn ${showForm ? 'btn-danger' : 'btn-primary'} px-4 fw-semibold`}
-            onClick={handleAdd}
-          >
-            {showForm ? 'Close Form' : '+ Add New'}
-          </button>
-        </div>
-        {showForm && (
-          <AlokasiForm 
-            onClose={() => setShowForm(false)} 
-            onSuccess={handleRefresh} 
-            initialData={editingData}
-          />
-        )}
-        <div className="card border-0 shadow-sm">
-          <div className="card-body">
-            <div className="row g-3 align-items-end">
+  return (
+    <div>
+      <PageHeader
+        title="Alokasi Kantin"
+        searchPlaceholder="Cari ID atau Nama Karyawan..."
+        searchValue={crud.searchInput}
+        onSearchChange={crud.setSearchInput}
+        onSearch={crud.handleSearch}
+      >
+        <button
+          className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
+          onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
+        >
+          {crud.showForm ? <><i className="bi bi-x" /> Tutup</> : <><i className="bi bi-plus" /> Tambah</>}
+        </button>
+      </PageHeader>
 
-              <div className="col-md-3">
-                <label className="form-label small fw-bold">Status</label>
-                <select 
-                  className="form-select"
-                  value={filterTerm} 
-                  onChange={(e) => setFilterTerm(e.target.value)}
-                >
-                  <option value="all">Semua Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
+      {crud.showForm && (
+        <AlokasiForm
+          onClose={crud.handleClose}
+          onSuccess={crud.handleRefresh}
+          initialData={crud.editingData}
+        />
+      )}
 
-            </div>
-          </div>
-          <div className="card-body p-0">
-              <AlokasiTable 
-                refreshTrigger={refreshKey} 
-                onEditClick={handleEdit}
-                searchTerm={appliedSearch}
-                filterTerm={filterTerm}
-              />          
+      <div className="app-card">
+        <div className="filter-bar">
+          <div className="filter-group">
+            <label>Status</label>
+            <select value={filterTerm} onChange={e => setFilterTerm(e.target.value)}>
+              <option value="all">Semua</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
           </div>
         </div>
-
+        <AlokasiTable
+          refreshTrigger={crud.refreshKey}
+          onEditClick={crud.handleEdit}
+          searchTerm={crud.appliedSearch}
+          filterTerm={filterTerm}
+        />
       </div>
-     );
-}
+    </div>
+  );
+};
 export default Alokasi;
