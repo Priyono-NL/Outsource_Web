@@ -235,7 +235,7 @@ body {
   padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: 14px;
   background: var(--color-surface);
   color: var(--color-text);
   outline: none;

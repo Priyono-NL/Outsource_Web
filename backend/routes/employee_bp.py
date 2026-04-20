@@ -675,6 +675,8 @@ def export():
                 "Sub Company": d['sub_con_name'],
                 "Department": d['cc_name'],
                 "Grade": d['grade'],
+                "Type Worker": d['type_worker'],
+                "Posisi": d['posisi'],
                 "Valid From": d['v_valid_from'],
                 "Valid To": d['valid_to'],
                 "Card Number": d['card_number'],
