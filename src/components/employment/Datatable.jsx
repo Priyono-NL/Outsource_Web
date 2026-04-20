@@ -70,6 +70,8 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
               <th>Sub Company</th>
               <th>Department</th>
               <th>Card No.</th>
+              <th>Type Worker</th>
+              <th>Posisi</th>
               <th>Valid From</th>
               <th>Valid To</th>
               <th className="text-center">Aksi</th>
@@ -82,8 +84,10 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
                 <td style={{ fontWeight: 500 }}>{emp.person_name}</td>
                 <td>{emp.gender}</td>
                 <td>{emp.sub_con_name}</td>
-                <td>{emp.cc_name}</td>
+                <td>{emp.cc_name ? emp.cc_name : '-'}</td>
                 <td>{emp.card_number}</td>
+                <td>{emp.type_worker ? emp.type_worker : '-'}</td>
+                <td>{emp.posisi ? emp.posisi : '-'}</td>
                 <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
                 <td>
                   {emp.valid_to
@@ -91,7 +95,7 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
                     : <span className="badge-active">Aktif</span>}
                 </td>
                 <td>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
                     <button 
                       className="btn-app btn-ghost-app btn-sm-app" 
                       onClick={() => onViewClick(emp)}
