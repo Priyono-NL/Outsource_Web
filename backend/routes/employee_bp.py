@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from extensions import db
 from .auth_bp import login_required
@@ -699,19 +699,6 @@ def export():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@employee_bp.route("/employee/stats", methods=['GET'])
-def get_employee_stats():
-    now = datetime.now()
-    total_active = OsEmployment.query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
-    total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
-    return jsonify({
-        "status": "success",
-        "data": {
-            "total_active": total_active,
-            "total_inactive": total_inactive,
-        }
-    }), 200
-
 @employee_bp.route('/employee/deactivate/<int:pk_id>', methods=['PUT'])
 def deactivate_employee(pk_id):
     try:
@@ -740,6 +727,37 @@ def deactivate_employee(pk_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@employee_bp.route("/employee/stats", methods=['GET'])
+def get_employee_stats():
+    now = datetime.now()
+    
+    total_active = OsEmployment.query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
+    total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
+
+    stats_raw = db.session.query(
+        OsCostCenter.cc_id, 
+        func.count(OsCostCenter.id).label('total')
+    ).filter(
+        (OsCostCenter.valid_to >= now) | (OsCostCenter.valid_to == None)
+    ).group_by(OsCostCenter.cc_id).all()
+
+    stats_map = {row.cc_id: row.total for row in stats_raw}
+
+    cost_centers = costCenter.query.all()
+    cc_aktif = {}
+    
+    for cc in cost_centers:
+        cc_aktif[cc.org_name] = stats_map.get(cc.cost_center, 0)
+
+    return jsonify({
+        "status": "success",
+        "data": {
+            "all_total_active": total_active,
+            "all_total_inactive": total_inactive,
+            "active_per_cost_center": cc_aktif
+        }
+    }), 200
 
 # @employee_bp.before_request
 # @login_required
