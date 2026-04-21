@@ -285,15 +285,15 @@ def edit(id):
         if not target_emp:
             return jsonify({"status": "error", "message": "Data Employment tidak ditemukan!"}), 404
 
-        if card_number_input:
-            duplicate_card = OsCard.query.filter(
-                OsCard.card_number == card_number_input,
-                OsCard.employee_id != id,
-                ((OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None))
-            ).first()
+        # if card_number_input:
+        #     duplicate_card = OsCard.query.filter(
+        #         OsCard.card_number == card_number_input,
+        #         OsCard.employee_id != id,
+        #         ((OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None))
+        #     ).first()
 
-            if duplicate_card:
-                raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
+        #     if duplicate_card:
+        #         raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
 
         target_person = OsPerson.query.get(target_emp.person_id)
         if target_person:
