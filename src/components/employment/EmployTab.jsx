@@ -53,7 +53,7 @@ function EmployTab({ initialData }) {
       });
       setSelectSubComId(initialData.sub_company_id || null);
       setselectCCId(initialData.cc_id || null);
-      setIsNoLimit(!initialData.valid_to); // Jika valid_to kosong, berarti No Limit
+      setIsNoLimit(!initialData.valid_to);
     }
   }, [initialData]);
 
@@ -75,32 +75,44 @@ function EmployTab({ initialData }) {
     }))
   ];
 
+  // Style Select agar setara dengan form-control-sm
   const customSelectStyles = {
     control: (base) => ({
       ...base,
-      minHeight: '38px',
-      borderRadius: 'var(--radius-md)',
+      minHeight: '31px',
+      height: '31px',
+      borderRadius: '6px',
       borderColor: '#dee2e6',
-      fontSize: '14px',
+      fontSize: '13px',
       boxShadow: 'none',
-      '&:hover': { borderColor: 'var(--color-primary)' }
+      '&:hover': { borderColor: '#0d6efd' }
+    }),
+    valueContainer: (base) => ({
+      ...base,
+      padding: '0px 8px',
+    }),
+    indicatorsContainer: (base) => ({
+      ...base,
+      height: '29px',
     }),
     option: (base, state) => ({
       ...base,
-      fontSize: '13px',
-      backgroundColor: state.isSelected ? 'var(--color-primary)' : state.isFocused ? '#f8f9fa' : 'white',
-    })
+      fontSize: '12px',
+      padding: '4px 10px',
+      backgroundColor: state.isSelected ? '#0d6efd' : state.isFocused ? '#f8f9fa' : 'white',
+    }),
+    menu: (base) => ({ ...base, zIndex: 9999 })
   };
 
   return (
     <div className="animate__animated animate__fadeIn">
-      <div className="row g-3">
+      <div className="row g-2">
         <div className="col-md-8">
-          <label className="form-label small fw-bold text-muted">No Induk Karyawan (NRP)<span className="text-danger">*</span></label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>No Induk Karyawan (NRP) <span className="text-danger">*</span></label>
           <input 
             type="text" 
             name="employee_id" 
-            className={`form-control ${isEditMode ? 'bg-light fw-bold' : ''}`} 
+            className={`form-control form-control-sm ${isEditMode ? 'bg-light fw-bold' : ''}`} 
             placeholder="Contoh: 123456" 
             value={formData.employee_id}
             onChange={handleInputChange}
@@ -111,23 +123,23 @@ function EmployTab({ initialData }) {
         </div>
         
         <div className="col-md-4">
-          <label className="form-label small fw-bold text-muted">Grade</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Grade</label>
           <input 
             type="text" 
             name="grade" 
-            className="form-control" 
-            placeholder="Pilih Grade"
+            className="form-control form-control-sm" 
+            placeholder="Grade"
             value={formData.grade}
             onChange={handleInputChange} 
           />
         </div>
 
         <div className="col-md-6">
-          <label className="form-label small fw-bold text-muted">Sub Company</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Sub Company</label>
           <Select
             options={subcomOptions}
             isSearchable={true}
-            placeholder="Pilih Sub Company..."
+            placeholder="Pilih..."
             styles={customSelectStyles}
             value={subcomOptions.find(opt => opt.value === selectSubComId) || null}
             onChange={(opt) => setSelectSubComId(opt ? opt.value : null)}
@@ -136,11 +148,11 @@ function EmployTab({ initialData }) {
         </div>
 
         <div className="col-md-6">
-          <label className="form-label small fw-bold text-muted">Department</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Department</label>
           <Select
             options={ccOptions}
             isSearchable={true}
-            placeholder="Pilih Department..."
+            placeholder="Pilih..."
             styles={customSelectStyles}
             value={ccOptions.find(opt => opt.value === selectCCId) || null}
             onChange={(opt) => setselectCCId(opt ? opt.value : null)}
@@ -149,50 +161,51 @@ function EmployTab({ initialData }) {
         </div>
 
         <div className="col-md-6">
-          <label className="form-label small fw-bold text-muted">Type Worker</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Type Worker</label>
           <select 
             name="type_worker" 
-            className='form-select'
+            className='form-select form-select-sm'
             value={formData.type_worker}
             onChange={handleInputChange}
           >
-            <option value="">-- Pilih Type Worker --</option>
+            <option value="">-- Pilih --</option>
             <option value="DAILYWAGE">Daily Wage</option>
             <option value="PIECERATE">Piece Rate</option>
           </select>
         </div>
 
         <div className="col-md-6">
-          <label className="form-label small fw-bold text-muted">Posisi / Jabatan</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Posisi / Jabatan</label>
           <input 
             type="text" 
             name="posisi" 
-            className="form-control" 
-            placeholder="Contoh: Operator Produksi" 
+            className="form-control form-control-sm" 
+            placeholder="Contoh: Operator" 
             value={formData.posisi}
             onChange={handleInputChange}
           />
         </div>
 
         <div className="col-md-6">
-          <label className="form-label small fw-bold text-muted">Mulai Kontrak (Valid From)</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Mulai Kontrak</label>
           <input 
             type="date" 
             name="valid_from" 
-            className="form-control" 
+            className="form-control form-control-sm" 
             value={formData.valid_from}
             onChange={handleInputChange}
           />
         </div>
 
         <div className="col-md-6">
-          <div className="d-flex justify-content-between">
-            <label className="form-label small fw-bold text-muted">Selesai Kontrak (Valid To)</label>
-            <div className="form-check">
+          <div className="d-flex justify-content-between align-items-center">
+            <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Selesai Kontrak</label>
+            <div className="form-check p-0 m-0">
               <input
                 type="checkbox"
-                id="no_limit"
+                id="no_limit_employ"
                 className="form-check-input"
+                style={{ marginLeft: '-1.2em', marginTop: '0.2em', scale: '0.8' }}
                 checked={isNoLimit}
                 onChange={(e) => {
                   setIsNoLimit(e.target.checked);
@@ -201,15 +214,15 @@ function EmployTab({ initialData }) {
                   }
                 }}
               />
-              <label className="form-check-label small fw-bold text-primary" htmlFor="no_limit" style={{ cursor: 'pointer' }}>
-                No Limit
+              <label className="form-check-label text-primary fw-bold" htmlFor="no_limit_employ" style={{ cursor: 'pointer', fontSize: '0.65rem' }}>
+                NO LIMIT
               </label>
             </div>
           </div>
           <input
             type="date"
             name="valid_to"
-            className="form-control"
+            className="form-control form-control-sm"
             disabled={isNoLimit}
             value={formData.valid_to}
             onChange={handleInputChange}

@@ -96,32 +96,39 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
 
   return (
     <>
-      <div className="modal-backdrop fade show" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={onClose}></div>
+      <div 
+        className="modal-backdrop fade show" 
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} 
+        onClick={onClose}
+      ></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-        <div className="modal-dialog modal-lg modal-dialog-centered">
-          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        {/* Ukuran modal-md agar ramping secara horizontal */}
+        <div className="modal-dialog modal-md modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
-              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+            {/* Header Tipis */}
+            <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
+              <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-award-fill' : 'bi-plus-circle'} me-2`}></i>
-                {isEditMode ? 'Edit Alokasi Grade' : 'Tambah Alokasi Grade'}
-              </h5>
-              <button type="button" className="btn-close" onClick={onClose}></button>
+                {isEditMode ? 'Edit Grade' : 'Tambah Grade'}
+              </h6>
+              <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
-              <div className="modal-body p-4 bg-white">
+              <div className="modal-body p-3 bg-white">
                 
-                <div className="row g-3 mb-4">
-                  <div className="col-md-4">
-                    <label className="form-label small fw-bold text-muted">Employee ID</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light text-muted"><i className="bi bi-person-badge"></i></span>
+                {/* Employee Search Section */}
+                <div className="row g-2 mb-3">
+                  <div className="col-md-5">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Employee ID</label>
+                    <div className="input-group input-group-sm">
+                      <span className="input-group-text bg-light border-end-0"><i className="bi bi-person-badge" style={{ fontSize: '0.8rem' }}></i></span>
                       <input 
                         type="text" 
                         name="employee_code" 
-                        className={`form-control ${isEditMode ? 'bg-light fw-bold' : ''}`} 
+                        className={`form-control border-start-0 ${isEditMode ? 'bg-light fw-bold' : ''}`} 
                         placeholder="Ketik ID..."
                         required
                         value={empId}
@@ -132,40 +139,43 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
                       />
                     </div>
                   </div>
-                  <div className="col-md-8">
-                    <label className="form-label small fw-bold text-muted">Nama Lengkap</label>
+                  <div className="col-md-7">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Karyawan</label>
                     <div className="position-relative">
                       <input 
                         type="text" 
-                        className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
-                        value={isSearching ? "Sedang mencari data..." : fullName}
+                        className={`form-control form-control-sm ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
+                        value={isSearching ? "Mencari..." : fullName}
                         readOnly
-                        placeholder="Nama akan muncul otomatis..."
-                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600' }} 
+                        placeholder="Otomatis..."
+                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600', fontSize: '0.85rem' }} 
                       />
                       {isSearching && (
-                        <div className="position-absolute end-0 top-50 translate-middle-y me-3">
-                          <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <div className="position-absolute end-0 top-50 translate-middle-y me-2">
+                          <div className="spinner-border spinner-border-sm text-primary" style={{ width: '0.8rem', height: '0.8rem' }} role="status"></div>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="hr-text text-muted small fw-bold mb-4">
-                  <span className="bg-white px-2">Konfigurasi Grade</span>
+                {/* Divider Minimalis */}
+                <div className="d-flex align-items-center mb-3">
+                   <hr className="flex-grow-1 my-0 opacity-25" />
+                   <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Konfigurasi Grade</span>
+                   <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
 
-                <div className="row g-3">
-                  <div className="col-md-12">
-                    <label className="form-label small fw-bold text-muted">Grade / Level Karyawan</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light text-muted"><i className="bi bi-layers"></i></span>
+                <div className="row g-2">
+                  <div className="col-md-12 mb-1">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Grade / Level</label>
+                    <div className="input-group input-group-sm">
+                      <span className="input-group-text bg-light border-end-0"><i className="bi bi-layers" style={{ fontSize: '0.8rem' }}></i></span>
                       <input 
                         type="text" 
                         name="grade" 
-                        className="form-control" 
-                        placeholder="Masukkan Grade (Contoh: 1, 1A, dsb)" 
+                        className="form-control form-control-sm border-start-0" 
+                        placeholder="Contoh: 1, 1A, Grade B" 
                         disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                         required 
                       />
@@ -173,30 +183,31 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Mulai Berlaku (Valid From)</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Mulai Berlaku</label>
                     <input 
                       type="date" 
                       name="valid_from" 
-                      className="form-control" 
+                      className="form-control form-control-sm" 
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                       required 
                     />
                   </div>
 
                   <div className="col-md-6">
-                    <div className="d-flex justify-content-between">
-                      <label className="form-label small fw-bold text-muted">Selesai Berlaku (Valid To)</label>
-                      <div className="form-check">
+                    <div className="d-flex justify-content-between align-items-center">
+                      <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Selesai Berlaku</label>
+                      <div className="form-check p-0 m-0">
                         <input 
                           type="checkbox" 
                           id="no_limit_grade" 
                           className="form-check-input"
+                          style={{ marginLeft: '-1.2em', marginTop: '0.2em', scale: '0.8' }}
                           checked={isNoLimit}
                           onChange={handleNoLimitToggle}
                           disabled={(!isEmployeeFound && !isEditMode) || isSearching}
                         />
-                        <label className="form-check-label small fw-bold text-primary" htmlFor="no_limit_grade" style={{ cursor: 'pointer' }}>
-                          No Limit
+                        <label className="form-check-label text-primary fw-bold" htmlFor="no_limit_grade" style={{ cursor: 'pointer', fontSize: '0.65rem' }}>
+                          NO LIMIT
                         </label>
                       </div>
                     </div>
@@ -204,7 +215,7 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
                       type="date" 
                       name="valid_to" 
                       id="valid_to" 
-                      className="form-control" 
+                      className="form-control form-control-sm" 
                       required={!isNoLimit}
                       disabled={isNoLimit || (!isEmployeeFound && !isEditMode) || isSearching}
                       defaultValue={initialData?.valid_to}
@@ -214,15 +225,17 @@ function OsGradeForm({ onClose, onSuccess, initialData }) {
                 </div>
               </div>
 
-              <div className="modal-footer bg-light border-top p-3 px-4">
-                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
+              {/* Footer Compact */}
+              <div className="modal-footer bg-light border-top p-2 px-3">
+                <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
                 <button 
                   type="submit" 
-                  className="btn-app btn-primary-app px-4" 
+                  className="btn btn-sm btn-primary px-3 shadow-sm" 
+                  style={{ fontSize: '0.8rem' }}
                   disabled={(!isEmployeeFound && !isEditMode) || isSearching}
                 >
-                  <i className="bi bi-save me-2"></i>
-                  {isEditMode ? 'Update Grade' : 'Simpan Grade'}
+                  <i className="bi bi-save me-1"></i>
+                  {isEditMode ? 'Update' : 'Simpan'}
                 </button>
               </div>
             </form>

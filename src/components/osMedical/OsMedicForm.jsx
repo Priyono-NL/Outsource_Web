@@ -101,35 +101,38 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
     <>
       <div 
         className="modal-backdrop fade show" 
-        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }}
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }}
         onClick={onClose}
       ></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-        <div className="modal-dialog modal-lg modal-dialog-centered">
-          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        {/* Ukuran modal-md agar ramping */}
+        <div className="modal-dialog modal-md modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
-              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+            {/* Header Tipis */}
+            <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
+              <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-heart-pulse-fill' : 'bi-plus-circle'} me-2`}></i>
-                {isEditMode ? 'Edit Riwayat Medis' : 'Input Medical Check-up'}
-              </h5>
-              <button type="button" className="btn-close" onClick={onClose}></button>
+                {isEditMode ? 'Edit Riwayat Medis' : 'Input MCU'}
+              </h6>
+              <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
-              <div className="modal-body p-4 bg-white">
+              <div className="modal-body p-3 bg-white">
                 
-                <div className="row g-3 mb-4">
-                  <div className="col-md-4">
-                    <label className="form-label small fw-bold text-muted">Employee ID</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light text-muted"><i className="bi bi-person-badge"></i></span>
+                {/* Search Section */}
+                <div className="row g-2 mb-3">
+                  <div className="col-md-5">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Employee ID</label>
+                    <div className="input-group input-group-sm">
+                      <span className="input-group-text bg-light border-end-0"><i className="bi bi-person-badge" style={{ fontSize: '0.8rem' }}></i></span>
                       <input 
                         type="text" 
                         name="employee_code" 
-                        className={`form-control ${isEditMode ? 'bg-light fw-bold' : ''}`} 
-                        placeholder="Ketik ID..."
+                        className={`form-control border-start-0 ${isEditMode ? 'bg-light fw-bold' : ''}`} 
+                        placeholder="ID..."
                         required
                         value={empId}
                         onChange={handleIdChange}
@@ -139,40 +142,43 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
                       />
                     </div>
                   </div>
-                  <div className="col-md-8">
-                    <label className="form-label small fw-bold text-muted">Nama Lengkap</label>
+                  <div className="col-md-7">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Karyawan</label>
                     <div className="position-relative">
                       <input 
                         type="text" 
-                        className={`form-control ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
-                        value={isSearching ? "Sedang mencari..." : fullName}
+                        className={`form-control form-control-sm ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
+                        value={isSearching ? "Mencari..." : fullName}
                         readOnly
-                        placeholder="Nama otomatis..."
-                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600' }} 
+                        placeholder="Otomatis..."
+                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600', fontSize: '0.85rem' }} 
                       />
                       {isSearching && (
-                        <div className="position-absolute end-0 top-50 translate-middle-y me-3">
-                          <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <div className="position-absolute end-0 top-50 translate-middle-y me-2">
+                          <div className="spinner-border spinner-border-sm text-primary" style={{ width: '0.8rem', height: '0.8rem' }} role="status"></div>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="hr-text text-muted small fw-bold mb-4">
-                  <span className="bg-white px-2">Hasil Pemeriksaan Medis</span>
+                {/* Divider Minimalis */}
+                <div className="d-flex align-items-center mb-3">
+                   <hr className="flex-grow-1 my-0 opacity-25" />
+                   <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Data Pemeriksaan</span>
+                   <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
 
-                <div className="row g-3">
+                <div className="row g-2">
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Jenis Pemeriksaan</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Jenis MCU</label>
                     <select 
                       name="medical_id" 
-                      className="form-select" 
+                      className="form-select form-select-sm" 
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                       required
                     >
-                      <option value="">-- Pilih Jenis MCU --</option>
+                      <option value="">-- Pilih --</option>
                       {medical.map((m) => (
                         <option key={m.medical_id} value={m.medical_id}>
                           {m.medical_name}
@@ -182,25 +188,25 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Tanggal Pemeriksaan</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Tanggal</label>
                     <input 
                       type="date" 
                       name="medical_date" 
-                      className="form-control" 
+                      className="form-control form-control-sm" 
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                       required 
                     />
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Hasil (Result)</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light text-muted"><i className="bi bi-clipboard2-check"></i></span>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Hasil (Result)</label>
+                    <div className="input-group input-group-sm">
+                      <span className="input-group-text bg-light border-end-0"><i className="bi bi-clipboard2-check" style={{ fontSize: '0.8rem' }}></i></span>
                       <input 
                         type="text" 
                         name="medical_result" 
-                        className="form-control" 
-                        placeholder="Contoh: Fit / Unfit / Fit with Note"
+                        className="form-control border-start-0" 
+                        placeholder="Contoh: Fit"
                         disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                         required 
                       />
@@ -208,28 +214,29 @@ function OsMedicForm({ onClose, onSuccess, initialData }) {
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Catatan (Notes)</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Catatan</label>
                     <input 
                       type="text" 
                       name="medical_notes" 
-                      className="form-control" 
-                      placeholder="Catatan tambahan dokter..."
+                      className="form-control form-control-sm" 
+                      placeholder="Notes dokter..."
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Footer Modal */}
-              <div className="modal-footer bg-light border-top p-3 px-4">
-                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
+              {/* Footer Compact */}
+              <div className="modal-footer bg-light border-top p-2 px-3">
+                <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
                 <button 
                   type="submit" 
-                  className="btn-app btn-primary-app px-4" 
+                  className="btn btn-sm btn-primary px-3 shadow-sm" 
+                  style={{ fontSize: '0.8rem' }}
                   disabled={(!isEmployeeFound && !isEditMode) || isSearching}
                 >
-                  <i className="bi bi-save me-2"></i>
-                  {isEditMode ? 'Update Data' : 'Simpan Data Medis'}
+                  <i className="bi bi-save me-1"></i>
+                  {isEditMode ? 'Update' : 'Simpan'}
                 </button>
               </div>
             </form>

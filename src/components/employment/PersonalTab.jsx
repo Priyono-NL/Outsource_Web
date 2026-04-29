@@ -92,48 +92,49 @@ function PersonelTab({ onPersonSelect, initialData }) {
 
     return (
         <div className="animate__animated animate__fadeIn">
-            <div className="row g-3">
+            <div className="row g-2">
                 <div className="col-md-12 position-relative">
-                    <label className="form-label small fw-bold text-muted">Cari Personel (Berdasarkan Nama atau NIK)</label>
-                    <div className="input-group">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cari Personel (Nama/NIK)</label>
+                    <div className="input-group input-group-sm">
                         <span className="input-group-text bg-white border-end-0">
-                            <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`}></i>
+                            <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`} style={{ fontSize: '0.8rem' }}></i>
                         </span>
                         <input
                             type="text"
                             name='nama'
                             className={`form-control border-start-0 ps-0 ${selectedPerson ? 'bg-light fw-bold text-primary' : ''} ${isEditMode ? 'opacity-75' : ''}`}
-                            placeholder="Ketik minimal 3 karakter..."
+                            placeholder="Minimal 3 karakter..."
                             value={searchTerm}
                             onChange={(e) => !isEditMode && setSearchTerm(e.target.value)}
                             readOnly={isEditMode || !!selectedPerson}
                             autoComplete="off"
-                            style={isEditMode ? { backgroundColor: '#e9ecef', cursor: 'not-allowed' } : {}}
+                            style={isEditMode ? { backgroundColor: '#f1f3f5', cursor: 'not-allowed', fontSize: '0.85rem' } : { fontSize: '0.85rem' }}
                         />
                         {selectedPerson && !isEditMode && (
-                            <button className="btn btn-outline-danger" type="button" onClick={handleReset} title="Ganti Personel">
-                                <i className="bi bi-x-circle me-1"></i> Ganti
+                            <button className="btn btn-outline-danger py-0 px-2" type="button" onClick={handleReset} style={{ fontSize: '0.75rem' }}>
+                                <i className="bi bi-arrow-counterclockwise me-1"></i> Ganti
                             </button>
                         )}
                     </div>
 
                     {results.length > 0 && (
-                        <div className="list-group position-absolute w-100 shadow-lg border-0 mt-1" style={{ zIndex: 1100, borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                        <div className="list-group position-absolute w-100 shadow border mt-1" style={{ zIndex: 1100, borderRadius: '6px', overflow: 'hidden' }}>
                             {results.map((p) => (
                                 <button
                                     key={p.person_id}
                                     type="button"
-                                    className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2 px-3"
+                                    className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1 px-3"
                                     onClick={() => handleSelect(p)}
+                                    style={{ fontSize: '0.8rem' }}
                                 >
                                     <div>
                                         <div className="fw-bold text-dark">{p.name}</div>
-                                        <small className="text-muted"><i className="bi bi-card-text me-1"></i>{p.resident_id}</small>
+                                        <small className="text-muted" style={{ fontSize: '0.7rem' }}>NIK: {p.resident_id}</small>
                                     </div>
                                     {p.is_blacklist === "Blacklist" ? (
-                                        <span className="badge bg-danger">Blacklisted</span>
+                                        <span className="badge bg-danger" style={{ fontSize: '0.65rem' }}>Blacklisted</span>
                                     ) : (
-                                        <i className="bi bi-chevron-right text-muted small"></i>
+                                        <i className="bi bi-plus-circle text-primary small"></i>
                                     )}
                                 </button>
                             ))}
@@ -142,18 +143,21 @@ function PersonelTab({ onPersonSelect, initialData }) {
                 </div>
             </div>
 
-            <div className="hr-text text-muted small fw-bold my-4">
-                <span className="bg-white px-2">Data Detail Personel</span>
+            {/* Divider Minimalis */}
+            <div className="d-flex align-items-center my-3">
+                <hr className="flex-grow-1 my-0 opacity-25" />
+                <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Data Detail Personel</span>
+                <hr className="flex-grow-1 my-0 opacity-25" />
             </div>
 
-            <div className="row g-3">
+            <div className="row g-2">
                 <input type="hidden" name="person_id" value={selectedPerson?.person_id || initialData?.person_id || ""} />
                 
                 <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Jenis Kelamin</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Jenis Kelamin</label>
                     <select 
                         name="gender" 
-                        className="form-select"  
+                        className="form-select form-select-sm"  
                         value={formData.gender} 
                         onChange={handleInputChange}
                     >
@@ -163,10 +167,10 @@ function PersonelTab({ onPersonSelect, initialData }) {
                 </div>
 
                 <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Agama</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Agama</label>
                     <select 
                         name="religion" 
-                        className="form-select"  
+                        className="form-select form-select-sm"  
                         value={formData.religion} 
                         onChange={handleInputChange}
                     >
@@ -180,41 +184,42 @@ function PersonelTab({ onPersonSelect, initialData }) {
                 </div>
 
                 <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Tempat Lahir</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Tempat Lahir</label>
                     <input 
-                        type="text" name="pob" className="form-control" 
-                        placeholder="Contoh: Jakarta"
+                        type="text" name="pob" className="form-control form-control-sm" 
+                        placeholder="Kota lahir"
                         value={formData.pob} 
                         onChange={handleInputChange} 
                     />
                 </div>
 
                 <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Tanggal Lahir</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Tanggal Lahir</label>
                     <input 
-                        type="date" name="dob" className="form-control"
+                        type="date" name="dob" className="form-control form-control-sm"
                         value={formData.dob} 
                         onChange={handleInputChange}
                     />
                 </div>
 
                 <div className="col-md-12">
-                    <label className="form-label small fw-bold text-muted">Nomor KTP (NIK)</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nomor KTP (NIK)</label>
                     <input 
-                        type="text" name="resident_id" className="form-control" 
-                        placeholder="16 Digit Nomor Induk Kependudukan"
+                        type="text" name="resident_id" className="form-control form-control-sm" 
+                        placeholder="16 Digit NIK"
                         value={formData.resident_id} 
                         onChange={handleInputChange}
                     />
                 </div>
 
                 <div className="col-md-12">
-                    <label className="form-label small fw-bold text-muted">Alamat Lengkap (KTP)</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Alamat Lengkap</label>
                     <textarea 
-                        rows="2" name="address" className='form-control' 
-                        placeholder="Nama jalan, RT/RW, Kec, Kab/Kota..."
+                        rows="2" name="address" className='form-control form-control-sm' 
+                        placeholder="Alamat sesuai KTP..."
                         value={formData.address} 
                         onChange={handleInputChange}
+                        style={{ fontSize: '0.85rem' }}
                     ></textarea>
                 </div>
             </div>

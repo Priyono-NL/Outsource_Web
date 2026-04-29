@@ -38,82 +38,78 @@ function CCForm({ onClose, onSuccess, initialData }) {
     <>
       <div 
         className="modal-backdrop fade show" 
-        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} 
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} 
         onClick={onClose}
       ></div>
 
-      <div 
-        className="modal fade show d-block" 
-        tabIndex="-1" 
-        style={{ zIndex: 1055 }}
-      >
-        <div className="modal-dialog modal-lg modal-dialog-centered">
-          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+        <div className="modal-dialog modal-md modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
-              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+            <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
+              <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-building-gear' : 'bi-plus-circle'} me-2`}></i>
-                {isEditMode ? 'Edit Cost Center' : 'Tambah Cost Center Baru'}
-              </h5>
-              <button type="button" className="btn-close" onClick={onClose}></button>
+                {isEditMode ? 'Edit Cost Center' : 'Tambah Cost Center'}
+              </h6>
+              <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
-              <div className="modal-body p-4 bg-white">
-                <div className="row g-3">
+              <div className="modal-body p-3 bg-white">
+                <div className="row g-2">
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Company ID</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Company ID</label>
                     <input 
                       type="number" 
                       name="company_id" 
-                      className="form-control" 
-                      placeholder="Masukkan ID Perusahaan..." 
+                      className="form-control form-control-sm" 
+                      placeholder="ID Perusahaan" 
                     />
                   </div>
                   <div className="col-md-6">
-                    <label className="form-label small fw-bold text-muted">Org ID</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Org ID</label>
                     <input 
                       type="number" 
                       name="org_id" 
-                      className="form-control" 
-                      placeholder="Masukkan ID Organisasi..." 
+                      className="form-control form-control-sm" 
+                      placeholder="ID Organisasi" 
                     />
                   </div>
 
-                  <div className="col-12 my-2">
-                    <hr className="text-muted opacity-25" />
-                  </div>
-
-                  <div className="col-md-8">
-                    <label className="form-label small fw-bold text-muted">Cost Center Name <span className="text-danger">*</span></label>
+                  <div className="col-12">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
+                      Cost Center Name <span className="text-danger">*</span>
+                    </label>
                     <input 
                       type="text" 
                       name="org_name" 
-                      className="form-control" 
+                      className="form-control form-control-sm" 
                       placeholder="Contoh: Production Division" 
                       required 
                     />
                   </div>
-                  <div className="col-md-4">
-                    <label className="form-label small fw-bold text-muted">Cost Center ID <span className="text-danger">*</span></label>
+                  
+                  <div className="col-12">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
+                      Cost Center ID <span className="text-danger">*</span>
+                    </label>
                     <input 
                       type="number" 
                       name="cost_center" 
-                      className={`form-control ${isEditMode ? 'bg-light fw-bold' : ''}`} 
-                      placeholder="Kode Numerik..." 
+                      className={`form-control form-control-sm ${isEditMode ? 'bg-light fw-bold' : ''}`} 
+                      placeholder="Kode Numerik" 
                       required 
                       readOnly={isEditMode}
                       style={isEditMode ? { cursor: 'not-allowed' } : {}}
                     />
                   </div>
                 </div>
-
               </div>
 
-              <div className="modal-footer bg-light border-top p-3 px-4">
-                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn-app btn-primary-app px-4 shadow-sm">
-                  <i className="bi bi-check-lg me-1"></i> Simpan Cost Center
+              <div className="modal-footer bg-light border-top p-2 px-3">
+                <button type="button" className="btn btn-sm btn-light border" onClick={onClose}>Batal</button>
+                <button type="submit" className="btn btn-sm btn-primary px-3 shadow-sm">
+                  <i className="bi bi-check-lg me-1"></i> Simpan
                 </button>
               </div>
             </form>

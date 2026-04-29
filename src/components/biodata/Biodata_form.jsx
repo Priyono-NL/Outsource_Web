@@ -43,7 +43,7 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
       if (!file.type.startsWith('image/')) {
         Toast.fire({ 
           icon: 'error', 
-          title: 'Format file tidak didukung. Harap pilih gambar (JPG, PNG, dll).' 
+          title: 'Format file tidak didukung.' 
         });
         e.target.value = "";
         return;
@@ -80,35 +80,38 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
     <>
       <div 
         className="modal-backdrop fade show" 
-        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} 
+        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} 
         onClick={onClose}
       ></div>
 
-      <div 
-        className="modal fade show d-block" 
-        tabIndex="-1" 
-        style={{ zIndex: 1055 }}
-      >
-        <div className="modal-dialog modal-xl modal-dialog-centered">
-          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+        <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
-              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+            <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
+              <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${initialData ? 'bi-person-gear' : 'bi-person-plus'} me-2`}></i>
-                {initialData ? 'Update Master Biodata' : 'Registrasi Biodata Baru'}
-              </h5>
-              <button type="button" className="btn-close" onClick={onClose}></button>
+                {initialData ? 'Update Biodata' : 'Registrasi Biodata'}
+              </h6>
+              <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
-              <div className="modal-body p-4 bg-white">
-                <div className="row">
+              <div className="modal-body p-3 bg-white">
+                <div className="row g-3">
                   
-                  <div className="col-md-4 border-end text-center d-flex flex-column align-items-center">
-                    <label className="form-label small fw-bold text-muted mb-3">Foto Profil / KTP</label>
+                  {/* Kolom Foto (Kiri) - Penyesuaian Ukuran */}
+                  <div className="col-md-3 border-end d-flex flex-column align-items-center justify-content-start pt-2">
+                    <label className="form-label mb-2" style={{ fontSize: '0.7rem', fontWeight: '700', color: '#6c757d', textTransform: 'uppercase' }}>Foto</label>
                     <div 
-                      className="rounded shadow-sm border bg-light mb-3"
-                      style={{ width: '100%', maxWidth: '250px', aspectRatio: '1/1', overflow: 'hidden' }}
+                      className="rounded shadow-sm border bg-light mb-2"
+                      style={{ 
+                        width: '140px',   /* Sedikit diperlebar */
+                        height: '186px',  /* Aspek rasio ~3:4 */
+                        overflow: 'hidden', 
+                        borderStyle: 'dashed',
+                        borderColor: '#dee2e6'
+                      }}
                     >
                       <img 
                         src={previewUrl || "/src/assets/no_image.png"} 
@@ -118,68 +121,64 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
                       />
                     </div>
                     
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="d-none" 
-                      accept="image/*" 
-                      onChange={handleFileChange} 
-                    />
-
+                    <input type="file" ref={fileInputRef} className="d-none" accept="image/*" onChange={handleFileChange} />
                     <button 
                       type="button" 
-                      className="btn-app btn-ghost-app w-75 mb-3"
+                      className="btn btn-sm btn-outline-primary"
+                      style={{ fontSize: '0.7rem', padding: '0.25rem 1rem' }}
                       onClick={() => fileInputRef.current.click()}
                     >
-                      <i className="bi bi-camera me-2"></i> Unggah Foto
+                      <i className="bi bi-camera me-1"></i> Pilih Foto
                     </button>
+                    <small className="text-muted mt-2" style={{ fontSize: '0.6rem' }}>JPG, PNG (Maks 2MB)</small>
                   </div>
 
-                  <div className="col-md-8 ps-md-4">
-                    <div className="row g-3">
+                  {/* Kolom Form (Kanan) - Tetap Compact */}
+                  <div className="col-md-9 ps-md-3">
+                    <div className="row g-2">
                       <div className="col-md-12">
-                        <label className="form-label small fw-bold text-muted">Nama Lengkap (Sesuai KTP)</label>
-                        <input type="text" name="nama" className="form-control" placeholder="Masukkan nama lengkap..." required />
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Lengkap (Sesuai KTP)</label>
+                        <input type="text" name="nama" className="form-control form-control-sm" placeholder="Nama lengkap..." required />
                       </div>
                       
                       <div className="col-md-6">
-                        <label className="form-label small fw-bold text-muted">Jenis Kelamin</label>
-                        <select name="gender" className="form-select">
-                          <option value="L">Laki - laki</option>
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>NIK (KTP)</label>
+                        <input type="text" name="resident_id" className="form-control form-control-sm" placeholder="16 digit nomor NIK" />
+                      </div>
+
+                      <div className="col-md-3">
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Gender</label>
+                        <select name="gender" className="form-select form-select-sm">
+                          <option value="L">Laki-laki</option>
                           <option value="P">Perempuan</option>
                         </select>
                       </div>
 
-                      <div className="col-md-6">
-                        <label className="form-label small fw-bold text-muted">Agama</label>
-                        <select name="religion" className="form-select">
+                      <div className="col-md-3">
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Agama</label>
+                        <select name="religion" className="form-select form-select-sm">
                           <option value="islam">Islam</option>
                           <option value="kristen">Kristen</option>
                           <option value="katolik">Katolik</option>
                           <option value="hindu">Hindu</option>
                           <option value="budha">Budha</option>
-                          <option value="khonghucu">Khonghucu</option>
+                          <option value="khonghucu">Konghucu</option>
                         </select> 
                       </div>
 
                       <div className="col-md-6">
-                        <label className="form-label small fw-bold text-muted">Tempat Lahir</label>
-                        <input type="text" name="pob" className="form-control" placeholder="Contoh: Bandung" />
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Tempat Lahir</label>
+                        <input type="text" name="pob" className="form-control form-control-sm" placeholder="Kota lahir" />
                       </div>
 
                       <div className="col-md-6">
-                        <label className="form-label small fw-bold text-muted">Tanggal Lahir</label>
-                        <input type="date" name="dob" className="form-control" />
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Tanggal Lahir</label>
+                        <input type="date" name="dob" className="form-control form-control-sm" />
                       </div>
 
                       <div className="col-md-12">
-                        <label className="form-label small fw-bold text-muted">Nomor Induk Kependudukan (NIK)</label>
-                        <input type="text" name="resident_id" className="form-control" placeholder="16 Digit NIK KTP" />
-                      </div>
-
-                      <div className="col-md-12">
-                        <label className="form-label small fw-bold text-muted">Alamat Domisili</label>
-                        <textarea rows="3" name="address" className='form-control' placeholder="Tulis alamat lengkap sesuai KTP..."></textarea>
+                        <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Alamat Domisili</label>
+                        <textarea rows="2" name="address" className="form-control form-control-sm" placeholder="Alamat lengkap sesuai KTP..."></textarea>
                       </div>
                     </div>
                   </div>
@@ -187,11 +186,11 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
                 </div>
               </div>
 
-              <div className="modal-footer bg-light border-top p-3 px-4">
-                <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
-                <button type="submit" className="btn-app btn-primary-app px-4 shadow-sm">
-                  <i className="bi bi-save me-2"></i>
-                  {initialData ? 'Simpan Perubahan' : 'Daftarkan Biodata'}
+              <div className="modal-footer bg-light border-top p-2 px-3">
+                <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
+                <button type="submit" className="btn btn-sm btn-primary px-3 shadow-sm" style={{ fontSize: '0.8rem' }}>
+                  <i className="bi bi-save me-1"></i>
+                  {initialData ? 'Simpan' : 'Daftarkan'}
                 </button>
               </div>
             </form>

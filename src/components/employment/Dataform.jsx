@@ -93,28 +93,30 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
 
   return (
     <>
-      <div className="modal-backdrop fade show" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={onClose}></div>
+      <div className="modal-backdrop fade show" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={onClose}></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+        {/* Tetap menggunakan modal-xl karena konten tab cukup padat */}
         <div className="modal-dialog modal-xl modal-dialog-centered">
-          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
-              <h5 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
+            <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
+              <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-person-gear' : 'bi-pencil-square'} me-2`}></i>
-                {isEditMode ? 'Edit Data Employment' : 'Form Input Data Employment'}
-              </h5>
-              <button type="button" className="btn-close" onClick={onClose}></button>
+                {isEditMode ? 'Edit Employment' : 'Form Input Employment'}
+              </h6>
+              <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
-              <div className="modal-body p-4 bg-white">
-                <div className="row">
+              <div className="modal-body p-3 bg-white">
+                <div className="row g-3">
                   
-                  <div className="col-md-3 border-end text-center">
+                  {/* Sidebar Foto - Lebih Ramping */}
+                  <div className="col-md-3 border-end text-center pt-2">
                     <div 
-                      className="rounded shadow-sm border bg-light mx-auto mb-3"
-                      style={{ width: '100%', maxWidth: '200px', aspectRatio: '1/1', overflow: 'hidden' }}
+                      className="rounded shadow-sm border bg-light mx-auto mb-2"
+                      style={{ width: '150px', height: '180px', overflow: 'hidden' }}
                     >
                       <img 
                         src={previewUrl}
@@ -128,23 +130,25 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
 
                     <button 
                       type="button" 
-                      className="btn-app btn-ghost-app w-100 mb-4"
+                      className="btn btn-sm btn-outline-primary mb-3"
+                      style={{ fontSize: '0.75rem', padding: '0.2rem 1rem' }}
                       onClick={() => fileInputRef.current.click()}
                     >
-                      <i className="bi bi-camera me-2"></i> Ganti Foto
+                      <i className="bi bi-camera me-1"></i> Ganti Foto
                     </button>
 
-                    <div className="px-2">
-                      <label className='fw-bold text-muted small d-block mb-2'>Status Blacklist</label>
-                      <span className={`badge p-2 w-100 ${initialData?.is_blacklist === 'Blacklist' ? 'bg-danger' : 'bg-success'}`} style={{ borderRadius: 'var(--radius-md)' }}>
-                        <i className={`bi ${initialData?.is_blacklist === 'Blacklist' ? 'bi-shield-slash-fill' : 'bi-shield-check-fill'} me-2`}></i>
+                    <div className="px-3">
+                      <label className='fw-bold text-muted mb-1' style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Status Blacklist</label>
+                      <span className={`badge py-2 w-100 ${initialData?.is_blacklist === 'Blacklist' ? 'bg-danger' : 'bg-success'}`} style={{ borderRadius: '6px', fontSize: '0.7rem' }}>
+                        <i className={`bi ${initialData?.is_blacklist === 'Blacklist' ? 'bi-shield-slash-fill' : 'bi-shield-check-fill'} me-1`}></i>
                         {initialData?.is_blacklist === 'Blacklist' ? 'BLACKLISTED' : 'CLEAN / ACTIVE'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="col-md-9 ps-md-4">
-                    <ul className="nav nav-pills mb-4 bg-light p-1 rounded" style={{ borderRadius: 'var(--radius-md)' }}>
+                  {/* Area Tab Konten */}
+                  <div className="col-md-9 ps-md-3">
+                    <ul className="nav nav-pills mb-3 bg-light p-1 rounded" style={{ fontSize: '0.85rem' }}>
                       {['Data Pribadi', 'Data Pekerjaan', 'Data Aset'].map((label, index) => {
                         const isLocked = initialData?.is_blacklist === 'Blacklist' && index > 0;
                         return (
@@ -152,15 +156,15 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
                             <button 
                               type="button"
                               disabled={isLocked}
-                              className={`nav-link w-100 fw-bold border-0 ${activeTab === index ? 'active shadow-sm' : 'text-secondary bg-transparent'}`}
+                              className={`nav-link w-100 fw-bold border-0 py-1 ${activeTab === index ? 'active shadow-sm' : 'text-secondary bg-transparent'}`}
                               style={{ 
                                 transition: 'all 0.2s',
-                                borderRadius: 'var(--radius-md)',
+                                borderRadius: '6px',
                                 cursor: isLocked ? 'not-allowed' : 'pointer'
                               }}
                               onClick={() => !isLocked && setActiveTab(index)}
                             >
-                              {isLocked && <i className="bi bi-lock-fill me-1"></i>}
+                              {isLocked && <i className="bi bi-lock-fill me-1" style={{ fontSize: '0.75rem' }}></i>}
                               {label}
                             </button>
                           </li>
@@ -168,7 +172,8 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
                       })}
                     </ul>
 
-                    <div className="tab-content-container" style={{ minHeight: '380px' }}>
+                    {/* Container Tab - Min Height dikurangi agar lebih ramping */}
+                    <div className="tab-content-container" style={{ minHeight: '320px' }}>
                       <div className={activeTab === 0 ? '' : 'd-none'}>
                         <PersonelTab onPersonSelect={handlePersonSelect} initialData={propsData} />
                       </div>
@@ -184,30 +189,33 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
                 </div>
               </div>
 
-              <div className="modal-footer bg-light border-top p-3 px-4">
+              {/* Footer Compact */}
+              <div className="modal-footer bg-light border-top p-2 px-3">
                 <button 
                   type="button" 
-                  className={`btn-app btn-ghost-app me-auto ${activeTab === 0 ? 'invisible' : ''}`} 
+                  className={`btn btn-sm btn-light border me-auto ${activeTab === 0 ? 'invisible' : ''}`} 
                   onClick={handlePrev}
+                  style={{ fontSize: '0.8rem' }}
                 >
-                  <i className="bi bi-chevron-left"></i> Sebelumnya
+                  <i className="bi bi-chevron-left"></i> Kembali
                 </button>
                 
                 <div className="d-flex gap-2">
-                  <button type="button" className="btn-app btn-ghost-app" onClick={onClose}>Batal</button>
+                  <button type="button" className="btn btn-sm btn-light border" onClick={onClose} style={{ fontSize: '0.8rem' }}>Batal</button>
                   
                   {activeTab < 2 ? (
                     <button 
                       type="button" 
-                      className="btn-app btn-primary-app px-4"
+                      className="btn btn-sm btn-primary px-3 shadow-sm"
                       onClick={handleNext}
                       disabled={initialData?.is_blacklist === 'Blacklist'} 
+                      style={{ fontSize: '0.8rem' }}
                     >
-                      Selanjutnya <i className="bi bi-chevron-right ms-1"></i>
+                      Lanjut <i className="bi bi-chevron-right ms-1"></i>
                     </button>
                   ) : (
-                    <button type="submit" className="btn-app btn-success-app px-4">
-                      <i className="bi bi-save me-2"></i> {isEditMode ? 'Update Data' : 'Simpan Data'}
+                    <button type="submit" className="btn btn-sm btn-success px-4 shadow-sm" style={{ fontSize: '0.8rem' }}>
+                      <i className="bi bi-save me-1"></i> {isEditMode ? 'Update' : 'Simpan'}
                     </button>
                   )}
                 </div>
