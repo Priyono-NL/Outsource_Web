@@ -47,8 +47,11 @@ class OsEmployment(db.Model, AuditMixin):
             'cc_name': self.OsCC[0].cc_master.org_name if self.OsCC else None,
 
             'card_number': self.OsCard[0].card_number if self.OsCard else None,
+            'c_valid_from': card_from.strftime('%Y-%m-%d') if card_from else None,
+            'c_valid_to': card_to.strftime('%Y-%m-%d') if card_to else None,
             'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
             'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
+            
 
             'type_worker': type_work_data.type_worker if type_work_data else None,
             'posisi': type_work_data.posisi if type_work_data else None,

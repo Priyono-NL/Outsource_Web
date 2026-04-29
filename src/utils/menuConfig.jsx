@@ -26,13 +26,13 @@ export const routesConfig = [
 
   // Group 1 — Employment
   { path: '/employment', label: 'Employment', icon: 'bi-person-badge', element: <Employement />, group: 1 },
-  { path: '/biodata', label: 'Biodata', icon: 'bi-person-lines-fill',element: <Biodata />, group: 1 },
   { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi />, group: 1 },
   { path: '/card', label: 'Absence Card', icon: 'bi-credit-card', element: <OsCard />, group: 1 },
-  { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC />, group: 1 },
-  { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade />, group: 1 }, 
-  { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType />, group: 1 },
   { path: '/blacklist', label: 'Blacklist', icon: 'bi-slash-circle', element: <Blacklist />, group: 1 },
+  // { path: '/biodata', label: 'Biodata', icon: 'bi-person-lines-fill',element: <Biodata />, group: 1 },
+  // { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC />, group: 1 },
+  // { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade />, group: 1 }, 
+  // { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType />, group: 1 },  
 
   // Group 2 — HRD Section  
   { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical />, group: 2 },

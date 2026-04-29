@@ -345,11 +345,20 @@ def edit(id):
             db.session.add(target_grade)
 
         target_type = osType.query.filter_by(employee_id=id).first()
-        if target_type:
-            target_type.type_worker = data.get('type_worker')
-            target_type.posisi = data.get('posisi')
-            target_type.valid_from = data.get('valid_from') or None
-            target_type.valid_to = data.get('valid_to') or None
+        if data.get('type_worker') or data.get('posisi'):
+            if target_type:
+                target_type.type_worker = data.get('type_worker')
+                target_type.posisi = data.get('posisi')
+                target_type.valid_from = data.get('valid_from') or None
+                target_type.valid_to = data.get('valid_to') or None
+            else :
+                target_type = osType(
+                    employee_id=id,
+                    type_worker=data.get('type_worker'),
+                    posisi=data.get('posisi'),
+                    valid_from=data.get('valid_from') or None,
+                    valid_to=data.get('valid_to') or None
+                )
             db.session.add(target_type)
 
         target_cc = OsCostCenter.query.filter_by(employee_id=id).first()
@@ -710,7 +719,7 @@ def deactivate_employee(pk_id):
         emp.valid_to = yesterday
         db.session.add(emp)
 
-        target_models = [OsCard, OsGrade, OsCostCenter, Alokasi]
+        target_models = [OsCard, OsGrade, OsCostCenter, osType, Alokasi]
         for Model in target_models:
             active_records = Model.query.filter(
                 Model.employee_id == pk_id,
