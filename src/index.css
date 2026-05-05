@@ -141,6 +141,16 @@ body {
 .sidebar-icon { width: 16px; text-align: center; flex-shrink: 0; font-size: 16px; }
 .sidebar-label { overflow: hidden; text-overflow: ellipsis; }
 
+.sidebar-sub-nav {
+  border-left: 1px solid #ddd; /* Garis penanda hierarchy */
+  margin-left: 20px;
+  margin-top: 5px;
+}
+
+.sidebar-folder .ms-auto {
+  font-size: 0.8rem;
+}
+
 /* ── Page header ── */
 .page-header {
   display: flex;
@@ -355,3 +365,35 @@ body {
 /* ── react-select override ── */
 .css-13cymwt-control { border-color: var(--color-border) !important; border-radius: var(--radius-sm) !important; min-height: 36px !important; font-size: 13px; }
 .css-t3ipsp-control { border-color: var(--color-accent) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.1) !important; }
+
+/* ── card cc canteen ── */
+.cc-card {
+  cursor: pointer;
+  min-height: 38px;
+  transition: all 0.2s ease-in-out;
+  font-size: 11px;
+}
+
+.cc-card input[type="checkbox"] {
+  cursor: pointer;
+  transform: scale(0.9);
+}
+
+.cc-card span {
+  transition: color 0.2s ease;
+}
+
+.cc-unselected {
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
+}
+
+.cc-unselected:hover {
+  border-color: #0d6efd;
+  background-color: #f8fbff;
+}
+
+.cc-selected {
+  background-color: #eff6ff;
+  border: 1px solid #0d6efd;
+}
