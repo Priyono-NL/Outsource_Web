@@ -1,10 +1,13 @@
-// src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import { routesConfig, adminRoutes } from './utils/menuConfig';
 import { useAuth } from './utils/useAuth';
 // import { usePermission } from './utils/usePermission';
+
+const flatRoutes = routesConfig.flatMap(route => 
+  route.children ? route.children : [route]
+);
 
 function App() {
   const { authState, handleLogout } = useAuth();
@@ -31,7 +34,7 @@ function App() {
       </div>
     );
   }
-
+  
   return (
     <BrowserRouter>
       <div id="app-shell">
@@ -72,22 +75,33 @@ function App() {
 
           <main id="app-content">
             <Routes>
-              {routesConfig.map((route, i) => (
-                <Route
-                  key={i}
-                  path={route.path}
-                  element={route.element}
-                  // element={canAccess(route.path) ? route.element : <Navigate to="/" replace />}
-                />
-              ))}
-              {adminRoutes.map((route, i) => (
-                <Route
-                  key={`admin-${i}`}
-                  path={route.path}
-                  element={route.element}
-                  // element={isAdmin ? route.element : <Navigate to="/" replace />}
-                />
-              ))}
+              {flatRoutes.map((route, i) => {
+                if (!route.path || !route.element) return null;
+                
+                return (
+                  <Route
+                    key={`main-${i}`}
+                    path={route.path}
+                    element={route.element}
+                    // element={canAccess(route.path) ? route.element : <Navigate to="/" replace />}
+                  />
+                );
+              })}
+
+              {/* UNTUK ADMIN ROUTES: Lakukan hal yang sama jika suatu saat adminRoutes juga pakai folder */}
+              {adminRoutes.flatMap(route => route.children ? route.children : [route]).map((route, i) => {
+                if (!route.path || !route.element) return null;
+
+                return (
+                  <Route
+                    key={`admin-${i}`}
+                    path={route.path}
+                    element={route.element}
+                    // element={isAdmin ? route.element : <Navigate to="/" replace />}
+                  />
+                );
+              })}
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

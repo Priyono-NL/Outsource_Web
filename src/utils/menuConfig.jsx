@@ -21,29 +21,39 @@ import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
 
 export const routesConfig = [
-  // Group 0
+  
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
 
-  // Group 1 — Employment
-  { path: '/employment', label: 'Employment', icon: 'bi-person-badge', element: <Employement />, group: 1 },
-  { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi />, group: 1 },
-  { path: '/card', label: 'Absence Card', icon: 'bi-credit-card', element: <OsCard />, group: 1 },
-  { path: '/blacklist', label: 'Blacklist', icon: 'bi-slash-circle', element: <Blacklist />, group: 1 },
-  // { path: '/biodata', label: 'Biodata', icon: 'bi-person-lines-fill',element: <Biodata />, group: 1 },
-  { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC />, group: 1 },
-  { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade />, group: 1 }, 
-  { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType />, group: 1 },  
+  {
+    label: 'Master OS',
+    icon: 'bi-person',
+    group: 1,
+    children: [
+      { path: '/employment', label: 'Employment', icon: 'bi-person-badge', element: <Employement /> },
+      { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
+      { path: '/card', label: 'Absence Card', icon: 'bi-credit-card', element: <OsCard /> },
+      { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC /> },
+      { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade /> }, 
+      { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType /> },
+      { path: '/blacklist', label: 'Blacklist', icon: 'bi-slash-circle', element: <Blacklist /> },
+      { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical /> },
+      { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },
+    ]
+  },
 
-  // Group 2 — HRD Section  
-  { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical />, group: 2 },
-  { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining />, group: 2 },
-
-  // Group 3 — Master Data
-  { path: "/sub-company", label: "Master Sub Company", icon: "bi-building", element: <SubCompany />, group: 3 },
-  { path: "/training-m", label: "Master Training", icon: "bi-book", element: <Training_m />, group: 3 },
-  { path: "/medical-m", label: "Master Medical", icon: "bi-hospital", element: <Medical_m />, group: 3 },
-  { path: "/canteen", label: "Master Kantin", icon: "bi-cup-hot", element: <Canteen />, group: 3 },
-  { path: "/costcenter", label: "Master Cost Center", icon: "bi-cash-stack", element: <CostCenter />, group: 3 },
+  {
+    label: 'Master Data',
+    icon: 'bi-database-fill-gear',
+    group: 3,
+    children: [
+      { path: "/costcenter", label: "Master Cost Center", icon: "bi-cash-stack", element: <CostCenter /> },
+      { path: "/canteen", label: "Master Kantin", icon: "bi-cup-hot", element: <Canteen /> },
+      { path: "/sub-company", label: "Master Sub Company", icon: "bi-building", element: <SubCompany /> },
+      { path: "/training-m", label: "Master Training", icon: "bi-book", element: <Training_m /> },
+      { path: "/medical-m", label: "Master Medical", icon: "bi-hospital", element: <Medical_m /> },      
+      
+    ]
+  },
 ];
 
 // Route khusus admin — tidak ikut permission system (selalu tampil untuk admin+)
