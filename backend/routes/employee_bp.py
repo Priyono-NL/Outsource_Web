@@ -744,31 +744,39 @@ def get_employee_stats():
     total_active = OsEmployment.query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
     total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
 
-    stats_raw = db.session.query(
+    statsCC_raw = db.session.query(
         OsCostCenter.cc_id, 
         func.count(OsCostCenter.id).label('total')
     ).filter(
         (OsCostCenter.valid_to >= now) | (OsCostCenter.valid_to == None)
     ).group_by(OsCostCenter.cc_id).all()
+    stats_cc = {row.cc_id: row.total for row in statsCC_raw}
 
-    stats_map = {row.cc_id: row.total for row in stats_raw}
+    statSub_raw = db.session.query(
+        OsEmployment.sub_company_id,
+        func.count(OsEmployment.id).label('total')
+    ).filter(
+        (OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)
+    ).group_by(OsEmployment.sub_company_id).all()
+    stats_sub = {row.sub_company_id: row.total for row in statSub_raw}
 
     cost_centers = costCenter.query.all()
+    sub_company = SubCompany.query.filter(SubCompany.type_company == 'OS')
     cc_aktif = {}
+    sub_aktif = {}
     
     for cc in cost_centers:
-        cc_aktif[cc.org_name] = stats_map.get(cc.cost_center, 0)
+        cc_aktif[cc.org_name] = stats_cc.get(cc.cost_center, 0)
+
+    for sub in sub_company:
+        sub_aktif[sub.sub_company_name] = stats_sub.get(sub.sub_company_id, 0)
 
     return jsonify({
         "status": "success",
         "data": {
             "all_total_active": total_active,
             "all_total_inactive": total_inactive,
-            "active_per_cost_center": cc_aktif
+            "active_per_cost_center": cc_aktif,
+            "active_per_subCom": sub_aktif
         }
     }), 200
-
-# @employee_bp.before_request
-# @login_required
-# def before_request():
-#     pass

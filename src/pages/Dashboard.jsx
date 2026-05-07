@@ -19,8 +19,6 @@ const Dashboard = () => {
       .catch(err => console.error('Gagal mengambil statistik:', err));
   }, []);
 
-  console.log(stats);
-
   return (
     <div>
       <div className="page-header">
@@ -51,6 +49,28 @@ const Dashboard = () => {
       </div>
 
       <div className="col-12 mt-4">
+        <h5 className="text-muted">Active per Sub Company</h5>
+      </div>
+
+      <div className="row g-3">
+        {stats.active_per_subCom && 
+          Object.entries(stats.active_per_subCom)
+            .filter(([_, count]) => count > 0)
+            .map(([name, count]) => (
+              <div className="col-md-4 col-lg-3" key={name}>
+                <StatCard
+                  title={name}
+                  value={count}
+                  subtitle="Karyawan Aktif"
+                  icon="bi-building-fill"
+                  color="#22c55e"
+                />
+              </div>
+            ))
+        }
+      </div>
+
+      <div className="col-12 mt-4">
         <h5 className="text-muted">Active per Cost Center</h5>
       </div>
 
@@ -64,13 +84,14 @@ const Dashboard = () => {
                   title={name}
                   value={count}
                   subtitle="Karyawan Aktif"
-                  icon="bi-building"
+                  icon="bi-building-fill-check"
                   color="#3b82f6"
                 />
               </div>
             ))
         }
       </div>
+
     </div>
   );
 };
