@@ -23,13 +23,8 @@ from routes.osType import osType_bp
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, supports_credentials=True, origins=[
-        "http://localhost:3000",
-        "http://localhost:4173",
-        "http://172.16.2.141:3000",
-        "http://172.16.2.141:4173"
-    ])
     app.config.from_object(Config)
+    CORS(app, supports_credentials=True, origins=Config.CORS_ORIGINS)    
     db.init_app(app)
     # app.register_blueprint(auth_bp, url_prefix='/')
     #master Data

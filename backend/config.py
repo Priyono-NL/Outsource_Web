@@ -1,8 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv('online.env')
-# load_dotenv('local.env')
+load_dotenv(dotenv_path="../.env")
 
 class Config:    
     USER = os.getenv('DB_USER')
@@ -16,3 +15,5 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_HTTPONLY = True
+
+    CORS_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")

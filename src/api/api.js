@@ -1,10 +1,8 @@
 import axios from 'axios';
 
-const BACKEND_URL = 'http://172.16.2.141:5000';
-
 const api = axios.create({
-  baseURL: BACKEND_URL,
-  withCredentials: true,   // WAJIB: kirim cookie session ke backend
+  baseURL: import.meta.env.VITE_BACKEND_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },

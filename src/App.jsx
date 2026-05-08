@@ -10,13 +10,13 @@ const flatRoutes = routesConfig.flatMap(route =>
 );
 
 function App() {
-  const { authState, handleLogout } = useAuth();
-  // const { loadingPerm, canAccess } = usePermission();
+  const { authState, handleLogout } = useAuth();  
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   const role = authState.user?.role || 'user';
   const isAdmin = ['admin', 'superadmin'].includes(role);
 
+  // const { loadingPerm, canAccess } = usePermission();
   // if (authState.loading || (authState.isAuthenticated && loadingPerm)) {
   //   return (
   //     <div className="loading-screen">
