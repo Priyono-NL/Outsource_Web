@@ -23,6 +23,7 @@ import ChangeLogin from '../pages/ChangeLogin';
 export const routesConfig = [
   
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
+  { path: '/absensi', label: 'Absensi', icon: 'bi-card-checklist', element: <Dashboard />, group: 0 },
 
   {
     label: 'Master OS',
