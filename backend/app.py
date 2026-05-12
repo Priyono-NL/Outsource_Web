@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request, Response
 from flask_cors import CORS
 from datetime import timedelta
 
@@ -24,7 +24,34 @@ from routes.osType import osType_bp
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-    CORS(app, supports_credentials=True, origins=Config.CORS_ORIGINS)    
+    CORS(app, 
+        supports_credentials=True, 
+        origins=Config.CORS_ORIGINS, 
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+    
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            res = Response()
+            res.headers['Access-Control-Allow-Origin'] = "https://w6wz4p4z-3000.asse.devtunnels.ms"
+            res.headers['Access-Control-Allow-Methods'] = "GET, POST, PUT, DELETE, OPTIONS"
+            res.headers['Access-Control-Allow-Headers'] = "Content-Type, Authorization, X-Tunnel-Skip-Anti-Phishing-Page"
+            res.headers['Access-Control-Allow-Credentials'] = "true"
+            return res
+
+    @app.after_request
+    def after_request(response):
+        # Gunakan get origin dengan aman
+        origin = request.headers.get('Origin')
+        allowed_origins = Config.CORS_ORIGINS
+        if origin in allowed_origins or origin == "https://w6wz4p4z-3000.asse.devtunnels.ms":
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Tunnel-Skip-Anti-Phishing-Page'
+            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
     db.init_app(app)
     # app.register_blueprint(auth_bp, url_prefix='/')
     #master Data

@@ -4,9 +4,10 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL,
   withCredentials: true,
   headers: {
+    'X-Tunnel-Skip-Anti-Phishing-Page': 'true',
     'Content-Type': 'application/json',
   },
-});
+}); 
 
 // -----------------------------------------------------------
 // Interceptor response: tangani 401 otomatis
