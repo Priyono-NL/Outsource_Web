@@ -42,9 +42,11 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, filterDate }) =
                 <tr>
                     <th>Employee ID</th>
                     <th>Employee Name</th>
-                    <th>Tanggal Clocking</th>
+                    <th>Clocking Date</th>
                     <th>Clocking In</th>
-                    
+                    <th>Clocking Out</th>
+                    <th>No BAC</th>
+                    <th>Reason</th>
                     <th>Action</th>
                 </tr>
             </thead>
