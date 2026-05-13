@@ -8,7 +8,6 @@ from model.medical import medical
 from model.osMedical import osMedical
 from model.employment import OsEmployment
 from model.person import OsPerson
-from .auth_bp import login_required
 
 osMedical_bp = Blueprint('osMedical_bp', __name__)
 

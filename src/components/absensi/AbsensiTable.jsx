@@ -12,27 +12,27 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, filterDate }) =
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
-    // const fetchData = async() => {
-    //     try {
-    //         const response = await api.get(`/absensi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&date=${filterDate}`);
-    //         const result = await response.data;
-    //         if (result.status === 'success') { 
-    //         setAbsensi(result.data);
-    //         setTotalPages(result.total_page);
-    //         } 
-    //         else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
-    //     } catch (err) {
-    //         setError(err.message);
-    //     }
-    // }
+    const fetchData = async() => {
+        try {
+            const response = await api.get(`/absensi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&date=${filterDate}`);
+            const result = await response.data;
+            if (result.status === 'success') { 
+            setAbsensi(result.data);
+            setTotalPages(result.total_page);
+            } 
+            else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
+        } catch (err) {
+            setError(err.message);
+        }
+    }
 
-    // useEffect(() => {
-    //         setCurrentPage(1);
-    //     }, [searchTerm, filterDate]);
+    useEffect(() => {
+            setCurrentPage(1);
+        }, [searchTerm, filterDate]);
     
-    // useEffect(() => {
-    //     fetchData();
-    // }, [currentPage, refreshTrigger, searchTerm, filterDate]);
+    useEffect(() => {
+        fetchData();
+    }, [currentPage, refreshTrigger, searchTerm, filterDate]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
