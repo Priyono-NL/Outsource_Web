@@ -45,9 +45,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, filterDate }) =
                     <th>Clocking Date</th>
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
-                    <th>No BAC</th>
-                    <th>Reason</th>
-                    <th>Action</th>
+                    {/* <th>Action</th> */}
                 </tr>
             </thead>
             <tbody>
@@ -55,13 +53,14 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, filterDate }) =
                     <tr key={`row-${index+1}`} >
                         <td>{emp.employee_code}</td>
                         <td>{emp.employee_name}</td>
-                        <td>{emp.tanggal_clocking}</td>
-                        <td>{emp.date_in}</td>
-                        <td>
+                        <td>{emp.date_clocking}</td>
+                        <td>{emp.clocking_in}</td>
+                        <td>{emp.clocking_out}</td>
+                        {/* <td>
                             <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
                                 <i className="bi bi-pencil-square"></i>
                             </button>
-                        </td>
+                        </td> */}
                     </tr>
                 )) : (
                     <tr><td colSpan="5" className="empty-state">Data tidak ditemukan</td></tr>

@@ -9,7 +9,7 @@ import { useCrudPage } from '../utils/useCrudPage';
 
 import PageHeader from '../components/PageHeader';
 import AbsensiTable from '../components/absensi/AbsensiTable';
-// import AbsensiForm from '../components/absensi/AbsensiForm';
+import AbsensiForm from '../components/absensi/AbsensiForm';
 
 const Absensi = () => {
   const crud = useCrudPage();
@@ -61,7 +61,7 @@ const Absensi = () => {
       <h5>INI NANTI JADI HALAMAN APLIKASI ABSENSI OS</h5>
       <p>ON DEVELOPMENT</p>
 
-      {/* {crud.showForm && <AbsensiForm onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />} */}
+      {crud.showForm && <AbsensiForm onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />}
 
       <div className="app-card">
 
