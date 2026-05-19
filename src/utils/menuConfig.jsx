@@ -21,20 +21,11 @@ import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
 
 import Absensi from '../pages/Absensi';
-import Violation from '../pages/Violation';
 
 export const routesConfig = [  
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
 
-  {
-    label: 'Absensi OS',
-    icon: 'bi-card-checklist',
-    group: 1,
-    children: [
-      { path: '/absensi', label: 'Absensi', icon: 'bi-calendar-check-fill', element: <Absensi /> },
-      { path: '/violation', label: 'Absensi Violation', icon: 'bi-calendar2-x-fill', element: <Violation />}
-    ]
-  },
+  { path: '/absensi', label: 'Absensi OS', icon: 'bi-card-checklist', element: <Absensi />, group: 1 },
 
   {
     label: 'Master OS',

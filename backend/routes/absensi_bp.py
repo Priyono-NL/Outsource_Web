@@ -1,7 +1,7 @@
 import pandas as pd
 from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 
 from extensions import db
 from model.absensi import Absensi, BAC_os
@@ -19,8 +19,18 @@ def index():
         sub_company_id = request.args.get('sub_company', '', type=str)
         start_date = request.args.get('start_date', '', type=str)
         end_date = request.args.get('end_date', '', type=str)
+        status_filter = request.args.get('status_filter', 'all_data', type=str)
 
         query = Absensi.query
+
+        if status_filter == 'violation_all':
+            query = query.filter(or_(Absensi.clocking_in.is_(None), Absensi.clocking_out.is_(None)))
+        elif status_filter == 'no_in':
+            query = query.filter(and_(Absensi.clocking_in.is_(None), Absensi.clocking_out.is_not(None)))
+        elif status_filter == 'no_out':
+            query = query.filter(and_(Absensi.clocking_in.is_not(None), Absensi.clocking_out.is_(None)))
+        elif status_filter == 'no_both':
+            query = query.filter(and_(Absensi.clocking_in.is_(None), Absensi.clocking_out.is_(None)))
         
         needs_employment_join = bool(search or sub_company_id)
         if needs_employment_join:

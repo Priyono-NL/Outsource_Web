@@ -24,6 +24,9 @@ const Absensi = () => {
   const [appliedStartDate, setAppliedStartDate] = useState('');
   const [appliedEndDate, setAppliedEndDate] = useState('');
 
+  const [statusFilter, setStatusFilter] = useState('all_data');
+  const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -40,6 +43,7 @@ const Absensi = () => {
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
+    setAppliedStatusFilter(statusFilter);
     crud.handleSearch();
   };
 
@@ -59,7 +63,8 @@ const Absensi = () => {
         search: crud.appliedSearch || '',
         sub_company: appliedSubCompany || '',
         start_date: appliedStartDate || '',
-        end_date: appliedEndDate || ''
+        end_date: appliedEndDate || '',
+        status_filter: appliedStatusFilter || 'all_data'
       }).toString();
       const res = await api.get(`/absensi/export?${params}`, { responseType: 'blob' });
       saveAs(res.data, 'Absensi_OS_Filtered.xlsx');
@@ -71,6 +76,14 @@ const Absensi = () => {
   const subCompanyOptions = [
     { value: '', label: 'Semua Sub Company' },
     ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+  ];
+
+  const statusOptions = [
+    { value: 'all_data', label: 'Semua Data Absensi' },
+    { value: 'violation_all', label: 'Semua Pelanggaran (Violation)' },
+    { value: 'no_in', label: 'Lupa Clock In' },
+    { value: 'no_out', label: 'Lupa Clock Out' },
+    { value: 'no_both', label: 'Tidak Keduanya' }
   ];
 
   return (
@@ -96,6 +109,20 @@ const Absensi = () => {
 
         <div className="filter-bar">
 
+          <div className="filter-group" style={{ minWidth: 220, margin: 0 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Status Absensi</label>
+            <Select 
+              options={statusOptions} 
+              value={statusOptions.find(o => o.value === statusFilter)} 
+              onChange={o => setStatusFilter(o?.value || 'all_data')} 
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 }) // Memastikan di atas elemen lain
+              }}
+            />
+          </div>
+
           <div className="filter-group" style={{ minWidth: 180 }}>
             <label>Sub Company</label>
             <Select
@@ -104,7 +131,11 @@ const Absensi = () => {
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
               onChange={o => setSubCompanyInput(o?.value || '')}
               isClearable isSearchable
-              styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 }) // Memastikan di atas elemen lain
+              }}
             />
           </div>
 
@@ -152,6 +183,7 @@ const Absensi = () => {
           subCompany={appliedSubCompany}
           startDate={appliedStartDate}
           endDate={appliedEndDate}
+          statusFilter={appliedStatusFilter}
         />
       </div>
 
