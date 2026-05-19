@@ -13,7 +13,7 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
   const [selectedFile, setSelectedFile] = useState(null);  
   const [initialData, setInitialData] = useState(propsData || { is_blacklist: "No in Blacklist" });
   const [previewUrl, setPreviewUrl] = useState("/no_image.png");
-  const BASE_URL = 'http://localhost:5000';
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL;
   const isEditMode = !!propsData;
 
   useEffect(() => {

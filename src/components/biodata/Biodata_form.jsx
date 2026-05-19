@@ -19,7 +19,7 @@ function BiodataForm({ onClose, onSuccess, initialData }) {
       formRef.current.resident_id.value = initialData.resident_id || '';
 
       const photoPath = initialData.photo;
-      const BASE_URL = 'http://localhost:5000';
+      const BASE_URL = import.meta.env.VITE_BACKEND_URL;
       if (photoPath) {
         const fullPhotoUrl = photoPath.startsWith('http') 
           ? photoPath 

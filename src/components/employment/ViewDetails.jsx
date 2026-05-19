@@ -1,7 +1,7 @@
 import React from 'react';
 
 function ViewDetails({ onClose, initialData }) {
-  const BASE_URL = 'http://localhost:5000';
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL;
   const photoUrl = initialData?.photo 
     ? (initialData.photo.startsWith('http') ? initialData.photo : `${BASE_URL}${initialData.photo}`)
     : "/src/assets/no_image.png";
