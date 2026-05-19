@@ -100,9 +100,6 @@ const Absensi = () => {
         </button>        
       </PageHeader>
 
-      <h5>INI NANTI JADI HALAMAN APLIKASI ABSENSI OS</h5>
-      <p>ON DEVELOPMENT</p>
-
       {crud.showForm && <AbsensiForm onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />}
 
       <div className="app-card">
@@ -118,7 +115,7 @@ const Absensi = () => {
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 }) // Memastikan di atas elemen lain
+                menuPortal: base => ({ ...base, zIndex: 9999 })
               }}
             />
           </div>
@@ -134,7 +131,7 @@ const Absensi = () => {
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 }) // Memastikan di atas elemen lain
+                menuPortal: base => ({ ...base, zIndex: 9999 })
               }}
             />
           </div>

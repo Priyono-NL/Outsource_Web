@@ -179,7 +179,11 @@ const Employment = () => {
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
               onChange={o => setSubCompanyInput(o?.value || '')}
               isClearable isSearchable
-              styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
             />
           </div>
 
@@ -191,7 +195,11 @@ const Employment = () => {
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
               onChange={o => setDepartmentInput(o?.value || '')}
               isClearable isSearchable
-              styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
             />
           </div>
 

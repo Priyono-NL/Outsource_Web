@@ -53,6 +53,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 <tr>
                     <th>Employee ID</th>
                     <th>Employee Name</th>
+                    <th>Gender</th>
                     <th>Sub Company</th>
                     <th>Absense Card</th>
                     <th>Cost Center</th>
@@ -70,16 +71,17 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                         <tr key={`row-${emp.absensi_id || index}`} >
                             <td>{emp.employee_code}</td>
                             <td>{emp.employee_name}</td>
+                            <td>{emp.gender}</td>
                             <td>{emp.subCom}</td>
                             <td>{emp.card}</td>
                             <td>{emp.cc}</td>
                             <td>{emp.date_clocking}</td>
                             
                             <td style={{ color: !emp.clocking_in ? 'red' : 'inherit' }}>
-                                {emp.clocking_in || 'Tidak In'}
+                                {emp.clocking_in || 'No Clocking In'}
                             </td>
                             <td style={{ color: !emp.clocking_out ? 'red' : 'inherit' }}>
-                                {emp.clocking_out || 'Tidak Out'}
+                                {emp.clocking_out || 'No Clocking Out'}
                             </td>
 
                             <td style={{ textAlign: 'center' }}>
@@ -103,7 +105,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                         </tr>
                     );
                 }) : (
-                    <tr><td colSpan="9" className="empty-state" style={{ textAlign: 'center' }}>Data tidak ditemukan</td></tr>
+                    <tr><td colSpan="10" className="empty-state" style={{ textAlign: 'center' }}>Data tidak ditemukan</td></tr>
                 )}
             </tbody>
             </table>
