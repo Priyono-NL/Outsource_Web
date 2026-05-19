@@ -88,11 +88,10 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
       ></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-        {/* Menggunakan modal-md agar ramping */}
         <div className="modal-dialog modal-md modal-dialog-centered">
           <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            {/* Header Tipis */}
+            {/* Header */}
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-person-gear' : 'bi-plus-circle'} me-2`}></i>
@@ -177,7 +176,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
 
               </div>
 
-              {/* Footer Compact */}
+              {/* Footer */}
               <div className="modal-footer bg-light border-top p-2 px-3">
                 <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
                 <button 

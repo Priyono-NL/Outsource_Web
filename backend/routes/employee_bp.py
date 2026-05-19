@@ -148,7 +148,7 @@ def add():
             file = request.files['photo']
             if file.filename != '':
                 ext = os.path.splitext(file.filename)[1].lower()
-                new_filename = f"{uuid.uuid4().hex}{ext}"
+                new_filename = f"{data.get('nama')}_{data.get('resident_id')}{ext}"
                 file_path = os.path.join(UPLOAD_FOLDER, new_filename)
                 file.save(file_path)
                 target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"

@@ -8,10 +8,10 @@ import { Toast, Confirm } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
 
 import PageHeader from '../components/PageHeader';
-import AbsensiTable from '../components/absensi/AbsensiTable';
+import ViolationTable from '../components/absensi/ViolationTable';
 import AbsensiForm from '../components/absensi/AbsensiForm';
 
-const Absensi = () => {
+const Violation = () => {
   const crud = useCrudPage();
   const [editData, setEditData] = useState(null);
 
@@ -76,7 +76,7 @@ const Absensi = () => {
   return (
     <div>
       <PageHeader
-        title="Absensi OS"
+        title="Absensi Violation OS"
         searchPlaceholder="Cari ID Karyawan / Nama ..."
         searchValue={crud.searchInput}
         onSearchChange={crud.setSearchInput}
@@ -145,7 +145,7 @@ const Absensi = () => {
 
         </div>
         
-        <AbsensiTable
+        <ViolationTable
           refreshTrigger={crud.refreshKey}
           onEditClick={handleEdit} 
           searchTerm={crud.appliedSearch}
@@ -159,4 +159,4 @@ const Absensi = () => {
   );
 };
 
-export default Absensi;
+export default Violation;

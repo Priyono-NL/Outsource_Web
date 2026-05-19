@@ -12,11 +12,21 @@ class Absensi(db.Model, AuditMixin):
     employement = db.relationship('OsEmployment', backref='OsAbsen', lazy=True)
 
     def to_dict(self):
+        emp = self.employement
+
+        emp_subcom = emp.sub_con.sub_company_name if (emp and emp.sub_con) else None
+        emp_card = emp.OsCard[0].card_number if (emp and emp.OsCard and len(emp.OsCard) > 0) else None
+        emp_cc = emp.OsCC[0].cc_master.org_name if (emp and emp.OsCC and len(emp.OsCC) > 0) else None
+
         return {
             "absensi_id": self.id,
             "employee_id": self.employee_id,
-            "employee_code": self.employement.employee_code,
-            "employee_name": self.employement.person.name,
+            "employee_code": emp.employee_code if emp else None,
+            "employee_name": emp.person.name if (emp and emp.person) else None,
+            "gender": emp.person.gender if (emp and emp.person) else None,
+            "subCom": emp_subcom,
+            "card": emp_card,
+            "cc": emp_cc,
             "date_clocking": self.date_clocking.strftime('%Y-%m-%d') if self.date_clocking else None,
             "clocking_in": self.clocking_in.strftime('%Y-%m-%d %H:%M:%S') if self.clocking_in else None,
             "clocking_out": self.clocking_out.strftime('%Y-%m-%d %H:%M:%S') if self.clocking_out else None,

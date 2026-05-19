@@ -4,7 +4,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, startDate, endDate }) => { 
+const ViolationTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, startDate, endDate }) => { 
     
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
@@ -22,7 +22,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 start_date: startDate || '',
                 end_date: endDate || ''
             }).toString();
-            const response = await api.get(`/absensi?${params}`);
+            const response = await api.get(`/violation?${params}`);
             const result = response.data;
             if (result.status === 'success') { 
                 setAbsensi(result.data);
@@ -85,4 +85,4 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
         </div>        
     </>)
 };
-export default AbsensiTable;
+export default ViolationTable;

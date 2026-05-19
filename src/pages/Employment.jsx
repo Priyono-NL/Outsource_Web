@@ -159,7 +159,9 @@ const Employment = () => {
       {viewForm && <ViewDetails onClose={() => setViewForm(false)} initialData={viewData} />}
 
       <div className="app-card">
+
         <div className="filter-bar">
+
           <div className="filter-group">
             <label>Status</label>
             <select value={statusInput} onChange={e => setStatusInput(e.target.value)}>
@@ -168,6 +170,7 @@ const Employment = () => {
               <option value="inactive">Inactive</option>
             </select>
           </div>
+
           <div className="filter-group" style={{ minWidth: 180 }}>
             <label>Sub Company</label>
             <Select
@@ -179,6 +182,7 @@ const Employment = () => {
               styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
             />
           </div>
+
           <div className="filter-group" style={{ minWidth: 180 }}>
             <label>Department</label>
             <Select
@@ -190,11 +194,13 @@ const Employment = () => {
               styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
             />
           </div>
+
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}>
             <button className="btn-app btn-primary-app" onClick={handleApplyFilters}>
               <i className="bi bi-funnel" /> Terapkan Filter
             </button>
           </div>
+          
         </div>
         
         {/* Tambahkan properti onEditClick ke Datatable */}
