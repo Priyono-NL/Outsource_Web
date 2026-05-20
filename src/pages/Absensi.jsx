@@ -81,9 +81,9 @@ const Absensi = () => {
   const statusOptions = [
     { value: 'all_data', label: 'Semua Data Absensi' },
     { value: 'violation_all', label: 'Semua Pelanggaran (Violation)' },
-    { value: 'no_in', label: 'Lupa Clock In' },
-    { value: 'no_out', label: 'Lupa Clock Out' },
-    { value: 'no_both', label: 'Tidak Keduanya' }
+    { value: 'no_in', label: 'Clock In Kosong' },
+    { value: 'no_out', label: 'Clock Out Kosong' },
+    { value: 'no_both', label: 'Clock In & Out Kosong' }
   ];
 
   return (
@@ -107,7 +107,7 @@ const Absensi = () => {
         <div className="filter-bar">
 
           <div className="filter-group" style={{ minWidth: 220, margin: 0 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Status Absensi</label>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
             <Select 
               options={statusOptions} 
               value={statusOptions.find(o => o.value === statusFilter)} 

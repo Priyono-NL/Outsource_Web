@@ -60,6 +60,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                     <th>Clocking Date</th>
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
+                    <th>Status</th>
                     <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
             </thead>
@@ -78,10 +79,23 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             <td>{emp.date_clocking}</td>
                             
                             <td style={{ color: !emp.clocking_in ? 'red' : 'inherit' }}>
-                                {emp.clocking_in || 'No Clocking In'}
+                                {emp.clocking_in || 'No Clock In'}
                             </td>
                             <td style={{ color: !emp.clocking_out ? 'red' : 'inherit' }}>
-                                {emp.clocking_out || 'No Clocking Out'}
+                                {emp.clocking_out || 'No Clock Out'}
+                            </td>
+
+                            <td style={{textAlign: 'center'}}>
+                                {isViolation ? (
+                                    <span style={{ fontSize: '12px', color: 'red', fontWeight: 'bold' }}>
+                                        <i className="bi bi-exclamation-circle-fill" style={{ marginRight: '4px' }}></i>
+                                        BAC
+                                    </span>
+                                ) : (
+                                    <span style={{ fontSize: '12px', color: 'green', fontWeight: 'bold' }}>
+                                        <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
+                                    </span>
+                                )}
                             </td>
 
                             <td style={{ textAlign: 'center' }}>

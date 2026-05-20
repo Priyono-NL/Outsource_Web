@@ -28,8 +28,8 @@ class Absensi(db.Model, AuditMixin):
             "card": emp_card,
             "cc": emp_cc,
             "date_clocking": self.date_clocking.strftime('%Y-%m-%d') if self.date_clocking else None,
-            "clocking_in": self.clocking_in.strftime('%Y-%m-%d %H:%M:%S') if self.clocking_in else None,
-            "clocking_out": self.clocking_out.strftime('%Y-%m-%d %H:%M:%S') if self.clocking_out else None,
+            "clocking_in": self.clocking_in.strftime('%H:%M') if self.clocking_in else None,
+            "clocking_out": self.clocking_out.strftime('%H:%M') if self.clocking_out else None,
         }
 
 class BAC_os(db.Model, AuditMixin):
@@ -38,6 +38,10 @@ class BAC_os(db.Model, AuditMixin):
     absensi_id = db.Column(db.Integer, db.ForeignKey('absensi_temp.id'))
     employee_id = db.Column(db.Integer)
     bac_no = db.Column(db.String(50))
-    bac_ket = db.Column(db.String(200))
+    bac_ket = db.Column(db.String(255))
+    clock_date = db.Column(db.Date)
+    clock_in = db.Column(db.DateTime, nullable=True)
+    clock_out = db.Column(db.DateTime, nullable=True)
 
 AuditMixin.register_audit_events(Absensi)
+AuditMixin.register_audit_events(BAC_os)

@@ -35,6 +35,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
             ? await api.put(`/absensi/${initialData.absensi_id}`, payload) 
             : await api.post('/absensi/submit', payload);
       if (response.data.status === 'success') {
+        console.log(response.data.received_data);
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
         onSuccess?.();
@@ -150,17 +151,30 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                    <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
 
-                <div className="col-md-6">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>No BAC</label>
-                    <input 
-                      type="text" 
-                      name="bac_no" 
-                      className="form-control form-control-sm" 
-                      placeholder="Contoh: 001122"
-                      disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
-                      required 
-                    />
+                <div className='row'>
+                  <div className="col-md-6">
+                      <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>No BAC</label>
+                      <input 
+                        type="text" 
+                        name="bac_no" 
+                        className="form-control form-control-sm" 
+                        placeholder="Contoh: 001122"
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                        required 
+                      />
+                    </div>
+
+                    <div className='col-md-6'>
+                      <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clocking Date</label>
+                      <input 
+                        type="date" 
+                        name="clock_date"
+                        className='form-control form-control-sm'
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                        required 
+                      />
                   </div>
+                </div>
 
                   <div className="col-md-12">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Keterangan BAC</label>
@@ -172,6 +186,28 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                       required 
                     />
+                  </div>
+
+                  <div className='row'>
+                    <div className='col-md-6'>
+                      <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock In</label>
+                      <input 
+                        type="datetime-local" 
+                        name="clock_in"
+                        className='form-control form-control-sm'
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                      />
+                    </div>
+
+                    <div className='col-md-6'>
+                      <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock Out</label>
+                      <input 
+                        type="datetime-local" 
+                        name="clock_out"
+                        className='form-control form-control-sm'
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                      />
+                    </div>
                   </div>
 
               </div>
