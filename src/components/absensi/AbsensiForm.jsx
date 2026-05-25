@@ -8,18 +8,52 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
-  const formRef = useRef(null);
 
+  const [bacOS, setBacOS] = useState({
+    bac_no: '',
+    bac_ket: '',
+    clock_in: '',
+    clock_out: ''
+  });
+
+  const [hasClockIn, setHasClockIn] = useState(false);
+  const [hasClockOut, setHasClockOut] = useState(false);
+  
+  const formRef = useRef(null);
   const isEditMode = !!initialData;
   
   useEffect(() => {
-    if (initialData && formRef.current) {
+    if (initialData){
       setEmpId(initialData.employee_code || ''); 
       setEmpPk(initialData.employee_id || '');
-      formRef.current.employee_code.value = initialData.employee_code;
-      handleSearchEmployee(initialData.employee_code || initialData.employee_id);
+      setHasClockIn(!!initialData.clocking_in);
+      setHasClockOut(!!initialData.clocking_out);
+      fetchBAC(initialData.id);
     }
-  }, [initialData]);
+
+    if (initialData && formRef.current) {
+      formRef.current.clock_date.value  = initialData.date_clocking;
+      formRef.current.employee_code.value = initialData.employee_code;
+      handleSearchEmployee(initialData.employee_code || initialData.employee_id);      
+    }
+  }, [initialData, formRef.current]);
+
+  const fetchBAC = async (absensiId) => {
+    if (!absensiId) return;
+    try {
+      const res = await api.get(`/absensi/bac/${absensiId}`);      
+      if (res.data) {
+        setBacOS({
+          clock_in: res.data.clock_in || '',
+          clock_out: res.data.clock_out || '',
+          bac_ket: res.data.bac_ket || '',
+          bac_no: res.data.bac_no || ''
+        });
+      }
+    } catch (err) {
+      console.error("Gagal mengambil data tambahan:", err);
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -35,7 +69,6 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
             ? await api.put(`/absensi/${initialData.absensi_id}`, payload) 
             : await api.post('/absensi/submit', payload);
       if (response.data.status === 'success') {
-        console.log(response.data.received_data);
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
         onSuccess?.();
@@ -79,6 +112,9 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
       setIsEmployeeFound(false);
     }
   };
+
+  console.log(initialData);
+  console.log(bacOS);
 
   return (
     <>
@@ -195,7 +231,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         type="datetime-local" 
                         name="clock_in"
                         className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockIn} 
                       />
                     </div>
 
@@ -205,7 +241,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         type="datetime-local" 
                         name="clock_out"
                         className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockOut} 
                       />
                     </div>
                   </div>

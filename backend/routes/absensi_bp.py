@@ -67,6 +67,20 @@ def index():
             "message": str(e)
         }), 500
 
+@AbsenOs_bp.route('/absensi/bac/<string:absenId>', methods=['GET'])
+def get_bac(absenId):
+    extra_info = db.session.query(BAC_os).filter(BAC_os.absensi_id == absenId).first()
+    
+    if not extra_info:
+        return {"clock_in": "", "clock_out": "", "bac_no": "", "bac_ket": ""}
+        
+    return {
+        "clock_in": extra_info.clock_in.isoformat() if extra_info.clock_in else "",
+        "clock_out": extra_info.clock_out.isoformat() if extra_info.clock_out else "",
+        "bac_no": extra_info.bac_no or "",
+        "bac_ket": extra_info.bac_ket or ""
+    }
+
 @AbsenOs_bp.route('/absensi/<string:id>', methods=['PUT'])
 def update(id):
     try:

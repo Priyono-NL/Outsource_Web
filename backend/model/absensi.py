@@ -17,6 +17,7 @@ class Absensi(db.Model, AuditMixin):
         emp_subcom = emp.sub_con.sub_company_name if (emp and emp.sub_con) else None
         emp_card = emp.OsCard[0].card_number if (emp and emp.OsCard and len(emp.OsCard) > 0) else None
         emp_cc = emp.OsCC[0].cc_master.org_name if (emp and emp.OsCC and len(emp.OsCC) > 0) else None
+        emp_type = emp.OsType[0].type_worker if (emp and emp.OsType and len(emp.OsType) > 0) else None
 
         return {
             "absensi_id": self.id,
@@ -27,6 +28,7 @@ class Absensi(db.Model, AuditMixin):
             "subCom": emp_subcom,
             "card": emp_card,
             "cc": emp_cc,
+            "type": emp_type,
             "date_clocking": self.date_clocking.strftime('%Y-%m-%d') if self.date_clocking else None,
             "clocking_in": self.clocking_in.strftime('%H:%M') if self.clocking_in else None,
             "clocking_out": self.clocking_out.strftime('%H:%M') if self.clocking_out else None,

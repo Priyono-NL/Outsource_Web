@@ -57,6 +57,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                     <th>Sub Company</th>
                     <th>Absense Card</th>
                     <th>Cost Center</th>
+                    <th>Type</th>
                     <th>Clocking Date</th>
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
@@ -73,11 +74,12 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             <td>{emp.employee_code}</td>
                             <td>{emp.employee_name}</td>
                             <td>{emp.gender}</td>
-                            <td>{emp.subCom}</td>
-                            <td>{emp.card}</td>
-                            <td>{emp.cc}</td>
-                            <td>{emp.date_clocking}</td>
-                            
+                            <td>{emp.subCom || '-'}</td>
+                            <td>{emp.card || '-'}</td>
+                            <td>{emp.cc || '-'}</td>
+                            <td>{emp.type || '-'}</td>
+
+                            <td>{emp.date_clocking}</td>                            
                             <td style={{ color: !emp.clocking_in ? 'red' : 'inherit' }}>
                                 {emp.clocking_in || 'No Clock In'}
                             </td>
