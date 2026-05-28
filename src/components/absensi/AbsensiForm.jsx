@@ -23,37 +23,25 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   const isEditMode = !!initialData;
   
   useEffect(() => {
-    if (initialData){
+    if (initialData) {
       setEmpId(initialData.employee_code || ''); 
       setEmpPk(initialData.employee_id || '');
       setHasClockIn(!!initialData.clocking_in);
       setHasClockOut(!!initialData.clocking_out);
-      fetchBAC(initialData.id);
+      setBacOS({        
+        bac_no: initialData.bac_no || '',
+        bac_ket: initialData.bac_ket || '',
+        clock_in: initialData.bac_clock_in || '',
+        clock_out: initialData.bac_clock_out || ''
+      });
     }
 
     if (initialData && formRef.current) {
-      formRef.current.clock_date.value  = initialData.date_clocking;
-      formRef.current.employee_code.value = initialData.employee_code;
+      formRef.current.clock_date.value  = initialData.date_clocking || '';
+      formRef.current.employee_code.value = initialData.employee_code || '';
       handleSearchEmployee(initialData.employee_code || initialData.employee_id);      
-    }
+    }  
   }, [initialData, formRef.current]);
-
-  const fetchBAC = async (absensiId) => {
-    if (!absensiId) return;
-    try {
-      const res = await api.get(`/absensi/bac/${absensiId}`);      
-      if (res.data) {
-        setBacOS({
-          clock_in: res.data.clock_in || '',
-          clock_out: res.data.clock_out || '',
-          bac_ket: res.data.bac_ket || '',
-          bac_no: res.data.bac_no || ''
-        });
-      }
-    } catch (err) {
-      console.error("Gagal mengambil data tambahan:", err);
-    }
-  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -112,9 +100,6 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
       setIsEmployeeFound(false);
     }
   };
-
-  console.log(initialData);
-  console.log(bacOS);
 
   return (
     <>
@@ -196,7 +181,9 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         className="form-control form-control-sm" 
                         placeholder="Contoh: 001122"
                         disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
-                        required 
+                        required
+                        value={bacOS.bac_no || ''}
+                        onChange={(e) => setBacOS({ ...bacOS, bac_no: e.target.value })} 
                       />
                     </div>
 
@@ -207,7 +194,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         name="clock_date"
                         className='form-control form-control-sm'
                         disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
-                        required 
+                        required
                       />
                   </div>
                 </div>
@@ -220,7 +207,9 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       className="form-control form-control-sm" 
                       placeholder="Contoh: Kartu Error"
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
-                      required 
+                      required
+                      value={bacOS.bac_ket || ''}
+                      onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })} 
                     />
                   </div>
 
@@ -231,7 +220,9 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         type="datetime-local" 
                         name="clock_in"
                         className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockIn} 
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockIn}
+                        value={bacOS.clock_in ? bacOS.clock_in.slice(0, 16) : ''}
+                        onChange={(e) => setBacOS({ ...bacOS, clock_in: e.target.value })} 
                       />
                     </div>
 
@@ -241,7 +232,9 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         type="datetime-local" 
                         name="clock_out"
                         className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockOut} 
+                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockOut}
+                        value={bacOS.clock_out ? bacOS.clock_out.slice(0, 16) : ''}
+                        onChange={(e) => setBacOS({ ...bacOS, clock_out: e.target.value })}
                       />
                     </div>
                   </div>

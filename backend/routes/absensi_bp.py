@@ -85,29 +85,45 @@ def get_bac(absenId):
 def update(id):
     try:
         data = request.json
-        data['absensi_id'] = id
+        
+        if not data:
+            return jsonify({"status": "error", "message": "Tidak ada data yang diterima"}), 400
 
         clock_in = data.get('clock_in') if data.get('clock_in') != '' else None
         clock_out = data.get('clock_out') if data.get('clock_out') != '' else None
 
-        new_bac_os = BAC_os(
-            absensi_id = data.get('absensi_id'),
-            employee_id = data.get('employee_id'),
-            bac_no = data.get('bac_no'),
-            bac_ket = data.get('bac_ket'),
-            clock_date = data.get('clock_date'),
-            clock_in = clock_in,
-            clock_out = clock_out
-        )
-        db.session.add(new_bac_os)
+        existing_bac = BAC_os.query.filter_by(absensi_id=id).first()
+
+        if existing_bac:
+            existing_bac.employee_id = data.get('employee_id')
+            existing_bac.bac_no = data.get('bac_no')
+            existing_bac.bac_ket = data.get('bac_ket')
+            existing_bac.clock_date = data.get('clock_date')
+            existing_bac.clock_in = clock_in
+            existing_bac.clock_out = clock_out
+            
+            message = "BAC Absensi berhasil diupdate!"
+            
+        else:
+            new_bac_os = BAC_os(
+                absensi_id = id,
+                employee_id = data.get('employee_id'),
+                bac_no = data.get('bac_no'),
+                bac_ket = data.get('bac_ket'),
+                clock_date = data.get('clock_date'),
+                clock_in = clock_in,
+                clock_out = clock_out
+            )
+            db.session.add(new_bac_os)
+            message = "BAC Absensi berhasil ditambahkan!"
+
         db.session.commit()
-        if not data:
-            return jsonify({"status": "error", "message": "Tidak ada data yang diterima"}), 400
 
         return jsonify({
             "status": "success", 
-            "message": f"BAC Absensi berhasil diupdate!"
+            "message": message
         }), 200
+        
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500

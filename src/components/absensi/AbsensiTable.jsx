@@ -68,6 +68,71 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
             <tbody>
                 { absensi.length > 0 ? absensi.map((emp, index) => {
                     const isViolation = !emp.clocking_in || !emp.clocking_out;
+                    const hasBAC = emp.bac_id ? true : false;
+
+                    const formatTime = (timeStr) => {
+                        if (!timeStr) return null;
+                        if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5); 
+                        return timeStr.substring(0, 5);
+                    };
+
+                    let displayClockIn = formatTime(emp.clocking_in);
+                    let displayClockOut = formatTime(emp.clocking_out);
+                    let statusElement = null;
+                    let actionElement = null;
+
+                    if (!isViolation) {
+                        //Tidak ada violation (Lengkap & Hijau)
+                        statusElement = (
+                            <span style={{ fontSize: '12px', color: 'green', fontWeight: 'bold' }}>
+                                <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
+                            </span>
+                        );
+                        actionElement = statusElement;
+                        
+                    } else if (isViolation && hasBAC) {
+                        // Ada violation, TAPI ada BAC
+                        displayClockIn = formatTime(emp.bac_clock_in) || formatTime(emp.clocking_in);
+                        displayClockOut = formatTime(emp.bac_clock_out) || formatTime(emp.clocking_out);
+
+                        statusElement = (
+                            <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
+                                <i className="bi bi-shield-check" style={{ marginRight: '4px' }}></i>
+                                BAC Found
+                            </span>
+                        );                        
+                        actionElement = (
+                            <button 
+                                className="btn-app btn-warning-app" 
+                                style={{ padding: '4px 8px', fontSize: '12px' }}
+                                onClick={() => onEditClick(emp)}
+                                title="Koreksi Data Absensi"
+                            >
+                                <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
+                                Koreksi
+                            </button>
+                        );
+                        
+                    } else {
+                        // Ada violation, dan KOSONG di BAC
+                        statusElement = (
+                            <span style={{ fontSize: '12px', color: 'red', fontWeight: 'bold' }}>
+                                <i className="bi bi-x-circle-fill" style={{ marginRight: '4px' }}></i>
+                                BAC not found
+                            </span>
+                        );
+                        actionElement = (
+                            <button 
+                                className="btn-app btn-warning-app" 
+                                style={{ padding: '4px 8px', fontSize: '12px' }}
+                                onClick={() => onEditClick(emp)}
+                                title="Koreksi Data Absensi"
+                            >
+                                <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
+                                Koreksi
+                            </button>
+                        );
+                    }
 
                     return (
                         <tr key={`row-${emp.absensi_id || index}`} >
@@ -78,45 +143,19 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             <td>{emp.card || '-'}</td>
                             <td>{emp.cc || '-'}</td>
                             <td>{emp.type || '-'}</td>
+                            <td>{emp.date_clocking}</td>
 
-                            <td>{emp.date_clocking}</td>                            
-                            <td style={{ color: !emp.clocking_in ? 'red' : 'inherit' }}>
-                                {emp.clocking_in || 'No Clock In'}
+                            <td style={{ color: !displayClockIn ? 'red' : 'inherit' }}>
+                                {displayClockIn || 'No Clock In'}
+                            </td>                            
+                            <td style={{ color: !displayClockOut ? 'red' : 'inherit' }}>
+                                {displayClockOut || 'No Clock Out'}
                             </td>
-                            <td style={{ color: !emp.clocking_out ? 'red' : 'inherit' }}>
-                                {emp.clocking_out || 'No Clock Out'}
-                            </td>
-
-                            <td style={{textAlign: 'center'}}>
-                                {isViolation ? (
-                                    <span style={{ fontSize: '12px', color: 'red', fontWeight: 'bold' }}>
-                                        <i className="bi bi-exclamation-circle-fill" style={{ marginRight: '4px' }}></i>
-                                        BAC
-                                    </span>
-                                ) : (
-                                    <span style={{ fontSize: '12px', color: 'green', fontWeight: 'bold' }}>
-                                        <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
-                                    </span>
-                                )}
-                            </td>
-
                             <td style={{ textAlign: 'center' }}>
-                                {isViolation ? (
-                                    <button 
-                                        className="btn-app btn-warning-app" 
-                                        style={{ padding: '4px 8px', fontSize: '12px' }}
-                                        onClick={() => onEditClick(emp)}
-                                        title="Koreksi Data Absensi"
-                                    >
-                                        <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
-                                        Koreksi
-                                    </button>
-                                ) : (
-                                    <span style={{ fontSize: '12px', color: 'green', fontWeight: 'bold' }}>
-                                        <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
-                                        Lengkap
-                                    </span>
-                                )}
+                                {statusElement}
+                            </td>                            
+                            <td style={{ textAlign: 'center' }}>
+                                {actionElement}
                             </td>
                         </tr>
                     );
