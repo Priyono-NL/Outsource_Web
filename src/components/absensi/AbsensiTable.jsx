@@ -78,6 +78,8 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
 
                     let displayClockIn = formatTime(emp.clocking_in);
                     let displayClockOut = formatTime(emp.clocking_out);
+                    let isClockInFromBAC = false;
+                    let isClockOutFromBAC = false;
                     let statusElement = null;
                     let actionElement = null;
 
@@ -92,8 +94,19 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                         
                     } else if (isViolation && hasBAC) {
                         // Ada violation, TAPI ada BAC
-                        displayClockIn = formatTime(emp.bac_clock_in) || formatTime(emp.clocking_in);
-                        displayClockOut = formatTime(emp.bac_clock_out) || formatTime(emp.clocking_out);
+                        if (emp.bac_clock_in) {
+                            displayClockIn = formatTime(emp.bac_clock_in);
+                            isClockInFromBAC = true;
+                        } else {
+                            displayClockIn = formatTime(emp.clocking_in);
+                        }
+
+                        if (emp.bac_clock_out) {
+                            displayClockOut = formatTime(emp.bac_clock_out);
+                            isClockOutFromBAC = true;
+                        } else {
+                            displayClockOut = formatTime(emp.clocking_out);
+                        }
 
                         statusElement = (
                             <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
@@ -145,10 +158,16 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             <td>{emp.type || '-'}</td>
                             <td>{emp.date_clocking}</td>
 
-                            <td style={{ color: !displayClockIn ? 'red' : 'inherit' }}>
+                            <td style={{ 
+                                color: !displayClockIn ? 'red' : (isClockInFromBAC ? '#0d6efd' : 'inherit'),
+                                fontWeight: isClockInFromBAC ? 'bold' : 'normal'
+                            }}>
                                 {displayClockIn || 'No Clock In'}
                             </td>                            
-                            <td style={{ color: !displayClockOut ? 'red' : 'inherit' }}>
+                            <td style={{ 
+                                color: !displayClockOut ? 'red' : (isClockOutFromBAC ? '#0d6efd' : 'inherit'),
+                                fontWeight: isClockOutFromBAC ? 'bold' : 'normal'
+                            }}>
                                 {displayClockOut || 'No Clock Out'}
                             </td>
                             <td style={{ textAlign: 'center' }}>
