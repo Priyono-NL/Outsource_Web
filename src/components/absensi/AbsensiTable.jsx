@@ -53,7 +53,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 <tr>
                     <th>Employee ID</th>
                     <th>Employee Name</th>
-                    <th>Gender</th>
+                    <th></th>
                     <th>Sub Company</th>
                     <th>Absense Card</th>
                     <th>Cost Center</th>
@@ -62,6 +62,8 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
                     <th>Status</th>
+                    <th>Updated By</th>
+                    <th>Updated Date</th>
                     <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
             </thead>
@@ -156,7 +158,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             <td>{emp.card || '-'}</td>
                             <td>{emp.cc || '-'}</td>
                             <td>{emp.type || '-'}</td>
-                            <td>{emp.date_clocking}</td>
+                            <td>{emp.v_date_clocking}</td>
 
                             <td style={{ 
                                 color: !displayClockIn ? 'red' : (isClockInFromBAC ? '#0d6efd' : 'inherit'),
@@ -172,7 +174,11 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             </td>
                             <td style={{ textAlign: 'center' }}>
                                 {statusElement}
-                            </td>                            
+                            </td>
+
+                            <td>{emp.bac_updated_by}</td>
+                            <td>{emp.bac_updated_date}</td>
+
                             <td style={{ textAlign: 'center' }}>
                                 {actionElement}
                             </td>

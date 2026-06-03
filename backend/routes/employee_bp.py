@@ -260,11 +260,6 @@ def add():
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
 
-from datetime import datetime
-from flask import request, jsonify
-import os
-import uuid
-
 @employee_bp.route('/employee/<int:id>', methods=['PUT'])
 def edit(id):
     try:
@@ -279,22 +274,27 @@ def edit(id):
         employee_code_input = data.get('employee_id')
         card_number_input = data.get('card_number')
         valid_from_input = data.get('valid_from')
+        
+        # Tanggal Efektif Perubahan
         new_start_date = datetime.strptime(valid_from_input, '%Y-%m-%d').date() if valid_from_input else None
+        day_before = new_start_date - timedelta(days=1) if new_start_date else None
 
         target_emp = OsEmployment.query.get(id)
         if not target_emp:
             return jsonify({"status": "error", "message": "Data Employment tidak ditemukan!"}), 404
 
-        # if card_number_input:
-        #     duplicate_card = OsCard.query.filter(
-        #         OsCard.card_number == card_number_input,
-        #         OsCard.employee_id != id,
-        #         ((OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None))
-        #     ).first()
+        # --- VALIDASI KARTU DUPLIKAT ---
+        if card_number_input and new_start_date:
+            duplicate_card = OsCard.query.filter(
+                OsCard.card_number == card_number_input,
+                OsCard.employee_id != id,
+                ((OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None))
+            ).first()
 
-        #     if duplicate_card:
-        #         raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
+            if duplicate_card:
+                raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
 
+        # --- UPDATE MASTER PERSON ---
         target_person = OsPerson.query.get(target_emp.person_id)
         if target_person:
             target_person.name = data.get('nama', target_person.name)
@@ -316,27 +316,37 @@ def edit(id):
             
             db.session.add(target_person)
 
+        # --- UPDATE MASTER EMPLOYMENT ---
         target_emp.employee_code = employee_code_input
         target_emp.sub_company_id = data.get('sub_company_id')
         target_emp.valid_from = data.get('valid_from') or None
         target_emp.valid_to = data.get('valid_to') or None
         db.session.add(target_emp)
 
+        # --- UPDATE KARTU (OsCard) ---
+        c_valid_from = data.get('c_valid_from') or None
+        c_valid_to = data.get('c_valid_to') or None
+        valid_to_ref = data.get('valid_to') or None
+
+        if c_valid_to and valid_to_ref and c_valid_to > valid_to_ref:
+            c_valid_to = valid_to_ref
+        
         target_card = OsCard.query.filter_by(employee_id=id).first()
         if target_card:
             target_card.card_number = card_number_input
-            target_card.valid_from = data.get('c_valid_from') or None
-            target_card.valid_to = data.get('c_valid_to') or None
+            target_card.valid_from = c_valid_from
+            target_card.valid_to = c_valid_to
             db.session.add(target_card)
         elif card_number_input:
             newCard = OsCard(
                 employee_id=id, 
                 card_number=card_number_input, 
-                valid_from=data.get('c_valid_from') or None, 
-                valid_to=data.get('c_valid_to') or None
+                valid_from=c_valid_from, 
+                valid_to=c_valid_to
             )
             db.session.add(newCard)
 
+        # --- UPDATE GRADE (OsGrade) ---
         target_grade = OsGrade.query.filter_by(employee_id=id).first()
         if target_grade:
             target_grade.grade = data.get('grade')
@@ -344,61 +354,130 @@ def edit(id):
             target_grade.valid_to = data.get('valid_to') or None
             db.session.add(target_grade)
 
-        target_type = osType.query.filter_by(employee_id=id).first()
-        if data.get('type_worker') or data.get('posisi'):
-            if target_type:
-                target_type.type_worker = data.get('type_worker')
-                target_type.posisi = data.get('posisi')
-                target_type.valid_from = data.get('valid_from') or None
-                target_type.valid_to = data.get('valid_to') or None
-            else :
-                target_type = osType(
-                    employee_id=id,
-                    type_worker=data.get('type_worker'),
-                    posisi=data.get('posisi'),
-                    valid_from=data.get('valid_from') or None,
-                    valid_to=data.get('valid_to') or None
-                )
-            db.session.add(target_type)
+        # --- LOGIKA HISTORI: TYPE WORKER & POSISI (osType) ---
+        new_type_worker = data.get('type_worker')
+        new_posisi = data.get('posisi')
+        if (new_type_worker or new_posisi) and new_start_date:
+            # Ambil data yang aktif saat ini berdasarkan tanggal efektif baru
+            current_type = osType.query.filter(
+                osType.employee_id == id,
+                osType.valid_from <= new_start_date,
+                ((osType.valid_to >= new_start_date) | (osType.valid_to == None))
+            ).order_by(osType.id.desc()).first()
 
-        target_cc = OsCostCenter.query.filter_by(employee_id=id).first()
-        if target_cc:
-            target_cc.cc_id = data.get('cc_id')
-            target_cc.valid_from = data.get('valid_from') or None
-            target_cc.valid_to = data.get('valid_to') or None
-            db.session.add(target_cc)
-        
-        if data.get('cc_id'):
-            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(data.get('cc_id'))).first()
+            if current_type:
+                # Jika ada perubahan nilai dari data sebelumnya, lakukan DELIMIT & INSERT
+                if current_type.type_worker != new_type_worker or current_type.posisi != new_posisi:
+                    if current_type.valid_from == new_start_date:
+                        # Jika tanggal efektif sama, lakukan koreksi langsung (overwrite)
+                        current_type.type_worker = new_type_worker
+                        current_type.posisi = new_posisi
+                    else:
+                        # 1. Delimit data lama (Berakhir di H-1)
+                        original_type_to = current_type.valid_to
+                        current_type.valid_to = day_before
+                        db.session.add(current_type)
+                        
+                        # 2. Insert data baru
+                        new_type_rec = osType(
+                            employee_id=id, type_worker=new_type_worker, posisi=new_posisi,
+                            valid_from=new_start_date, valid_to=original_type_to
+                        )
+                        db.session.add(new_type_rec)
+                else:
+                    # Jika nilai sama, cukup update valid_to jika ada perubahan jangka waktu
+                    current_type.valid_to = data.get('valid_to') or current_type.valid_to
+                    db.session.add(current_type)
+            else:
+                # Jika belum ada record sama sekali, langsung insert baru
+                new_type_rec = osType(
+                    employee_id=id, type_worker=new_type_worker, posisi=new_posisi,
+                    valid_from=new_start_date, valid_to=data.get('valid_to') or None
+                )
+                db.session.add(new_type_rec)
+
+        # --- LOGIKA HISTORI: DEPARTEMEN (OsCostCenter) & ALOKASI ---
+        new_cc_id = data.get('cc_id')
+        if new_cc_id and new_start_date:
+            current_cc = OsCostCenter.query.filter(
+                OsCostCenter.employee_id == id,
+                OsCostCenter.valid_from <= new_start_date,
+                ((OsCostCenter.valid_to >= new_start_date) | (OsCostCenter.valid_to == None))
+            ).order_by(OsCostCenter.id.desc()).first()
+
+            # Variabel penanda apakah kantin alokasi perlu ikut di-delimit
+            cc_changed = False 
+            original_cc_to = data.get('valid_to') or None
+
+            if current_cc:
+                if current_cc.cc_id != new_cc_id:
+                    cc_changed = True
+                    if current_cc.valid_from == new_start_date:
+                        current_cc.cc_id = new_cc_id
+                        db.session.add(current_cc)
+                    else:
+                        # 1. Delimit Cost Center lama
+                        original_cc_to = current_cc.valid_to
+                        current_cc.valid_to = day_before
+                        db.session.add(current_cc)
+
+                        # 2. Insert Cost Center baru
+                        new_cc = OsCostCenter(
+                            employee_id=id, cc_id=new_cc_id,
+                            valid_from=new_start_date, valid_to=original_cc_to
+                        )
+                        db.session.add(new_cc)
+                else:
+                    current_cc.valid_to = data.get('valid_to') or current_cc.valid_to
+                    db.session.add(current_cc)
+            else:
+                new_cc = OsCostCenter(
+                    employee_id=id, cc_id=new_cc_id,
+                    valid_from=new_start_date, valid_to=data.get('valid_to') or None
+                )
+                db.session.add(new_cc)
+
+            # --- LOGIKA HISTORI: ALOKASI KANTIN (Mengikuti Perubahan CC) ---
+            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(new_cc_id)).first()
             if cc_def:
-                target_alokasi = Alokasi.query.filter_by(employee_id=id).first()
-                if target_alokasi:
-                    target_alokasi.canteen_id = cc_def.canteen_id
-                    target_alokasi.valid_from = data.get('valid_from') or None
-                    target_alokasi.valid_to = data.get('valid_to') or None
-                    db.session.add(target_alokasi)
+                current_alokasi = Alokasi.query.filter(
+                    Alokasi.employee_id == id,
+                    Alokasi.valid_from <= new_start_date,
+                    ((Alokasi.valid_to >= new_start_date) | (Alokasi.valid_to == None))
+                ).order_by(Alokasi.id.desc()).first()
+
+                if current_alokasi:
+                    if cc_changed or current_alokasi.canteen_id != cc_def.canteen_id:
+                        if current_alokasi.valid_from == new_start_date:
+                            current_alokasi.canteen_id = cc_def.canteen_id
+                            db.session.add(current_alokasi)
+                        else:
+                            # 1. Delimit Alokasi lama
+                            current_alokasi.valid_to = day_before
+                            db.session.add(current_alokasi)
+
+                            # 2. Insert Alokasi baru
+                            newAlokasi = Alokasi(
+                                employee_id=id, canteen_id=cc_def.canteen_id,
+                                valid_from=new_start_date, valid_to=original_cc_to
+                            )
+                            db.session.add(newAlokasi)
+                    else:
+                        current_alokasi.valid_to = data.get('valid_to') or current_alokasi.valid_to
+                        db.session.add(current_alokasi)
                 else:
                     newAlokasi = Alokasi(
-                        employee_id=id, 
-                        canteen_id=cc_def.canteen_id, 
-                        valid_from=data.get('valid_from') or None, 
-                        valid_to=data.get('valid_to') or None
+                        employee_id=id, canteen_id=cc_def.canteen_id, 
+                        valid_from=new_start_date, valid_to=original_cc_to
                     )
                     db.session.add(newAlokasi)
 
         db.session.commit()
-
-        return jsonify({
-            "status": "success",
-            "message": "Data berhasil diperbarui!"
-        }), 200
+        return jsonify({"status": "success", "message": "Data berhasil diperbarui!"}), 200
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            "status": "error",
-            "message": "Terjadi kesalahan pada server: " + str(e)
-        }), 500
+        return jsonify({"status": "error", "message": "Terjadi kesalahan pada server: " + str(e)}), 500
 
 @employee_bp.route('/employee/template', methods=['GET'])
 def template():
@@ -583,6 +662,18 @@ def upload():
                         db.session.add(OsGrade(
                             employee_id=newEmployment.id,
                             grade=str(grade_val).strip(),
+                            valid_from=new_start_date,
+                            valid_to=new_valid_to
+                        ))
+                    
+                    #type worker
+                    type_val = clean(row.get('Type Worker'))
+                    posisi_val = clean(row.get('Posisi'))
+                    if type_val or posisi_val:
+                        db.session.add(osType(
+                            employee_id=newEmployment.id,
+                            type_worker=str(type_val).strip() if type_val else None,
+                            posisi=str(posisi_val).strip() if posisi_val else None,
                             valid_from=new_start_date,
                             valid_to=new_valid_to
                         ))

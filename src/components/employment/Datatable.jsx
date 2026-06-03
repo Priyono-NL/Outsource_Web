@@ -85,7 +85,7 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
                 <td>{emp.gender}</td>
                 <td>{emp.sub_con_name}</td>
                 <td>{emp.cc_name ? emp.cc_name : '-'}</td>
-                <td>{emp.card_number}</td>
+                <td>{emp.card_number ? emp.card_number : '-'}</td>
                 <td>{emp.type_worker ? emp.type_worker : '-'}</td>
                 <td>{emp.posisi ? emp.posisi : '-'}</td>
                 <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>

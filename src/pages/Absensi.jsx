@@ -73,6 +73,43 @@ const Absensi = () => {
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const { data } = await api.get('/absensi/template', { responseType: 'blob' });
+      saveAs(data, 'Template_Mass_Update.xlsx');
+    } catch {
+      Toast.fire({ icon: 'error', title: 'Gagal download template' });
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post('/absensi/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { status, message, errors } = res.data;
+      if (status === 'partial_success') {
+        Confirm.fire({ icon: 'warning', title: 'Import Selesai dengan Catatan', html: `<p>${message}</p><div style="text-align:left;max-height:200px;overflow-y:auto;background:#f8f9fa;padding:10px;font-size:.85em">${errors.join('<br>')}</div>`, confirmButtonText: 'Tutup', showCancelButton: false });
+      } else {
+        Toast.fire({ icon: 'success', title: message });
+      }
+      crud.handleRefresh();
+    } catch (error) {
+      const errList = error.response?.data?.errors;
+      if (errList?.length) {
+        Confirm.fire({ icon: 'error', title: 'Gagal Import', html: `<div style="text-align:left;max-height:200px;overflow-y:auto;font-size:.85em">${errList.join('<br>')}</div>`, confirmButtonText: 'Perbaiki Excel' });
+      } else {
+        Toast.fire({ icon: 'error', title: error.response?.data?.message || 'Terjadi kesalahan saat upload' });
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const subCompanyOptions = [
     { value: '', label: 'Semua Sub Company' },
     ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),

@@ -32,6 +32,7 @@ class Absensi(db.Model, AuditMixin):
             "card": emp_card,
             "cc": emp_cc,
             "type": emp_type,
+            "v_date_clocking": self.date_clocking.strftime('%d %b %Y') if self.date_clocking else None,
             "date_clocking": self.date_clocking.strftime('%Y-%m-%d') if self.date_clocking else None,
             "clocking_in": self.clocking_in.strftime('%H:%M') if self.clocking_in else None,
             "clocking_out": self.clocking_out.strftime('%H:%M') if self.clocking_out else None,
@@ -41,6 +42,8 @@ class Absensi(db.Model, AuditMixin):
             "bac_ket": bac.bac_ket if bac else None,
             "bac_clock_in": bac.clock_in.strftime('%Y-%m-%dT%H:%M') if (bac and bac.clock_in) else None,
             "bac_clock_out": bac.clock_out.strftime('%Y-%m-%dT%H:%M') if (bac and bac.clock_out) else None,
+            "bac_updated_by": bac.modified_by if bac else None,
+            "bac_updated_date": bac.modified_date.strftime('%d %b %Y') if (bac and bac.modified_date) else None,
         }
 
 class BAC_os(db.Model, AuditMixin):

@@ -197,7 +197,3 @@ def upload():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500    
     
-# @osCC_bp.before_request
-# @login_required
-# def before_request():
-#     pass

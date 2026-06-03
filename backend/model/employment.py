@@ -1,3 +1,4 @@
+from datetime import date
 from extensions import db
 from model.base import AuditMixin
 
@@ -14,9 +15,37 @@ class OsEmployment(db.Model, AuditMixin):
     sub_con = db.relationship('SubCompany', backref='subcon', lazy=True)
 
     def to_dict(self):
-        card = self.OsCard[0] if self.OsCard and len(self.OsCard) > 0 else None
+        today = date.today()
+
+        card = None
+        if self.OsCard:
+            for c in self.OsCard:
+                is_from_valid = c.valid_from <= today if c.valid_from else True
+                is_to_valid = c.valid_to >= today if c.valid_to else True
+                
+                if is_from_valid and is_to_valid:
+                    card = c
+                    break
+
+        type_work_data = None
+        if self.OsType:
+            for t in self.OsType:
+                is_from_valid = t.valid_from <= today if t.valid_from else True
+                is_to_valid = t.valid_to >= today if t.valid_to else True
+                if is_from_valid and is_to_valid:
+                    type_work_data = t
+                    break
+
+        cc_data = None
+        if self.OsCC:
+            for cc in self.OsCC:
+                is_from_valid = cc.valid_from <= today if cc.valid_from else True
+                is_to_valid = cc.valid_to >= today if cc.valid_to else True
+                if is_from_valid and is_to_valid:
+                    cc_data = cc
+                    break
+        
         blacklist_data = self.person.OsBlist[0] if (self.person and self.person.OsBlist) else None
-        type_work_data = self.OsType[0] if self.OsType and len(self.OsType) > 0 else None
         card_from = card.valid_from if card else None
         card_to = card.valid_to if card else None
         return {
@@ -43,16 +72,15 @@ class OsEmployment(db.Model, AuditMixin):
             'grade': self.OsGrade[0].grade if self.OsGrade else None,
             'sub_con_name': self.sub_con.sub_company_name,
             'type_company': self.sub_con.type_company,
-            'cc_id': self.OsCC[0].cc_id if self.OsCC and len(self.OsCC) > 0 else None,
-            'cc_name': self.OsCC[0].cc_master.org_name if self.OsCC else None,
+            'cc_id': cc_data.cc_id if cc_data else None,
+            'cc_name': cc_data.cc_master.org_name if (cc_data and cc_data.cc_master) else None,
 
-            'card_number': self.OsCard[0].card_number if self.OsCard else None,
+            'card_number': card.card_number if card else None,
             'c_valid_from': card_from.strftime('%Y-%m-%d') if card_from else None,
             'c_valid_to': card_to.strftime('%Y-%m-%d') if card_to else None,
             'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
             'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
             
-
             'type_worker': type_work_data.type_worker if type_work_data else None,
             'posisi': type_work_data.posisi if type_work_data else None,
 

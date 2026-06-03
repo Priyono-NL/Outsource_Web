@@ -199,18 +199,22 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                   </div>
                 </div>
 
+                  {/* rubah jadi select */}
                   <div className="col-md-12">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Keterangan BAC</label>
-                    <input 
-                      type="text" 
-                      name="bac_ket" 
-                      className="form-control form-control-sm" 
-                      placeholder="Contoh: Kartu Error"
-                      disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                    <select 
+                      name="bac_ket" className="form-select form-select-sm"
+                      disabled={(!isEmployeeFound && !isEditMode) || isSearching}
                       required
                       value={bacOS.bac_ket || ''}
-                      onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })} 
-                    />
+                      onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })}
+                    >
+                      <option value=""></option>                      
+                      <option value="kartu ketinggalan">Kartu Ketinggalan</option>
+                      <option value="kartu belum terima">Kartu Belum Diterima</option>
+                      <option value="kartu error">Kartu Error</option>
+                      <option value="karyawan lupa clocking">Karyawan Lupa Clocking</option>
+                    </select>
                   </div>
 
                   <div className='row'>

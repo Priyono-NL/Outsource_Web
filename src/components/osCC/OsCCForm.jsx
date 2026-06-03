@@ -26,7 +26,9 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
       formRef.current.valid_to.value = initialData.valid_to;
       const isNoLimitActive = !initialData.valid_to;
       setIsNoLimit(isNoLimitActive);
-      handleSearchEmployee(initialData.employee_code || initialData.employee_id);
+      
+      setFullName(initialData.employee_name || '');
+      setIsEmployeeFound(true);
     }
   }, [initialData]);
 

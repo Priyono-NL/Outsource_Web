@@ -25,6 +25,7 @@ const Employment = () => {
   const [subCompanies, setSubCompanies] = useState([]);
   const [departments, setDepartments]   = useState([]);
   const [isUploading, setIsUploading]   = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -65,20 +66,23 @@ const Employment = () => {
     crud.handleClose();
   };
 
-  const handleExport = async () => {
-    try {
-      const params = new URLSearchParams({
-        search: crud.appliedSearch || '',
-        status: appliedStatus || 'all',
-        sub_company: appliedSubCompany || '',
-        department: appliedDepartment || '',
-      }).toString();
-      const res = await api.get(`/employee/export?${params}`, { responseType: 'blob' });
-      saveAs(res.data, 'Data_OS_Filtered.xlsx');
-    } catch {
-      Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
-    }
-  };
+    const handleExport = async () => {
+      setIsExporting(true);
+      try {
+        const params = new URLSearchParams({
+          search: crud.appliedSearch || '',
+          status: appliedStatus || 'all',
+          sub_company: appliedSubCompany || '',
+          department: appliedDepartment || '',
+        }).toString();
+        const res = await api.get(`/employee/export?${params}`, { responseType: 'blob' });
+        saveAs(res.data, 'Data_OS_Filtered.xlsx');
+      } catch {
+        Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
+      } finally {
+        setIsExporting(false);
+      }
+    };
 
   const handleDownloadTemplate = async () => {
     try {
@@ -144,8 +148,19 @@ const Employment = () => {
             : <><i className="bi bi-upload" /> Import</>}
           <input type="file" hidden ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls" disabled={isUploading} />
         </label>
-        <button className="btn-app btn-success-app" onClick={handleExport}>
-          <i className="bi bi-file-earmark-excel" /> Export
+        <button className="btn-app btn-success-app" onClick={handleExport} disabled={isExporting}>
+          {isExporting ? (
+            <>
+              {/* Spinner kecil ala Bootstrap */}
+              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              Exporting Data...
+            </>
+          ) : (
+            <>
+              <i className="bi bi-file-earmark-excel me-2"></i> {/* Jika pakai Bootstrap Icons */}
+              Eksport Excel
+            </>
+          )}
         </button>
         <button
           className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}

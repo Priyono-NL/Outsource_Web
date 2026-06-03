@@ -94,7 +94,7 @@ function PersonelTab({ onPersonSelect, initialData }) {
         <div className="animate__animated animate__fadeIn">
             <div className="row g-2">
                 <div className="col-md-12 position-relative">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cari Personel (Nama/NIK)</label>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Lengkap (Cari Nama/NIK)</label>
                     <div className="input-group input-group-sm">
                         <span className="input-group-text bg-white border-end-0">
                             <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`} style={{ fontSize: '0.8rem' }}></i>
