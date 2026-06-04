@@ -2,6 +2,7 @@ import pandas as pd
 from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
+from datetime import datetime
 from extensions import db
 from model.training import training_m
 from model.osTraining import osTraining
@@ -167,54 +168,106 @@ def upload():
     file = request.files.get('file')
     if not file:
         return jsonify({'message': 'Tidak ada file'}), 400
+        
     try:
         df = pd.read_excel(file)
-        all_medical = training_m.query.all()
-        training_map = {m.training_name.lower(): m.training_id for m in all_medical}
-        all_employees = OsEmployment.query.with_entities(OsEmployment.employee_id).all()
-        valid_employee_ids = {str(e.employee_id) for e in all_employees}
+
+        def clean(val):
+            if pd.isna(val) or val == 'nan' or val == 'NaN':
+                return None
+            return val
+        
         errors = []
-        to_save = []
+        notes = []
+        success_count = 0
+
+        today = datetime.now().date()
         for index, row in df.iterrows():
-            e_id = str(row['ID Employee']).strip()
-            m_name = str(row['Training Name']).lower().strip()
-            m_id = training_map.get(m_name)
-            if e_id not in valid_employee_ids:
-                errors.append(f"Baris {index+2}: ID Employee '{e_id}' tidak terdaftar di sistem.")
-                continue
-            if not m_id:
-                errors.append(f"Baris {index+2}: Jenis Training '{row['Training Name']}' tidak ditemukan.")
-                continue
-            raw_result = str(row['Result']).strip().lower()
-            if raw_result == 'lulus':
-                training_val = 1
-            elif raw_result == 'tidak lulus':
-                training_val = 0
-            else:
-                errors.append(f"Baris {index+2}: Kolom Result harus berisi 'Lulus' atau 'Tidak Lulus'.")
-                continue
-            new_training = osTraining(
-                employee_id=int(e_id),
-                training_id=m_id,
-                training_date_from=pd.to_datetime(row['Date From']),
-                training_date_to=pd.to_datetime(row['Date To']),
-                training_result=training_val,
-                training_score=row['Score']
-            )
-            to_save.append(new_training)
-        if errors:
+            line_number = index + 2
+            try:
+                with db.session.begin_nested():
+                    # --- Ambil & Validasi Employee Code (NRP) ---
+                    e_code_raw = clean(row.get('ID Employee'))
+                    if not e_code_raw:
+                        raise ValueError("ID Employee tidak boleh kosong.")
+                    e_code = str(e_code_raw).split('.')[0].strip()
+                    
+                    exist_emp = OsEmployment.query.filter(
+                        OsEmployment.employee_code == e_code,
+                        OsEmployment.valid_from <= today,
+                        ((OsEmployment.valid_to >= today) | (OsEmployment.valid_to == None))
+                    ).first()
+
+                    if not exist_emp:
+                        raise ValueError(f"Employee Code '{e_code}' tidak terdaftar atau status kerjanya sudah tidak aktif saat ini.")
+
+                    # --- Ambil & Validasi Master Training ---
+                    t_name_raw = clean(row.get('Training Name'))
+                    if not t_name_raw:
+                        raise ValueError("Training Name tidak boleh kosong.")
+                    t_name = str(t_name_raw).strip()
+                    
+                    exist_training = training_m.query.filter(training_m.training_name.ilike(t_name)).first()
+                    if not exist_training:
+                        raise ValueError(f"Jenis Training '{t_name}' tidak ditemukan di master data.")
+
+                    # --- Parsing Status Kelulusan (Result) ---
+                    raw_result = clean(row.get('Result'))
+                    if not raw_result:
+                        raise ValueError("Kolom Result tidak boleh kosong.")
+                        
+                    raw_result = str(raw_result).strip().lower()
+                    if raw_result == 'lulus':
+                        training_val = 1
+                    elif raw_result == 'tidak lulus':
+                        training_val = 0
+                    else:
+                        raise ValueError("Kolom Result harus berisi 'Lulus' atau 'Tidak Lulus'.")
+
+                    # --- Parsing Tanggal & Skor ---
+                    raw_date_from = clean(row.get('Date From'))
+                    raw_date_to = clean(row.get('Date To'))
+                    raw_score = clean(row.get('Score'))
+                    
+                    if not raw_date_from or not raw_date_to:
+                        raise ValueError("Tanggal 'Date From' dan 'Date To' tidak boleh kosong.")
+
+                    # --- Insert Data Baru ---
+                    new_training = osTraining(
+                        employee_id=exist_emp.id,
+                        training_id=exist_training.training_id,
+                        training_date_from=pd.to_datetime(raw_date_from).date(),
+                        training_date_to=pd.to_datetime(raw_date_to).date(),
+                        training_result=training_val,
+                        training_score=raw_score
+                    )
+                    db.session.add(new_training)
+                success_count += 1
+                
+            except ValueError as ve:
+                errors.append(f"Baris {line_number}: {str(ve)}")
+            except Exception as e:
+                errors.append(f"Baris {line_number}: Gagal memproses data - {str(e)}")
+
+        db.session.commit()
+
+        if success_count > 0:
+            status = "success" if not errors else "partial_success"
+            msg = f"Berhasil mengimport {success_count} data."
+            return jsonify({
+                "status": status, 
+                "message": msg,
+                "errors": errors,
+                "notes": notes
+            }), 200
+        else:
             return jsonify({
                 "status": "error", 
-                "message": "Import gagal karena beberapa data tidak valid.",
-                "errors": errors
+                "message": "Tidak ada data yang berhasil diimport. Silakan periksa file Anda.",
+                "errors": errors,
+                "notes": notes
             }), 400
-        db.session.add_all(to_save)
-        db.session.commit()
-        return jsonify({"status": "success", "message": f"Berhasil mengimport {len(to_save)} data."})
+
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500  
-    
-# @osTraining_bp.before_request
-# @login_required
-# def before_request():
-#     pass
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal: {str(e)}"}), 500

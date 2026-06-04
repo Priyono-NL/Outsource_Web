@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { saveAs } from 'file-saver';
 import { Toast, Confirm } from '../utils/sweetalert';
+import { downloadLogFile } from '../utils/logDownloader';
 import api from '../api/api';
 import { useCrudPage } from '../utils/useCrudPage';
 import PageHeader from '../components/PageHeader';
@@ -36,21 +37,89 @@ const OsMedical = () => {
     if (!file) return;
     setIsUploading(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    
     const formData = new FormData();
     formData.append('file', file);
+    
     try {
-      const res = await api.post('/osmedical/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      const { status, message, errors } = res.data;
+      const res = await api.post('/osmedical/upload', formData, { 
+        headers: { 'Content-Type': 'multipart/form-data' } 
+      });
+      
+      const { status, message, errors = [], notes = [] } = res.data; 
+
+      const notesHtml = notes.length > 0 
+        ? `<div style="text-align:left; margin-top:10px; max-height:100px; overflow-y:auto; background:#e9ecef; padding:10px; border-radius:5px; font-size:.85em; color:#495057;">
+            <strong><i class="bi bi-info-circle"></i> Catatan Sistem (${notes.length}):</strong><br/>
+            ${notes.slice(0, 5).join('<br/>')} ${notes.length > 5 ? '<br/><i>... (download log untuk melihat sisanya)</i>' : ''}
+           </div>`
+        : '';
+
       if (status === 'partial_success') {
-        Confirm.fire({ icon: 'warning', title: 'Import Selesai dengan Catatan', html: `<p>${message}</p><div style="text-align:left;max-height:200px;overflow-y:auto;background:#f8f9fa;padding:10px;font-size:.85em">${errors.join('<br>')}</div>`, confirmButtonText: 'Tutup', showCancelButton: false });
+        const errorsHtml = `<div style="text-align:left; max-height:100px; overflow-y:auto; background:#fff3f3; padding:10px; border-radius:5px; font-size:.85em; color:#d32f2f;">
+                              <strong><i class="bi bi-exclamation-triangle"></i> Daftar Error (${errors.length}):</strong><br/>
+                              ${errors.slice(0, 5).join('<br>')} ${errors.length > 5 ? '<br/><i>... (download log untuk melihat sisanya)</i>' : ''}
+                            </div>`;
+        
+        Confirm.fire({ 
+          icon: 'warning', 
+          title: 'Import Selesai dengan Catatan', 
+          html: `<p>${message}</p>${errorsHtml}${notesHtml}`, 
+          confirmButtonText: 'Tutup', 
+          showDenyButton: true,
+          denyButtonText: '<i class="bi bi-file-earmark-text"></i> Download Log',
+          denyButtonColor: '#17a2b8'
+        }).then((result) => {
+          if (result.isDenied) downloadLogFile(errors, notes);
+        });
+
       } else {
-        Toast.fire({ icon: 'success', title: message });
+        if (notes.length > 0) {
+          Confirm.fire({ 
+            icon: 'success', 
+            title: 'Import Berhasil', 
+            html: `<p>${message}</p>${notesHtml}`, 
+            confirmButtonText: 'Tutup', 
+            showDenyButton: true,
+            denyButtonText: '<i class="bi bi-file-earmark-text"></i> Download Log',
+            denyButtonColor: '#17a2b8'
+          }).then((result) => {
+            if (result.isDenied) downloadLogFile([], notes);
+          });
+        } else {
+          Toast.fire({ icon: 'success', title: message });
+        }
       }
       crud.handleRefresh();
+      
     } catch (error) {
-      const errList = error.response?.data?.errors;
-      if (errList?.length) {
-        Confirm.fire({ icon: 'error', title: 'Gagal Import', html: `<div style="text-align:left;max-height:200px;overflow-y:auto;font-size:.85em">${errList.join('<br>')}</div>`, confirmButtonText: 'Perbaiki Excel' });
+      const errList = error.response?.data?.errors || [];
+      const noteList = error.response?.data?.notes || []; 
+
+      const notesHtml = noteList.length > 0 
+        ? `<div style="text-align:left; margin-top:10px; max-height:100px; overflow-y:auto; background:#e9ecef; padding:10px; border-radius:5px; font-size:.85em; color:#495057;">
+            <strong>Catatan Sistem (${noteList.length}):</strong><br/>
+            ${noteList.slice(0, 5).join('<br/>')} ${noteList.length > 5 ? '<br/><i>... (download log)</i>' : ''}
+           </div>`
+        : '';
+
+      if (errList.length > 0) {
+        const errorsHtml = `<div style="text-align:left; max-height:100px; overflow-y:auto; background:#fff3f3; padding:10px; border-radius:5px; font-size:.85em; color:#d32f2f;">
+                              <strong>Daftar Error (${errList.length}):</strong><br/>
+                              ${errList.slice(0, 5).join('<br>')} ${errList.length > 5 ? '<br/><i>... (download log)</i>' : ''}
+                            </div>`;
+                            
+        Confirm.fire({ 
+          icon: 'error', 
+          title: 'Gagal Import', 
+          html: `${errorsHtml}${notesHtml}`, 
+          confirmButtonText: 'Perbaiki Excel',
+          showDenyButton: true,
+          denyButtonText: '<i class="bi bi-file-earmark-text"></i> Download Log',
+          denyButtonColor: '#17a2b8'
+        }).then((result) => {
+          if (result.isDenied) downloadLogFile(errList, noteList);
+        });
       } else {
         Toast.fire({ icon: 'error', title: error.response?.data?.message || 'Terjadi kesalahan saat upload' });
       }

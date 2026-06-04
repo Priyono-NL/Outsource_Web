@@ -2,7 +2,7 @@ import pandas as pd
 from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
-
+from datetime import datetime
 from extensions import db
 from model.medical import medical
 from model.osMedical import osMedical
@@ -163,45 +163,90 @@ def upload():
     file = request.files.get('file')
     if not file:
         return jsonify({'message': 'Tidak ada file'}), 400
+        
     try:
         df = pd.read_excel(file)
-        all_medical = medical.query.all()
-        medical_map = {m.medical_name.lower(): m.medical_id for m in all_medical}
-        all_employees = OsEmployment.query.with_entities(OsEmployment.employee_id).all()
-        valid_employee_ids = {str(e.employee_id) for e in all_employees}
+
+        def clean(val):
+            if pd.isna(val) or val == 'nan' or val == 'NaN':
+                return None
+            return val
+                
         errors = []
-        to_save = []
+        notes = []
+        success_count = 0
+        
+        today = datetime.now().date()
         for index, row in df.iterrows():
-            e_id = str(row['ID Employee']).strip()
-            m_name = str(row['Medical Name']).lower().strip()
-            m_id = medical_map.get(m_name)
-            if e_id not in valid_employee_ids:
-                errors.append(f"Baris {index+2}: ID Employee '{e_id}' tidak terdaftar di sistem.")
-                continue
-            if not m_id:
-                errors.append(f"Baris {index+2}: Jenis Medical '{row['Medical Name']}' tidak ditemukan.")
-                continue
-            new_medical = osMedical(
-                employee_id=int(e_id),
-                medical_id=m_id,
-                medical_date=pd.to_datetime(row['Date']),
-                medical_result=row['Result'],
-                medical_notes=row['Notes']
-            )
-            to_save.append(new_medical)
-        if errors:
+            line_number = index + 2
+            try:
+                with db.session.begin_nested():
+                    # cek nrp exist
+                    e_code_raw = clean(row.get('ID Employee'))
+                    if not e_code_raw:
+                        raise ValueError("ID Employee (Employee Code) tidak boleh kosong.")
+                    e_code = str(e_code_raw).split('.')[0].strip()
+
+                    exist_emp = OsEmployment.query.filter(
+                        OsEmployment.employee_code == e_code,
+                        OsEmployment.valid_from <= today,
+                        ((OsEmployment.valid_to >= today) | (OsEmployment.valid_to == None))
+                    ).first()
+
+                    if not exist_emp:
+                        raise ValueError(
+                            f"Employee Code '{e_code}' tidak terdaftar atau "
+                            f"status kerjanya sudah tidak aktif saat ini."
+                        )
+                    #cek medical exist in db
+                    m_name_raw = clean(row.get('Medical Name'))
+                    if not m_name_raw:
+                        raise ValueError("Medical Name tidak boleh kosong.")
+                    m_name = str(m_name_raw).strip()
+                    exist_medical = medical.query.filter(medical.medical_name.ilike(m_name)).first()
+                    if not exist_medical:
+                        raise ValueError(f"Jenis Medical '{m_name}' tidak ditemukan di master data.")
+                    #cek tanggal
+                    raw_date = row.get('Date')
+                    if pd.isna(raw_date):
+                        raise ValueError("Tanggal (Date) tidak boleh kosong.")                    
+                    # Insert Data
+                    new_medical = osMedical(
+                        employee_id=exist_emp.id,
+                        medical_id=exist_medical.medical_id,
+                        medical_date=pd.to_datetime(raw_date).date(),
+                        medical_result=str(row.get('Result', '')).strip() if pd.notna(row.get('Result')) else None,
+                        medical_notes=str(row.get('Notes', '')).strip() if pd.notna(row.get('Notes')) else None
+                    )
+                    db.session.add(new_medical)
+                
+                success_count += 1
+                
+            except ValueError as ve:
+                errors.append(f"Baris {line_number}: {str(ve)}")
+            except Exception as e:
+                errors.append(f"Baris {line_number}: Gagal memproses data - {str(e)}")
+
+        db.session.commit()
+
+        if success_count > 0:
+            status = "success" if not errors else "partial_success"
+            msg = f"Berhasil mengimport {success_count} data."
+            return jsonify({
+                "status": status, 
+                "message": msg,
+                "errors": errors,
+                "notes": notes
+            }), 200
+        else:
             return jsonify({
                 "status": "error", 
-                "message": "Import gagal karena beberapa data tidak valid.",
-                "errors": errors
+                "message": "Tidak ada data yang berhasil diimport. Silakan periksa file Anda.",
+                "errors": errors,
+                "notes": notes
             }), 400
-        db.session.add_all(to_save)
-        db.session.commit()
-        return jsonify({"status": "success", "message": f"Berhasil mengimport {len(to_save)} data."})
+
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500    
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal: {str(e)}"}), 500  
     
-# @osMedical_bp.before_request
-# @login_required
-# def before_request():
-#     pass
