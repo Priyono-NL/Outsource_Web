@@ -16,38 +16,52 @@ class OsEmployment(db.Model, AuditMixin):
 
     def to_dict(self):
         today = date.today()
+        
+        is_emp_active = self.valid_to is None or self.valid_to >= today
 
+        # 2. --- LOGIKA KARTU (OsCard) ---
         card = None
         if self.OsCard:
-            for c in self.OsCard:
-                is_from_valid = c.valid_from <= today if c.valid_from else True
-                is_to_valid = c.valid_to >= today if c.valid_to else True
-                
-                if is_from_valid and is_to_valid:
-                    card = c
-                    break
+            if is_emp_active:
+                for c in self.OsCard:
+                    is_from_valid = c.valid_from <= today if c.valid_from else True
+                    is_to_valid = c.valid_to >= today if c.valid_to else True
+                    if is_from_valid and is_to_valid:
+                        card = c
+                        break
+            else:
+                card = self.OsCard[-1]
 
+        # 3. --- LOGIKA TYPE WORKER (OsType) ---
         type_work_data = None
         if self.OsType:
-            for t in self.OsType:
-                is_from_valid = t.valid_from <= today if t.valid_from else True
-                is_to_valid = t.valid_to >= today if t.valid_to else True
-                if is_from_valid and is_to_valid:
-                    type_work_data = t
-                    break
+            if is_emp_active:
+                for t in self.OsType:
+                    is_from_valid = t.valid_from <= today if t.valid_from else True
+                    is_to_valid = t.valid_to >= today if t.valid_to else True
+                    if is_from_valid and is_to_valid:
+                        type_work_data = t
+                        break
+            else:
+                type_work_data = self.OsType[-1]
 
+        # 4. --- LOGIKA COST CENTER (OsCC) ---
         cc_data = None
         if self.OsCC:
-            for cc in self.OsCC:
-                is_from_valid = cc.valid_from <= today if cc.valid_from else True
-                is_to_valid = cc.valid_to >= today if cc.valid_to else True
-                if is_from_valid and is_to_valid:
-                    cc_data = cc
-                    break
+            if is_emp_active:
+                for cc in self.OsCC:
+                    is_from_valid = cc.valid_from <= today if cc.valid_from else True
+                    is_to_valid = cc.valid_to >= today if cc.valid_to else True
+                    if is_from_valid and is_to_valid:
+                        cc_data = cc
+                        break
+            else:
+                cc_data = self.OsCC[-1]
         
         blacklist_data = self.person.OsBlist[0] if (self.person and self.person.OsBlist) else None
         card_from = card.valid_from if card else None
         card_to = card.valid_to if card else None
+
         return {
             'id': self.id,
             'employee_code': self.employee_code,
@@ -59,19 +73,19 @@ class OsEmployment(db.Model, AuditMixin):
             'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
             'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,            
 
-            'person_name': self.person.name,
-            'gender': self.person.gender,
-            'pob': self.person.pob,
-            'dob': self.person.dob.strftime('%Y-%m-%d') if hasattr(self.person.dob, 'strftime') else None,            
-            'religion': self.person.religion,
-            'resident_id': self.person.resident_id,
-            'address': self.person.address,
-            'photo': self.person.photo,
-            'v_dob': self.person.dob.strftime('%d %b %Y') if self.person.dob else None,
+            'person_name': self.person.name if self.person else None,
+            'gender': self.person.gender if self.person else None,
+            'pob': self.person.pob if self.person else None,
+            'dob': self.person.dob.strftime('%Y-%m-%d') if (self.person and hasattr(self.person.dob, 'strftime')) else None,            
+            'religion': self.person.religion if self.person else None,
+            'resident_id': self.person.resident_id if self.person else None,
+            'address': self.person.address if self.person else None,
+            'photo': self.person.photo if self.person else None,
+            'v_dob': self.person.dob.strftime('%d %b %Y') if (self.person and self.person.dob) else None,
 
             'grade': self.OsGrade[0].grade if self.OsGrade else None,
-            'sub_con_name': self.sub_con.sub_company_name,
-            'type_company': self.sub_con.type_company,
+            'sub_con_name': self.sub_con.sub_company_name if self.sub_con else None,
+            'type_company': self.sub_con.type_company if self.sub_con else None,
             'cc_id': cc_data.cc_id if cc_data else None,
             'cc_name': cc_data.cc_master.org_name if (cc_data and cc_data.cc_master) else None,
 
