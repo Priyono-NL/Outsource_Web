@@ -12,6 +12,22 @@ import AbsensiTable from '../components/absensi/AbsensiTable';
 import AbsensiForm from '../components/absensi/AbsensiForm';
 
 const Absensi = () => {
+  
+  const getFirstDayOfMonth = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    return `${yyyy}-${mm}-01`;
+  };
+
+  const getTodayString = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0'); // Bulan dimulai dari 0
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const crud = useCrudPage();
   const [editData, setEditData] = useState(null);
 
@@ -19,13 +35,16 @@ const Absensi = () => {
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
 
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(getFirstDayOfMonth());
+  const [endDate, setEndDate] = useState(getTodayString());
   const [appliedStartDate, setAppliedStartDate] = useState('');
   const [appliedEndDate, setAppliedEndDate] = useState('');
 
   const [statusFilter, setStatusFilter] = useState('all_data');
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
+
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
@@ -75,8 +94,14 @@ const Absensi = () => {
 
   const handleDownloadTemplate = async () => {
     try {
-      const { data } = await api.get('/absensi/template', { responseType: 'blob' });
-      saveAs(data, 'Template_Mass_Update.xlsx');
+      const { data } = await api.get('/absensi/template', { 
+        params: {
+          start_date: startDate,
+          end_date: endDate
+        },
+        responseType: 'blob' 
+      });
+      saveAs(data, `Template_Mass_Update_${startDate}_to_${endDate}.xlsx`);
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal download template' });
     }
@@ -132,6 +157,15 @@ const Absensi = () => {
         onSearchChange={crud.setSearchInput}
         onSearch={handleApplyFilters}
       >
+        <button className="btn-app btn-ghost-app" onClick={handleDownloadTemplate}>
+          <i className="bi bi-download" /> Template
+        </button>
+        <label className={`btn-app ${isUploading ? 'btn-ghost-app' : 'btn-ghost-app'}`} style={{ cursor: 'pointer' }}>
+          {isUploading
+            ? <><span className="spinner-border spinner-border-sm me-1" role="status" /> Proses...</>
+            : <><i className="bi bi-upload" /> Import</>}
+          <input type="file" hidden ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls" disabled={isUploading} />
+        </label>
         <button className="btn-app btn-success-app" onClick={handleExport}>
             <i className="bi bi-file-earmark-excel" /> Export
         </button>        

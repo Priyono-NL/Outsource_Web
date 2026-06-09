@@ -210,10 +210,10 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })}
                     >
                       <option value=""></option>                      
-                      <option value="kartu ketinggalan">Kartu Ketinggalan</option>
-                      <option value="kartu belum terima">Kartu Belum Diterima</option>
-                      <option value="kartu error">Kartu Error</option>
-                      <option value="karyawan lupa clocking">Karyawan Lupa Clocking</option>
+                      <option value="Kartu Ketinggalan">Kartu Ketinggalan</option>
+                      <option value="Kartu Belum Diterima">Kartu Belum Diterima</option>
+                      <option value="Kartu Error">Kartu Error</option>
+                      <option value="Karyawan Lupa Clocking">Karyawan Lupa Clocking</option>
                     </select>
                   </div>
 

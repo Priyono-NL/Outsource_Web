@@ -2,11 +2,13 @@ import pandas as pd
 from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, and_
+from datetime import datetime
 
 from extensions import db
 from model.absensi import Absensi, BAC_os
 from model.employment import OsEmployment
 from model.person import OsPerson
+from openpyxl.worksheet.datavalidation import DataValidation
 
 AbsenOs_bp = Blueprint('AbsenOs_bp', __name__)
 
@@ -127,3 +129,164 @@ def update(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@AbsenOs_bp.route('/absensi/template', methods=['GET'])
+def template():
+    try:
+        start_date_raw = request.args.get('start_date')
+        end_date_raw = request.args.get('end_date')
+
+        if not start_date_raw or not end_date_raw:
+            return jsonify({"status": "error", "message": "Parameter start_date dan end_date wajib diisi."}), 400
+        
+        already_revised_subquery = db.session.query(BAC_os.absensi_id) \
+            .filter(BAC_os.absensi_id == Absensi.id).subquery()
+
+        query_results = db.session.query(Absensi, OsEmployment, OsPerson) \
+            .join(OsEmployment, Absensi.employee_id == OsEmployment.id) \
+            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+            .filter(
+                Absensi.date_clocking >= start_date_raw,
+                Absensi.date_clocking <= end_date_raw,
+                ((Absensi.clocking_in == None) | (Absensi.clocking_out == None)),
+                ~Absensi.id.in_(already_revised_subquery)
+            ).order_by(Absensi.date_clocking.asc(), OsEmployment.employee_code.asc()).all()
+
+        if not query_results:
+            return jsonify({"status": "error", "message": "Tidak ditemukan data absensi bolong pada periode ini."}), 444
+
+        dynamic_data = []
+        for att, emp, person in query_results:
+            dynamic_data.append({
+                "Log ID": att.id,
+                "ID Employee": emp.employee_code,
+                "Nama Karyawan": person.name,
+                "No BAC": "",
+                "Clocking Date": att.date_clocking.strftime('%Y-%m-%d') if att.date_clocking else "",
+                "Clocking In": att.clocking_in.strftime('%Y-%m-%d %H:%M') if att.clocking_in else "KOSONG",
+                "Clocking Out": att.clocking_out.strftime('%Y-%m-%d %H:%M') if att.clocking_out else "KOSONG",
+                "Keterangan BAC": ""
+            })
+
+        df = pd.DataFrame(dynamic_data)
+        num_rows = len(df) + 1
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Template_Import_Revisi')
+            workbook = writer.book
+            worksheet = writer.sheets['Template_Import_Revisi']
+            list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking"'
+            
+            dv = DataValidation(type="list", formula1=list_pilihan, allow_blank=True)
+            dv.error = 'Mohon pilih keterangan yang tersedia pada list dropdown.'
+            dv.errorTitle = 'Pilihan Tidak Valid'
+            worksheet.add_data_validation(dv)
+            
+            range_kolom_h = f"H2:H{num_rows + 100}"
+            dv.add(range_kolom_h)
+        output.seek(0)
+        
+        return send_file(
+            output, 
+            as_attachment=True, 
+            download_name=f"Template_Mass_Update_Absen_{start_date_raw}_to_{end_date_raw}.xlsx"
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@AbsenOs_bp.route('/absensi/upload', methods=['POST'])
+def upload():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'message': 'Mohon pilih file Excel terlebih dahulu.'}), 400
+        
+    try:
+        df = pd.read_excel(file, dtype={'Log ID': str, 'Clocking In': str, 'Clocking Out': str, 'No BAC': str})
+
+        def clean(val):
+            if pd.isna(val) or str(val).strip() in ('nan', 'NaN', ''):
+                return None
+            return str(val).strip()
+
+        def parse_datetime(datetime_str):
+            if not datetime_str or datetime_str.lower() == 'kosong':
+                return None
+            dt_clean = datetime_str.split('.')[0].strip()
+            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d/%m/%Y %H:%M', '%Y-%m-%d %H.%M'):
+                try:
+                    return datetime.strptime(dt_clean, fmt)
+                except ValueError:
+                    continue
+            raise ValueError(f"Format waktu '{datetime_str}' keliru. Gunakan format YYYY-MM-DD HH:MM")
+
+        errors = []
+        notes = []
+        success_count = 0
+
+        for index, row in df.iterrows():
+            line_number = index + 2
+            try:
+                with db.session.begin_nested():
+                    log_id_raw = clean(row.get('Log ID'))
+                    if not log_id_raw:
+                        raise ValueError("Kolom 'Log ID' tidak boleh kosong.")
+
+                    # 1. Ambil data dari TABEL UTAMA berdasarkan ID Log
+                    main_attendance = Absensi.query.get(int(log_id_raw))
+                    if not main_attendance:
+                        raise ValueError(f"Log ID '{log_id_raw}' tidak ditemukan di tabel utama.")
+
+                    c_in_raw = clean(row.get('Clocking In'))
+                    c_out_raw = clean(row.get('Clocking Out'))
+                    no_bac = clean(row.get('No BAC'))
+                    ket_bac = clean(row.get('Keterangan BAC'))
+
+                    # Jika kolom jam tidak diubah (tetap KOSONG), lewati baris ini
+                    if (not c_in_raw or c_in_raw.lower() == 'kosong') and (not c_out_raw or c_out_raw.lower() == 'kosong'):
+                        continue
+
+                    if not ket_bac:
+                        raise ValueError("Kolom 'Keterangan BAC' wajib diisi sebagai bukti audit revisi.")
+
+                    # Ambil jam baru atau pertahankan jam lama jika tidak direvisi
+                    final_clock_in = parse_datetime(c_in_raw) if (c_in_raw and c_in_raw.lower() != 'kosong') else main_attendance.clocking_in
+                    final_clock_out = parse_datetime(c_out_raw) if (c_out_raw and c_out_raw.lower() != 'kosong') else main_attendance.clocking_out
+
+                    # --- INSERT DATA BARU KE TABEL REVISI ---
+                    new_revision = BAC_os(
+                        absensi_id=main_attendance.id,
+                        employee_id=main_attendance.employee_id,
+                        bac_no=no_bac,
+                        bac_ket=ket_bac,
+                        clock_date=main_attendance.date_clocking,
+                        clock_in=final_clock_in,
+                        clock_out=final_clock_out,
+                    )
+                    db.session.add(new_revision)
+                
+                success_count += 1
+
+            except ValueError as ve:
+                errors.append(f"Baris {line_number}: {str(ve)}")
+            except Exception as e:
+                errors.append(f"Baris {line_number}: Gagal memproses data - {str(e)}")
+
+        db.session.commit()
+
+        if success_count > 0:
+            status = "success" if not errors else "partial_success"
+            msg = f"Berhasil merevisi {success_count} data absensi dan menyimpan log BAC."
+            return jsonify({"status": status, "message": msg, "errors": errors, "notes": notes}), 200
+        else:
+            return jsonify({
+                "status": "error", 
+                "message": "Tidak ada data absensi yang diperbarui. Periksa kembali file Excel Anda.",
+                "errors": errors,
+                "notes": notes
+            }), 400
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal pada server: {str(e)}"}), 500
+    

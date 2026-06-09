@@ -38,9 +38,10 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, startDate, endDate, statusFilter]); 
+    }, [searchTerm, subCompany, startDate, endDate, statusFilter]);
     
     useEffect(() => {
+        if (!startDate || !endDate) return;
         fetchData();
     }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter]);
 
