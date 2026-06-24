@@ -63,6 +63,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
                     <th>Status</th>
+                    <th>Ket BAC</th>
                     <th>Updated By</th>
                     <th>Updated Date</th>
                     <th style={{ textAlign: 'center' }}>Action</th>
@@ -177,6 +178,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                 {statusElement}
                             </td>
 
+                            <td>{emp.bac_ket}</td>
                             <td>{emp.bac_updated_by}</td>
                             <td>{emp.bac_updated_date}</td>
 

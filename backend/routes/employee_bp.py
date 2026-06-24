@@ -4,6 +4,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
 from .auth_bp import login_required
@@ -503,9 +504,22 @@ def template():
             "Card Valid To": "2026-03-11"
         }]
         df = pd.DataFrame(example_data)
+        num_rows = len(df) + 1
+
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import')
+            # workbook = writer.book
+            # worksheet = writer.sheets['Template_Import']
+            # list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking"'
+            
+            # dv = DataValidation(type="list", formula1=list_pilihan, allow_blank=True)
+            # dv.error = 'Mohon pilih keterangan yang tersedia pada list dropdown.'
+            # dv.errorTitle = 'Pilihan Tidak Valid'
+            # worksheet.add_data_validation(dv)
+            
+            # range_kolom_h = f"H2:H{num_rows + 100}"
+            # dv.add(range_kolom_h)
         output.seek(0)
         return send_file(
             output, 
@@ -570,7 +584,9 @@ def upload():
                     
                     if target_person:
                         person_id = target_person.person_id
-                        notes.append(f"Baris {line_number}: Karyawan '{nama_input}' dihubungkan dengan data master yang sudah ada (NIK: {target_person.resident_id}).")
+                        notes.append(
+                            f"Baris {line_number}: Data Excel '{nama_input}' dihubungkan dengan Data Master '{target_person.name}' (NIK: {target_person.resident_id})."
+                        )
                         # A. Update NIK jika sebelumnya kosong
                         if not target_person.resident_id:
                             target_person.resident_id = nik_input
@@ -587,17 +603,19 @@ def upload():
                         ).first()
                         
                         if active_emp and active_emp.employee_code != emp_code_input:
+                            print("Data masuk sini")
                             raise ValueError(
                                 f"Karyawan {target_person.name} MASIH AKTIF dengan NRP lama ({active_emp.employee_code}). "
                                 f"Tidak dapat membuat NRP baru ({emp_code_input}) sebelum masa kerja sebelumnya diakhiri."
                             )
+                    
                     else:
                         # Jika benar-benar orang baru
                         newPerson = OsPerson(
-                            name=nama_input, gender=clean(row.get('gender')),
-                            pob=clean(row.get('pob')), dob=clean(row.get('dob')),
-                            religion=clean(row.get('religion')), resident_id=nik_input,
-                            address=clean(row.get('address'))
+                            name=nama_input, gender=clean(row.get('Gender')),
+                            pob=clean(row.get('Tempat Lahir')), dob=clean(row.get('Tanggal Lahir')),
+                            religion=clean(row.get('Agama')), resident_id=nik_input,
+                            address=clean(row.get('Alamat'))
                         )
                         db.session.add(newPerson)
                         db.session.flush()
@@ -628,7 +646,7 @@ def upload():
 
                         if active_emp_pk_id:
                             for M in [OsCard, OsGrade, osType, OsCostCenter, Alokasi]:
-                                field = "Card Number" if M == OsCard else "Employee Code"
+                                field = "card_number" if M == OsCard else "employee_id"
                                 val = str(row.get('Card Number', '')).strip() if M == OsCard else active_emp_pk_id
                                 
                                 old_recs = M.query.filter(
@@ -660,7 +678,7 @@ def upload():
                             employee_id=newEmployment.id,
                             card_number=str(card_num).strip(),
                             valid_from=clean(row.get('Card Valid From')),
-                            valid_to=clean(row.get('Card Valid To')) # SEKARANG AMAN (None)
+                            valid_to=clean(row.get('Card Valid To'))
                         ))
 
                     # Grade
