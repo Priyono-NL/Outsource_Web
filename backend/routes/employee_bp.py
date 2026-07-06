@@ -86,7 +86,6 @@ def index():
 @employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
 def search_employee(emp_id):
     try:
-        now = datetime.now()
         result = db.session.query(OsPerson.name, OsEmployment.id) \
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
             .filter(
@@ -158,17 +157,45 @@ def add():
         db.session.flush()
         person_id = target_person.person_id        
 
+        check_nrp_owner = OsEmployment.query.filter(
+            OsEmployment.employee_code == employee_code_input,
+            (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
+        ).first()       
+        if check_nrp_owner and check_nrp_owner.person_id != person_id:
+            raise Exception(
+                f"NRP / ID Karyawan '{employee_code_input}' sudah terdaftar milik orang lain. "
+                f"Satu NRP tidak boleh digunakan oleh lebih dari satu orang."
+            )
+
+        active_emp_for_person = OsEmployment.query.filter(
+            OsEmployment.person_id == person_id,
+            (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
+        ).first()
+        if active_emp_for_person and active_emp_for_person.employee_code != employee_code_input:
+            raise Exception(
+                f"Karyawan '{target_person.name}' masih berstatus AKTIF dengan NRP lama "
+                f"({active_emp_for_person.employee_code}). Tidak dapat membuat NRP baru "
+                f"({employee_code_input}) sebelum masa kerja sebelumnya diakhiri."
+            )
+
         existing_active_emp = OsEmployment.query.filter(
             OsEmployment.employee_code == employee_code_input,
             (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
         ).first()
+
+        if existing_active_emp and existing_active_emp.valid_from == new_start_date:
+            raise Exception(
+                f"Karyawan dengan ID {employee_code_input} sudah memiliki data aktif "
+                f"dengan tanggal mulai yang sama persis ({new_start_date}). "
+                f"Tidak dapat menimpa atau membuat riwayat baru di tanggal yang sama."
+            )
 
         if existing_active_emp:
             active_emp_pk_id = existing_active_emp.id
             
             target_models = [
                 {"model": OsEmployment, "field": "person_id",   "val": person_id},
-                {"model": OsCard,       "field": "card_number", "val": card_number_input},
+                {"model": OsCard,       "field": "employee_id", "val": active_emp_pk_id},
                 {"model": OsGrade,      "field": "employee_id", "val": active_emp_pk_id},
                 {"model": osType,      "field": "employee_id", "val": active_emp_pk_id},
                 {"model": OsCostCenter, "field": "employee_id", "val": active_emp_pk_id},
@@ -601,9 +628,8 @@ def upload():
                             OsEmployment.valid_from <= new_start_date,
                             ((OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None))
                         ).first()
-                        
+
                         if active_emp and active_emp.employee_code != emp_code_input:
-                            print("Data masuk sini")
                             raise ValueError(
                                 f"Karyawan {target_person.name} MASIH AKTIF dengan NRP lama ({active_emp.employee_code}). "
                                 f"Tidak dapat membuat NRP baru ({emp_code_input}) sebelum masa kerja sebelumnya diakhiri."
@@ -638,6 +664,13 @@ def upload():
                         (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
                     ).first()
 
+                    if existing_active_emp and existing_active_emp.valid_from == new_start_date:
+                        raise ValueError(
+                            f"Karyawan dengan NRP {emp_code_input} sudah memiliki data aktif "
+                            f"dengan tanggal mulai yang sama persis ({new_start_date}). "
+                            f"Tidak dapat menimpa atau membuat riwayat baru di tanggal yang sama."
+                        )
+
                     active_emp_pk_id = None
                     if existing_active_emp:
                         existing_active_emp.valid_to = adjusted_valid_to
@@ -646,8 +679,10 @@ def upload():
 
                         if active_emp_pk_id:
                             for M in [OsCard, OsGrade, osType, OsCostCenter, Alokasi]:
-                                field = "card_number" if M == OsCard else "employee_id"
-                                val = str(row.get('Card Number', '')).strip() if M == OsCard else active_emp_pk_id
+                                # field = "card_number" if M == OsCard else "employee_id"
+                                # val = str(row.get('Card Number', '')).strip() if M == OsCard else active_emp_pk_id
+                                field = "employee_id"
+                                val = active_emp_pk_id
                                 
                                 old_recs = M.query.filter(
                                     getattr(M, field) == val,

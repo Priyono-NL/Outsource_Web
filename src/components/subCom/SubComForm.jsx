@@ -80,6 +80,7 @@ function SubComForm({ onClose, onSuccess, initialData }) {
                       name="type_company" 
                       className="form-select form-select-sm" 
                     >
+                      <option value="Intern">Tetap & Kontrak</option>
                       <option value="OS">Outsourcing (OS)</option>
                       <option value="Vendor">Vendor / Kontraktor</option>
                     </select>

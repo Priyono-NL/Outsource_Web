@@ -32,13 +32,14 @@ export const routesConfig = [
     icon: 'bi-person',
     group: 2,
     children: [
-      { path: '/employment', label: 'Employment', icon: 'bi-person-badge', element: <Employement /> },
-      { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
+      { path: '/employment', label: 'Employment', icon: 'bi-person-badge', element: <Employement /> },      
       { path: '/card', label: 'Absence Card', icon: 'bi-credit-card', element: <OsCard /> },
       { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC /> },
       { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade /> }, 
       { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType /> },
+      
       { path: '/blacklist', label: 'Blacklist', icon: 'bi-slash-circle', element: <Blacklist /> },
+      { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
       { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical /> },
       { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },
     ]

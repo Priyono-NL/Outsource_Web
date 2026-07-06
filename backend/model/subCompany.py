@@ -5,7 +5,7 @@ class SubCompany(db.Model, AuditMixin):
     __tablename__ = 'sub_company'
     sub_company_id = db.Column(db.String(10), primary_key=True)
     sub_company_name = db.Column(db.String(200))
-    type_company = db.Column(db.Enum('OS', 'Vendor'))
+    type_company = db.Column(db.Enum('Intern','OS', 'Vendor'))
 
     def to_dict(self):
         return {
