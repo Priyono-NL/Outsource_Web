@@ -16,6 +16,7 @@ import Blacklist from '../pages/Blacklist';
 import Biodata from '../pages/Biodata';
 import Employement from '../pages/Employment';
 import OsType from '../pages/OsType';
+import Terminal from '../pages/Terminal';
 
 import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
@@ -55,7 +56,7 @@ export const routesConfig = [
       { path: "/sub-company", label: "Master Sub Company", icon: "bi-building", element: <SubCompany /> },
       { path: "/training-m", label: "Master Training", icon: "bi-book", element: <Training_m /> },
       { path: "/medical-m", label: "Master Medical", icon: "bi-hospital", element: <Medical_m /> },      
-      
+      { path: "/terminal", label: "Master Terminal", icon: "bi-terminal", element: <Terminal /> },
     ]
   },
 ];
