@@ -9,6 +9,27 @@ const flatRoutes = routesConfig.flatMap(route =>
   route.children ? route.children : [route]
 );
 
+const EnvBanner = () => {
+  const isDev = import.meta.env.MODE === 'development';
+
+  // Jika di server Production (bukan development), kembalikan null agar tidak merender apa pun (Clean Look)
+  if (!isDev) return null;
+
+  return (
+    <div 
+      className="w-100 text-dark text-center py-1 fw-bold border-bottom" 
+      style={{ 
+        fontSize: '0.75rem', 
+        letterSpacing: '0.5px',
+        backgroundColor: '#ffe44c', // Warna kuning cerah sesuai kecocokan layout
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}
+    >
+      <span><i className="bi bi-cpu me-1"></i> You are running Development Server (Local Environment)</span>
+    </div>
+  );
+};
+
 function App() {
   const { authState, handleLogout } = useAuth();  
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
@@ -63,6 +84,8 @@ function App() {
             Keluar
           </button>
         </header>
+
+        <EnvBanner />
 
         {/* ── Body ── */}
         <div id="app-body">
