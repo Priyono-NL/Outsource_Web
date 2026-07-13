@@ -5,7 +5,7 @@ class terminal(db.Model, AuditMixin):
     __tablename__ = 'terminal_master'
     id = db.Column(db.Integer, primary_key=True)
     node_id = db.Column(db.Integer)
-    cost_center = db.Column(db.Integer, db.ForeignKey('org_cost_center.cost_center'))
+    cost_center = db.Column(db.Integer)
     terminal_id = db.Column(db.String(10))
     terminal_name = db.Column(db.String(255))
     company_id = db.Column(db.String(50))

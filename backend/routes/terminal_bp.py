@@ -67,8 +67,8 @@ def update(id):
         med.company_id = data.get('company_id', med.company_id)
         med.direction = data.get('direction', med.direction)
         med.terminal_type = data.get('terminal_type', med.terminal_type)
-        med.node_id = data.get('node_id', med.node_id)
-        med.cost_center = data.get('cost_center', med.cost_center)
+        med.node_id = data.get('node_id', med.node_id )if data.get('node_id') else None
+        med.cost_center = data.get('cost_center', med.cost_center) if data.get('cost_center') else None
         med.server_loc = data.get('server_loc', med.server_loc)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200

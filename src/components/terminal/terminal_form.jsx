@@ -88,24 +88,26 @@ function Terminal_form({ onClose, onSuccess, initialData }) {
 
                   <div className="col-md-4">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Terminal Type</label>
-                    <input 
-                      type="text" 
+                    <select 
                       name="terminal_type" 
-                      className="form-control form-control-sm" 
-                      placeholder="Attendance/Access"
+                      className="form-select form-select-sm" 
                       required 
-                    />
+                    >
+                      <option value="Attendance">Attendance</option>
+                      <option value="Access">Access</option>
+                    </select>
                   </div>
 
                   <div className="col-md-4">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Direction</label>
-                    <input 
-                      type="text" 
+                    <select
                       name="direction" 
-                      className="form-control form-control-sm" 
-                      placeholder="IN/OUT"
-                      required 
-                    />
+                      className="form-select form-select-sm"
+                      required
+                    >
+                      <option value="IN">IN</option>
+                      <option value="OUT">OUT</option>
+                    </select>
                   </div>
 
                   <div className="col-md-4">
@@ -114,7 +116,6 @@ function Terminal_form({ onClose, onSuccess, initialData }) {
                       type="text" 
                       name="cost_center" 
                       className="form-control form-control-sm" 
-                      required 
                     />
                   </div>
 

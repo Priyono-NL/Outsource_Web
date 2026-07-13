@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Toast, Confirm } from '../../utils/sweetalert';
+import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
 function OsTrainingForm({ onClose, onSuccess, initialData }) {
   const [training, setTraining] = useState([]);
-  const [empId, setEmpId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState([]);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [empPk, setEmpPk] = useState('');
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -28,17 +30,67 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
 
   useEffect(() => {
     if (initialData && formRef.current && training.length > 0) {
-      setEmpId(initialData.employee_code || ''); 
       setEmpPk(initialData.employee_id || '');
-      formRef.current.employee_code.value = initialData.employee_code;
+      setSearchTerm(initialData.employee_name ? `${initialData.employee_name} (${initialData.employee_code})` : initialData.employee_name || '');
+      setSelectedEmployee({
+        emp_pk_id: initialData.employee_id,
+        employee_code: initialData.employee_code,
+        name: initialData.employee_name
+      });
+      setFullName(initialData.employee_name || '');
+      setIsEmployeeFound(true);
+
+      // Sinkronisasi isian data field sesuai dengan struktur awal Anda
       formRef.current.training_id.value = initialData.training_id;
       formRef.current.training_date_from.value = initialData.training_date_from;
       formRef.current.training_date_to.value = initialData.training_date_to;
       formRef.current.training_result.value = initialData.training_result;
       formRef.current.training_score.value = initialData.training_score;
-      handleSearchEmployee(initialData.employee_code || initialData.employee_id);
     }
   }, [initialData, training]);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchTerm.length >= 3 && !selectedEmployee && !isEditMode) {
+        fetchEmployees();
+      } else {
+        setResults([]);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, selectedEmployee, isEditMode]);
+
+  const fetchEmployees = async () => {
+    setIsSearching(true);
+    try {
+      const response = await api.get(`/employee/search-autocomplete?q=${searchTerm}`);
+      setResults(response.data.data);
+    } catch (err) {
+      Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: "Gagal menghubungi server pencarian" });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelect = (emp) => {
+    setSelectedEmployee(emp);
+    setSearchTerm(`${emp.name} (${emp.employee_code})`);
+    setFullName(emp.name);
+    setEmpPk(emp.emp_pk_id);
+    setIsEmployeeFound(true);
+    setResults([]);
+  };
+
+  const handleReset = () => {
+    if (isEditMode) return;
+    setSelectedEmployee(null);
+    setSearchTerm("");
+    setFullName("");
+    setEmpPk("");
+    setIsEmployeeFound(false);
+    setResults([]);
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -48,7 +100,6 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
       ...data,
       employee_id: empPk
     };
-    delete payload.employee_code;
     try {
       const response = initialData 
             ? await api.put(`/ostraining/${initialData.osTraining_id}`, payload) 
@@ -64,40 +115,6 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
     }    
   };
 
-  const handleSearchEmployee = async (id) => {
-    if (!id) {
-      setFullName('');
-      return;
-    }
-    setIsSearching(true);
-    try {
-      const response = await api.get(`/employee/search/${id}`);
-      if (response.data.status === "success") { 
-        setFullName(response.data.full_name);
-        setEmpPk(response.data.emp_pk_id);
-        setIsEmployeeFound(true);
-      }
-    } catch (err) {
-      setFullName('Karyawan ID tidak terdaftar!');
-      setEmpPk('');
-      setIsEmployeeFound(false);
-      Toast.fire({ icon: 'warning', title: 'ID Karyawan tidak ditemukan' });
-    } finally { setIsSearching(false); }
-  };
-
-  const handleIdChange = (e) => {
-    if (isEditMode) return;
-    const value = e.target.value;
-    setEmpId(value);
-    if (value === "") {
-      setIsEmployeeFound(false);
-      setFullName("");
-      setEmpPk("");
-    } else {
-      setIsEmployeeFound(false);
-    }
-  };
-
   return (
     <>
       <div 
@@ -107,11 +124,10 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
       ></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-        {/* Menggunakan modal-md agar lebih ramping */}
         <div className="modal-dialog modal-md modal-dialog-centered">
           <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            {/* Header Tipis */}
+            {/* Header */}
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-journal-check' : 'bi-plus-circle'} me-2`}></i>
@@ -123,53 +139,65 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
             <form ref={formRef} onSubmit={handleSave}>
               <div className="modal-body p-3 bg-white">
                 
-                {/* Employee Search Section */}
+                {/* Search Section Autocomplete */}
                 <div className="row g-2 mb-3">
-                  <div className="col-md-5">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Employee ID</label>
+                  <div className="col-md-12 position-relative">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cari Karyawan (Nama / NRP)</label>
                     <div className="input-group input-group-sm">
-                      <span className="input-group-text bg-light border-end-0"><i className="bi bi-person-badge" style={{ fontSize: '0.8rem' }}></i></span>
+                      <span className="input-group-text bg-light border-end-0">
+                        <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`} style={{ fontSize: '0.8rem' }}></i>
+                      </span>
                       <input 
                         type="text" 
-                        name="employee_code" 
-                        className={`form-control border-start-0 ${isEditMode ? 'bg-light fw-bold' : ''}`} 
-                        placeholder="ID..."
+                        className={`form-control border-start-0 ps-0 ${selectedEmployee ? 'bg-light fw-bold text-primary' : ''}`} 
+                        placeholder="Ketik Nama atau NRP minimal 3 karakter..."
                         required
-                        value={empId}
-                        onChange={handleIdChange}
-                        onBlur={(e) => !isEditMode && handleSearchEmployee(e.target.value)}
-                        readOnly={isEditMode}
-                        style={isEditMode ? { cursor: 'not-allowed' } : {}}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        readOnly={isEditMode || !!selectedEmployee}
+                        autoComplete="off"
+                        style={isEditMode ? { cursor: 'not-allowed' } : { fontSize: '0.85rem' }}
                       />
-                    </div>
-                  </div>
-                  <div className="col-md-7">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Karyawan</label>
-                    <div className="position-relative">
-                      <input 
-                        type="text" 
-                        className={`form-control form-control-sm ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
-                        value={isSearching ? "Mencari..." : fullName}
-                        readOnly
-                        placeholder="Otomatis..."
-                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600', fontSize: '0.85rem' }} 
-                      />
-                      {isSearching && (
-                        <div className="position-absolute end-0 top-50 translate-middle-y me-2">
-                          <div className="spinner-border spinner-border-sm text-primary" style={{ width: '0.8rem', height: '0.8rem' }} role="status"></div>
-                        </div>
+                      {selectedEmployee && !isEditMode && (
+                        <button className="btn btn-outline-danger btn-sm" type="button" onClick={handleReset} style={{ fontSize: '0.7rem' }}>
+                          <i className="bi bi-x-circle"></i>
+                        </button>
                       )}
                     </div>
+
+                    {/* Dropdown Hasil Pencarian - Dilengkapi Batas Tinggi & Scrollbar */}
+                    {results.length > 0 && (
+                      <div className="list-group position-absolute w-100 shadow-lg border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                        {results.map((emp) => (
+                          <button
+                            key={emp.emp_pk_id}
+                            type="button"
+                            className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1 px-3"
+                            onClick={() => handleSelect(emp)}
+                            style={{ fontSize: '0.8rem' }}
+                          >
+                            <div>
+                              <div className="fw-bold text-dark">{emp.name}</div>
+                              <small className="text-muted" style={{ fontSize: '0.7rem' }}>NRP: {emp.employee_code}</small>
+                            </div>
+                            <span className={`badge ${emp.is_active ? 'bg-success' : 'bg-secondary'}`} style={{ fontSize: '0.65rem' }}>
+                              {emp.status_text}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Divider Minimalis */}
+                {/* Divider */}
                 <div className="d-flex align-items-center mb-3">
                    <hr className="flex-grow-1 my-0 opacity-25" />
                    <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Detail Training</span>
                    <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
 
+                {/* Grid Input Data Asli Training Anda */}
                 <div className="row g-2">
                   <div className="col-12 mb-1">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Jenis Training</label>
@@ -215,7 +243,6 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
                     <select 
                       name="training_result" 
                       className='form-select form-select-sm' 
-                      defaultValue={initialData ? initialData.training_result : ""}
                       required 
                       disabled={(!isEmployeeFound && !isEditMode) || isSearching}
                     >
@@ -232,16 +259,16 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
                       <input 
                         type="number" 
                         name="training_score" 
-                        className="form-control form-control-sm border-start-0" 
+                        className="form-control border-start-0" 
                         placeholder="0 - 100"
                         disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
                       />
                     </div>
                   </div>
                 </div>
+
               </div>
 
-              {/* Footer Compact */}
               <div className="modal-footer bg-light border-top p-2 px-3">
                 <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
                 <button 
@@ -250,8 +277,7 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
                   style={{ fontSize: '0.8rem' }}
                   disabled={(!isEmployeeFound && !isEditMode) || isSearching}
                 >
-                  <i className="bi bi-save me-1"></i>
-                  {initialData ? 'Update' : 'Simpan'}
+                  <i className="bi bi-save me-1"></i> Simpan
                 </button>
               </div>
             </form>

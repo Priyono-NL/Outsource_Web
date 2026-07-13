@@ -97,6 +97,52 @@ def search_employee(emp_id):
         return jsonify({"status": "error", "message": "Employee ID tidak Ada"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+@employee_bp.route('/employee/search-autocomplete', methods=['GET'])
+def search_autocomplete():
+    try:
+        query_str = request.args.get('q', '')
+        if len(query_str) < 3:
+            return jsonify({"status": "success", "data": []})
+        
+        today = datetime.now().date()
+        
+        # Cari berdasarkan Nama Person atau Employee Code (NRP)
+        results = db.session.query(OsEmployment, OsPerson)\
+            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)\
+            .filter(
+                or_(
+                    OsPerson.name.ilike(f"%{query_str}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{query_str}%")
+                )
+            ).limit(20).all()
+        
+        data_result = []
+        for emp, person in results:
+            # Tentukan status keaktifan berdasarkan rentang valid_from dan valid_to kontrak kerja
+            is_active = False
+            if emp.valid_from and emp.valid_from <= today:
+                if emp.valid_to is None or emp.valid_to >= today:
+                    is_active = True
+            
+            data_result.append({
+                "emp_pk_id": emp.id,
+                "employee_code": emp.employee_code,
+                "name": person.name,
+                "resident_id": person.resident_id,
+                "is_active": is_active,
+                "status_text": "Aktif" if is_active else "Non-Aktif"
+            })
+        
+        return jsonify({
+            "status": "success",
+            "data": data_result
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():

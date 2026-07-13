@@ -117,8 +117,9 @@ function PersonelTab({ onPersonSelect, initialData }) {
                         )}
                     </div>
 
+                    {/* Dropdown Hasil Pencarian - FIXED DENGAN MAKSIMAL TINGGI & SCROLLBAR */}
                     {results.length > 0 && (
-                        <div className="list-group position-absolute w-100 shadow border mt-1" style={{ zIndex: 1100, borderRadius: '6px', overflow: 'hidden' }}>
+                        <div className="list-group position-absolute w-100 shadow border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '200px', overflowY: 'auto' }}>
                             {results.map((p) => (
                                 <button
                                     key={p.person_id}
@@ -143,7 +144,6 @@ function PersonelTab({ onPersonSelect, initialData }) {
                 </div>
             </div>
 
-            {/* Divider Minimalis */}
             <div className="d-flex align-items-center my-3">
                 <hr className="flex-grow-1 my-0 opacity-25" />
                 <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Data Detail Personel</span>
