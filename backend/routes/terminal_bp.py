@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from model.terminal import terminal
 from .auth_bp import login_required
+from sqlalchemy import or_
 
 terminal_bp = Blueprint('terminal_bp', __name__)
 
@@ -11,9 +12,14 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
-        query = terminal.query
+        query = terminal.query.filter(terminal.company_id.ilike(1111))
         if search:                    
-            query = query.filter(terminal.terminal_name.ilike(f"%{search}%"))
+            query = query.filter(
+                or_(
+                    terminal.terminal_id.cast(db.String).ilike(f"%{search}%"),
+                    terminal.terminal_name.ilike(f"%{search}%")
+                )
+            )
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",

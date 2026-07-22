@@ -17,6 +17,7 @@ import Biodata from '../pages/Biodata';
 import Employement from '../pages/Employment';
 import OsType from '../pages/OsType';
 import Terminal from '../pages/Terminal';
+import ObEmployee from '../pages/ObEmployee';
 
 import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
@@ -26,20 +27,35 @@ import Absensi from '../pages/Absensi';
 export const routesConfig = [  
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
 
-  { path: '/absensi', label: 'Absensi OS', icon: 'bi-card-checklist', element: <Absensi />, group: 1 },
-
   {
     label: 'Master OS',
     icon: 'bi-person',
-    group: 2,
+    group: 1,
     children: [
-      { path: '/employment', label: 'Employment', icon: 'bi-person-badge', element: <Employement /> },      
+      { path: '/osemployment', label: 'Employment OS', icon: 'bi-file-person', element: <Employement /> },      
       { path: '/card', label: 'Absence Card', icon: 'bi-credit-card', element: <OsCard /> },
       { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC /> },
       { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade /> }, 
-      { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType /> },
-      
+      { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType /> },      
       { path: '/blacklist', label: 'Blacklist', icon: 'bi-slash-circle', element: <Blacklist /> },
+    ]
+  },
+
+  {
+    label: 'Master Karyawan',
+    icon: 'bi-person-check',
+    group: 2,
+    children: [
+      { path: '/employment', label: 'Karyawan Tetap/Kontrak', icon: 'bi-person-badge', element: <ObEmployee /> },
+    ]
+  },
+
+  {
+    label: 'Transaksional',
+    icon: 'bi-arrow-left-right',
+    group: 3,
+    children: [ 
+      { path: '/absensi', label: 'Absensi OS', icon: 'bi-card-checklist', element: <Absensi /> },
       { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
       { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical /> },
       { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },
@@ -49,7 +65,7 @@ export const routesConfig = [
   {
     label: 'Master Data',
     icon: 'bi-database-fill-gear',
-    group: 3,
+    group: 4,
     children: [
       { path: "/costcenter", label: "Master Cost Center", icon: "bi-cash-stack", element: <CostCenter /> },
       { path: "/canteen", label: "Master Kantin", icon: "bi-cup-hot", element: <Canteen /> },
