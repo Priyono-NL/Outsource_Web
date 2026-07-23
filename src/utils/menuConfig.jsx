@@ -18,6 +18,7 @@ import Employement from '../pages/Employment';
 import OsType from '../pages/OsType';
 import Terminal from '../pages/Terminal';
 import ObEmployee from '../pages/ObEmployee';
+import PeriodePuasa from '../pages/periode_puasa';
 
 import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
@@ -58,7 +59,7 @@ export const routesConfig = [
       { path: '/absensi', label: 'Absensi OS', icon: 'bi-card-checklist', element: <Absensi /> },
       { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
       { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical /> },
-      { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },
+      { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },      
     ]
   },
 
@@ -73,6 +74,7 @@ export const routesConfig = [
       { path: "/training-m", label: "Master Training", icon: "bi-book", element: <Training_m /> },
       { path: "/medical-m", label: "Master Medical", icon: "bi-hospital", element: <Medical_m /> },      
       { path: "/terminal", label: "Master Terminal", icon: "bi-terminal", element: <Terminal /> },
+      { path: '/periode', label: 'Periode Puasa', icon: 'bi-calendar-check', element: <PeriodePuasa /> },
     ]
   },
 ];
