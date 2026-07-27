@@ -3,6 +3,9 @@ from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
 from datetime import datetime
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.styles import Font, PatternFill, Alignment
+
 from extensions import db
 from model.medical import medical
 from model.osMedical import osMedical
@@ -148,17 +151,74 @@ def export():
 @osMedical_bp.route('/osmedical/template', methods=['GET'])
 def template():
     try:
+        # 1. Ambil semua list Jenis Medical dari Database Master
+        all_medicals = medical.query.all()
+        medical_names = [m.medical_name for m in all_medicals]
+        
+        # Buat string pilihan dropdown untuk openpyxl, contoh: '"MCU, Fit to Work, PCR"'
+        if medical_names:
+            medical_list_str = f'"{",".join(medical_names)}"'
+        else:
+            medical_list_str = '"Medical Check Up, Fit to Work"' # Fallback jika master kosong
+
+        # Pilihan dropdown standar untuk Hasil Medical
+        result_list_str = '"SEHAT, TIDAK SEHAT, BEROBAT, PERLU EVALUASI"'
+
+        # 2. Buat DataFrame Template
         example_data = [{
             "ID Employee": "12345",
-            "Medical Name": "Medical Check Up",
+            "Medical Name": medical_names[0] if medical_names else "Medical Check Up",
             "Date": "2026-03-20",
             "Result": "SEHAT",
-            "Notes": ""
+            "Notes": "Catatan opsional"
         }]
         df = pd.DataFrame(example_data)
+        
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import')
+            
+            # Akses workbook dan sheet openpyxl untuk menambahkan Dropdown
+            workbook = writer.book
+            worksheet = writer.sheets['Template_Import']
+
+            # Set Lebar Kolom agar Rapi
+            worksheet.column_dimensions['A'].width = 18 # ID Employee
+            worksheet.column_dimensions['B'].width = 28 # Medical Name
+            worksheet.column_dimensions['C'].width = 15 # Date
+            worksheet.column_dimensions['D'].width = 20 # Result
+            worksheet.column_dimensions['E'].width = 30 # Notes
+
+            # ==========================================
+            # 3. BUAT DROPDOWN UNTUK MEDICAL NAME (Kolom B)
+            # ==========================================
+            dv_medical = DataValidation(
+                type="list", 
+                formula1=medical_list_str, 
+                allow_blank=True
+            )
+            dv_medical.error = 'Silakan pilih Jenis Medical dari daftar dropdown yang tersedia!'
+            dv_medical.errorTitle = 'Pilihan Tidak Valid'
+            
+            # Pasang Dropdown untuk 500 baris pertama di Kolom B (Medical Name)
+            worksheet.add_data_validation(dv_medical)
+            dv_medical.add("B2:B500")
+
+            # ==========================================
+            # 4. BUAT DROPDOWN UNTUK RESULT (Kolom D)
+            # ==========================================
+            dv_result = DataValidation(
+                type="list", 
+                formula1=result_list_str, 
+                allow_blank=True
+            )
+            dv_result.error = 'Silakan pilih Status Hasil dari daftar dropdown!'
+            dv_result.errorTitle = 'Pilihan Tidak Valid'
+            
+            # Pasang Dropdown untuk 500 baris pertama di Kolom D (Result)
+            worksheet.add_data_validation(dv_result)
+            dv_result.add("D2:D500")
+
         output.seek(0)
         return send_file(
             output, 

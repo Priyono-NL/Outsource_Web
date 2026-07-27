@@ -3,6 +3,9 @@ from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
 from datetime import datetime
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.styles import Font, PatternFill, Alignment
+
 from extensions import db
 from model.training import training_m
 from model.osTraining import osTraining
@@ -151,23 +154,82 @@ def export():
 @osTraining_bp.route('/ostraining/template', methods=['GET'])
 def template():
     try:
+        # 1. Ambil semua Master Training dari Database
+        all_trainings = training_m.query.all()
+        training_names = [t.training_name for t in all_trainings]
+        
+        # Format string list pilihan dropdown openpyxl
+        if training_names:
+            # Escape tanda petik ganda jika ada pada nama training
+            clean_names = [name.replace('"', '""') for name in training_names]
+            training_list_str = f'"{",".join(clean_names)}"'
+        else:
+            training_list_str = '"Basic Safety Training, Leadership Training"' # Fallback jika master kosong
+
+        # Pilihan dropdown untuk Result (Sesuai dengan pembacaan fungsi upload Anda)
+        result_list_str = '"Lulus, Tidak Lulus"'
+
+        # 2. Contoh data untuk baris pertama template
         example_data = [{
             "ID Employee": "12345",
-            "Training Name": "Training K3L",
-            "Date From": "2026-03-04",
-            "Date To": "2026-03-04",
-            "Result": "lulus/tidak lulus",
-            "Score": "80"
+            "Training Name": training_names[0] if training_names else "Basic Safety Training",
+            "Date From": "2026-03-20",
+            "Date To": "2026-03-22",
+            "Result": "Lulus",
+            "Score": 85
         }]
         df = pd.DataFrame(example_data)
+        
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Template_Import')
+            df.to_excel(writer, index=False, sheet_name='Template_Import_Training')
+            
+            worksheet = writer.sheets['Template_Import_Training']
+
+            # Set Lebar Kolom agar rapi dan mudah dibaca
+            worksheet.column_dimensions['A'].width = 18 # ID Employee
+            worksheet.column_dimensions['B'].width = 32 # Training Name
+            worksheet.column_dimensions['C'].width = 16 # Date From
+            worksheet.column_dimensions['D'].width = 16 # Date To
+            worksheet.column_dimensions['E'].width = 18 # Result
+            worksheet.column_dimensions['F'].width = 14 # Score
+
+            # ==========================================
+            # 3. DROPDOWN TRAINING NAME (Kolom B)
+            # ==========================================
+            dv_training = DataValidation(
+                type="list", 
+                formula1=training_list_str, 
+                allow_blank=True
+            )
+            dv_training.error = 'Silakan pilih Jenis Training dari daftar dropdown yang tersedia!'
+            dv_training.errorTitle = 'Pilihan Tidak Valid'
+            
+            # Pasang Dropdown untuk baris B2 hingga B500
+            worksheet.add_data_validation(dv_training)
+            dv_training.add("B2:B500")
+
+            # ==========================================
+            # 4. DROPDOWN RESULT (Kolom E)
+            # ==========================================
+            dv_result = DataValidation(
+                type="list", 
+                formula1=result_list_str, 
+                allow_blank=True
+            )
+            dv_result.error = 'Pilihan harus Lulus atau Tidak Lulus!'
+            dv_result.errorTitle = 'Pilihan Tidak Valid'
+            
+            # Pasang Dropdown untuk baris E2 hingga E500
+            worksheet.add_data_validation(dv_result)
+            dv_result.add("E2:E500")
+
         output.seek(0)
         return send_file(
             output, 
             as_attachment=True, 
-            download_name="Template_Import_Training.xlsx"
+            download_name="Template_Import_Training.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
