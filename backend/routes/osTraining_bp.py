@@ -8,7 +8,7 @@ from model.training import training_m
 from model.osTraining import osTraining
 from model.employment import OsEmployment
 from model.person import OsPerson
-from .auth_bp import login_required
+from model.ob_emp import ObEmployee
 
 osTraining_bp = Blueprint('osTraining_bp', __name__)
 
@@ -20,12 +20,17 @@ def index():
         search = request.args.get('search', '', type=str)
         query = osTraining.query
         if search:
-            query = query.join(OsEmployment, osTraining.employee_id == OsEmployment.id) \
-                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            query = query.outerjoin(OsEmployment, osTraining.employee_id == OsEmployment.id) \
+                            .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                            .outerjoin(ObEmployee, osTraining.employee_id == ObEmployee.employee_id)            
             query = query.filter(
                 or_(
+                    # Pencarian untuk data OS
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
+                    # Pencarian untuk data OB
+                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    ObEmployee.employee_name.ilike(f"%{search}%")
                 )
             )
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
@@ -102,12 +107,16 @@ def export():
         search = request.args.get('search', '', type=str)
         query = osTraining.query
         if search:
-            query = query.join(OsEmployment, osTraining.employee_id == OsEmployment.id) \
-                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            # DIUBAH KE OUTERJOIN AGAR DATA OS & OB IKUT TER-EXPORT
+            query = query.outerjoin(OsEmployment, osTraining.employee_id == OsEmployment.id) \
+                            .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                            .outerjoin(ObEmployee, osTraining.employee_id == ObEmployee.employee_id)            
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
+                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    ObEmployee.employee_name.ilike(f"%{search}%")
                 )
             )
         master = query.all()
@@ -133,7 +142,7 @@ def export():
         return send_file(
             output, 
             as_attachment=True, 
-            download_name="Export_OS_Medical.xlsx",
+            download_name="Export_OS_Training.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
@@ -189,18 +198,35 @@ def upload():
                     # --- Ambil & Validasi Employee Code (NRP) ---
                     e_code_raw = clean(row.get('ID Employee'))
                     if not e_code_raw:
-                        raise ValueError("ID Employee tidak boleh kosong.")
+                        raise ValueError("ID Employee (Employee Code) tidak boleh kosong.")
                     e_code = str(e_code_raw).split('.')[0].strip()
-                    
-                    exist_emp = OsEmployment.query.filter(
+
+                    target_emp_id = None
+
+                    # 1. CEK KE OS EMPLOYMENT PERTAMA
+                    exist_emp_os = OsEmployment.query.filter(
                         OsEmployment.employee_code == e_code,
                         OsEmployment.valid_from <= today,
                         ((OsEmployment.valid_to >= today) | (OsEmployment.valid_to == None))
                     ).first()
 
-                    if not exist_emp:
-                        raise ValueError(f"Employee Code '{e_code}' tidak terdaftar atau status kerjanya sudah tidak aktif saat ini.")
+                    if exist_emp_os:
+                        target_emp_id = exist_emp_os.id
+                    else:
+                        # 2. CEK KE OB EMPLOYEE JIKA TIDAK ADA DI OS
+                        exist_emp_ob = ObEmployee.query.filter(
+                            ObEmployee.employee_id == e_code
+                        ).first()
 
+                        if exist_emp_ob:
+                            target_emp_id = exist_emp_ob.employee_id
+
+                    # JIKA KEDUANYA TIDAK DITEMUKAN
+                    if not target_emp_id:
+                        raise ValueError(
+                            f"Employee Code '{e_code}' tidak terdaftar di OS maupun SAP "
+                            f"(atau status kerjanya sudah tidak aktif)."
+                        )
                     # --- Ambil & Validasi Master Training ---
                     t_name_raw = clean(row.get('Training Name'))
                     if not t_name_raw:
@@ -234,7 +260,7 @@ def upload():
 
                     # --- Insert Data Baru ---
                     new_training = osTraining(
-                        employee_id=exist_emp.id,
+                        employee_id=target_emp_id,
                         training_id=exist_training.training_id,
                         training_date_from=pd.to_datetime(raw_date_from).date(),
                         training_date_to=pd.to_datetime(raw_date_to).date(),

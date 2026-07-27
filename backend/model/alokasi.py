@@ -1,6 +1,5 @@
 from extensions import db
 from model.base import AuditMixin
-from sqlalchemy import cast, String
 
 class Alokasi(db.Model, AuditMixin):
     __tablename__ = 'os_employee_canteen'
@@ -32,17 +31,14 @@ class Alokasi(db.Model, AuditMixin):
     def to_dict(self):
         emp_code = self.employee_id
         emp_name = "-"
-        emp_type = "UNKNOWN"
 
         if self.employement:
             emp_code = self.employement.employee_code
             emp_name = self.employement.person.name if self.employement.person else "-"
-            emp_type = "OS"
             
         elif self.ob_employee:
             emp_code = self.ob_employee.employee_id
             emp_name = self.ob_employee.employee_name
-            emp_type = "OB"
 
         return {
             "alokasi_id": self.id,

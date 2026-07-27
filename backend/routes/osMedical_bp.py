@@ -8,6 +8,7 @@ from model.medical import medical
 from model.osMedical import osMedical
 from model.employment import OsEmployment
 from model.person import OsPerson
+from model.ob_emp import ObEmployee
 
 osMedical_bp = Blueprint('osMedical_bp', __name__)
 
@@ -19,12 +20,17 @@ def index():
         search = request.args.get('search', '', type=str)
         query = osMedical.query
         if search:
-            query = query.join(OsEmployment, osMedical.employee_id == OsEmployment.id) \
-                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            query = query.outerjoin(OsEmployment, osMedical.employee_id == OsEmployment.id) \
+                         .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                         .outerjoin(ObEmployee, osMedical.employee_id == ObEmployee.employee_id)            
             query = query.filter(
                 or_(
+                    # Pencarian untuk data OS
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
+                    # Pencarian untuk data OB
+                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    ObEmployee.employee_name.ilike(f"%{search}%")
                 )
             )
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
@@ -98,12 +104,16 @@ def export():
         search = request.args.get('search', '', type=str)
         query = osMedical.query
         if search:
-            query = query.join(OsEmployment, osMedical.employee_id == OsEmployment.id) \
-                     .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
+            # DIUBAH KE OUTERJOIN AGAR DATA OS & OB IKUT TER-EXPORT
+            query = query.outerjoin(OsEmployment, osMedical.employee_id == OsEmployment.id) \
+                         .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                         .outerjoin(ObEmployee, osMedical.employee_id == ObEmployee.employee_id)            
             query = query.filter(
-            or_(
+                or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
                     OsPerson.name.ilike(f"%{search}%"),                    
+                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
+                    ObEmployee.employee_name.ilike(f"%{search}%")
                 )
             )
 
@@ -153,7 +163,8 @@ def template():
         return send_file(
             output, 
             as_attachment=True, 
-            download_name="Template_Import_Medical.xlsx"
+            download_name="Template_Import_Medical.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -187,18 +198,34 @@ def upload():
                         raise ValueError("ID Employee (Employee Code) tidak boleh kosong.")
                     e_code = str(e_code_raw).split('.')[0].strip()
 
-                    exist_emp = OsEmployment.query.filter(
+                    target_emp_id = None
+
+                    # 1. CEK KE OS EMPLOYMENT PERTAMA
+                    exist_emp_os = OsEmployment.query.filter(
                         OsEmployment.employee_code == e_code,
                         OsEmployment.valid_from <= today,
                         ((OsEmployment.valid_to >= today) | (OsEmployment.valid_to == None))
                     ).first()
 
-                    if not exist_emp:
+                    if exist_emp_os:
+                        target_emp_id = exist_emp_os.id
+                    else:
+                        # 2. CEK KE OB EMPLOYEE JIKA TIDAK ADA DI OS
+                        exist_emp_ob = ObEmployee.query.filter(
+                            ObEmployee.employee_id == e_code
+                        ).first()
+
+                        if exist_emp_ob:
+                            target_emp_id = exist_emp_ob.employee_id
+
+                    # JIKA KEDUANYA TIDAK DITEMUKAN
+                    if not target_emp_id:
                         raise ValueError(
-                            f"Employee Code '{e_code}' tidak terdaftar atau "
-                            f"status kerjanya sudah tidak aktif saat ini."
+                            f"Employee Code '{e_code}' tidak terdaftar di OS maupun SAP "
+                            f"(atau status kerjanya sudah tidak aktif)."
                         )
-                    #cek medical exist in db
+
+                    # cek medical exist in db
                     m_name_raw = clean(row.get('Medical Name'))
                     if not m_name_raw:
                         raise ValueError("Medical Name tidak boleh kosong.")
@@ -206,13 +233,15 @@ def upload():
                     exist_medical = medical.query.filter(medical.medical_name.ilike(m_name)).first()
                     if not exist_medical:
                         raise ValueError(f"Jenis Medical '{m_name}' tidak ditemukan di master data.")
-                    #cek tanggal
+                    
+                    # cek tanggal
                     raw_date = row.get('Date')
                     if pd.isna(raw_date):
                         raise ValueError("Tanggal (Date) tidak boleh kosong.")                    
+                    
                     # Insert Data
                     new_medical = osMedical(
-                        employee_id=exist_emp.id,
+                        employee_id=target_emp_id,
                         medical_id=exist_medical.medical_id,
                         medical_date=pd.to_datetime(raw_date).date(),
                         medical_result=str(row.get('Result', '')).strip() if pd.notna(row.get('Result')) else None,
@@ -248,5 +277,4 @@ def upload():
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal: {str(e)}"}), 500  
-    
+        return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal: {str(e)}"}), 500

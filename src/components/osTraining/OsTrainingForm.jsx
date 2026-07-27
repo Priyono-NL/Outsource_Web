@@ -64,7 +64,7 @@ function OsTrainingForm({ onClose, onSuccess, initialData }) {
   const fetchEmployees = async () => {
     setIsSearching(true);
     try {
-      const response = await api.get(`/employee/search-autocomplete?q=${searchTerm}`);
+      const response = await api.get(`/employee/search-all?q=${searchTerm}`);
       setResults(response.data.data);
     } catch (err) {
       Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: "Gagal menghubungi server pencarian" });
