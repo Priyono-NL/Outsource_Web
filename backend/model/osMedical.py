@@ -18,7 +18,8 @@ class osMedical(db.Model, AuditMixin):
         primaryjoin="cast(osMedical.employee_id, String) == cast(OsEmployment.id, String)",
         foreign_keys=[employee_id], 
         lazy=True,
-        uselist=False
+        uselist=False,
+        viewonly=True
     )
 
     # Relasi ke OB Employee (Disesuaikan ke ObEmployee.employee_id)
@@ -27,7 +28,9 @@ class osMedical(db.Model, AuditMixin):
         primaryjoin="cast(osMedical.employee_id, String) == cast(ObEmployee.employee_id, String)",
         foreign_keys=[employee_id], 
         lazy=True,
-        uselist=False
+        uselist=False,
+        viewonly=True,
+        overlaps="employement"
     )
     
     medical_m = db.relationship('medical', backref='tr_medical', lazy=True)

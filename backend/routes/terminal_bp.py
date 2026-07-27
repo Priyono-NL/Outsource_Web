@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.terminal import terminal
-from .auth_bp import login_required
 from sqlalchemy import or_
 import pandas as pd
 from sqlalchemy import text
@@ -42,11 +41,9 @@ def index():
 def sync_sheet():
     try:
         # 1. Baca CSV dari Google Sheet Mirror
-        # skiprows=2 artinya melewati Baris 1 (Judul) & Baris 2 (Kosong)
-        # Baris 3 otomatis menjadi Header Column (node, name, kategori, jenis, server)
         df = pd.read_csv(SHEET_MIRROR_CSV_URL, skiprows=2, dtype=str)
         
-        # 2. Rapikan Nama Header (Node -> node, Name -> name, dst.)
+        # 2. Rapikan Nama Header
         df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
         
         # 3. Filter baris jika kolom 'node' kosong
@@ -60,9 +57,7 @@ def sync_sheet():
         
         success_count = 0
         
-        # 4. Melakukan UPSERT ke MySQL
         for index, row in df.iterrows():
-            # Mengubah NaN pandas menjadi None agar MySQL membacanya sebagai NULL
             raw_node = str(row['node']).strip() if pd.notna(row['node']) else ''
             node_val = raw_node.zfill(3) if raw_node.isdigit() else raw_node
             name_val = str(row['name']) if pd.notna(row['name']) else None
@@ -70,34 +65,39 @@ def sync_sheet():
             jenis_val = str(row['jenis']) if pd.notna(row['jenis']) else None
             server_val = str(row['server']) if pd.notna(row['server']) else None
 
-            server_key = server_val.lower()
-            server_prefix = SERVER_CODE_MAP.get(server_key, server_val[:3].upper() if server_val else 'UNK')
-            terminal_id_val = f"{server_prefix}{node_val}"
-
             if not node_val:
                 continue
 
-            # Query SQL Raw UPSERT untuk MySQL
-            sql_query = text("""
-                INSERT INTO tbl_terminal (terminal_id, node_id, terminal_name, terminal_type, direction, server_loc, company_id)
-                VALUES (:terminal_id, :node, :name, :kategori, :jenis, :server, 1111)
-                ON DUPLICATE KEY UPDATE
-                    terminal_id = VALUES(terminal_id),
-                    node_id = VALUES(node_id),
-                    terminal_name = VALUES(terminal_name),
-                    terminal_type = VALUES(terminal_type),
-                    direction = VALUES(direction),
-                    server_loc = VALUES(server_loc);
-            """)
+            server_key = server_val.lower() if server_val else ''
+            server_prefix = SERVER_CODE_MAP.get(server_key, server_val[:3].upper() if server_val else 'UNK')
+            terminal_id_val = f"{server_prefix}{node_val}"
 
-            db.session.execute(sql_query, {
-                "terminal_id": terminal_id_val,
-                "node": node_val,
-                "name": name_val,
-                "kategori": kategori_val,
-                "jenis": jenis_val,
-                "server": server_val
-            })
+            # --- CEK APAKAH DATA TERMINAL SUDAH ADA DI DATABASE ---
+            existing_terminal = terminal.query.filter_by(
+                terminal_id=terminal_id_val, 
+                company_id=1111
+            ).first()
+
+            if existing_terminal:
+                # 4a. JIKA SUDAH ADA -> UPDATE
+                existing_terminal.node_id = node_val
+                existing_terminal.terminal_name = name_val
+                existing_terminal.terminal_type = kategori_val
+                existing_terminal.direction = jenis_val
+                existing_terminal.server_loc = server_val
+            else:
+                # 4b. JIKA BELUM ADA -> INSERT BARU
+                new_terminal = terminal(
+                    terminal_id=terminal_id_val,
+                    node_id=node_val,
+                    terminal_name=name_val,
+                    terminal_type=kategori_val,
+                    direction=jenis_val,
+                    server_loc=server_val,
+                    company_id=1111
+                )
+                db.session.add(new_terminal)
+
             success_count += 1
 
         db.session.commit()
@@ -112,9 +112,4 @@ def sync_sheet():
         return jsonify({
             "status": "error",
             "message": f"Gagal Sinkronisasi Data: {str(e)}"
-        }), 500 
-
-# @terminal_bp.before_request
-# @login_required
-# def before_request():
-#     pass
+        }), 500

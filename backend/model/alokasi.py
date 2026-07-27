@@ -15,7 +15,8 @@ class Alokasi(db.Model, AuditMixin):
         primaryjoin="cast(Alokasi.employee_id, String) == cast(OsEmployment.id, String)",
         foreign_keys=[employee_id],
         lazy=True,
-        uselist=False
+        uselist=False,
+        viewonly=True
     )
     
     ob_employee = db.relationship(
@@ -23,7 +24,9 @@ class Alokasi(db.Model, AuditMixin):
         primaryjoin="cast(Alokasi.employee_id, String) == cast(ObEmployee.employee_id, String)",
         foreign_keys=[employee_id],
         lazy=True,
-        uselist=False
+        uselist=False,
+        viewonly=True,
+        overlaps="employement"
     )
 
     canteen_master = db.relationship('canteen', backref='tr_kantin', lazy=True)
