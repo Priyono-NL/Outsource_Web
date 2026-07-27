@@ -19,6 +19,7 @@ from model.card import OsCard
 from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
 from model.alokasi import Alokasi
+from model.ob_emp import ObEmployee
 
 employee_bp = Blueprint('employee_bp', __name__)
 
@@ -138,6 +139,75 @@ def search_autocomplete():
             "status": "success",
             "data": data_result
         }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@employee_bp.route('/employee/search-all', methods=['GET'])
+def search_all():
+    try:
+        query_str = request.args.get('q', '').strip()
+        if len(query_str) < 3:
+            return jsonify({"status": "success", "data": []})        
+        today = datetime.now().date()
+        data_result = []
+
+        # ==========================================
+        # 1. PENCARIAN DI OS_EMPLOYMENT
+        # ==========================================
+        results_os = db.session.query(OsEmployment, OsPerson)\
+            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)\
+            .filter(
+                or_(
+                    OsPerson.name.ilike(f"%{query_str}%"),
+                    OsEmployment.employee_code.cast(db.String).ilike(f"%{query_str}%")
+                )
+            ).all()
+
+        for emp, person in results_os:
+            is_active = False
+            if emp.valid_from and emp.valid_from <= today:
+                if emp.valid_to is None or emp.valid_to >= today:
+                    is_active = True
+
+            data_result.append({
+                "source": "OS",
+                "emp_pk_id": emp.id,
+                "employee_code": emp.employee_code,
+                "name": person.name,
+                "is_active": is_active,
+                "status_text": "Aktif" if is_active else "Non-Aktif"
+            })
+
+        # ==========================================
+        # 2. PENCARIAN DI OB_EMPLOYEE (vw_master_karyawan)
+        # ==========================================
+        results_ob = ObEmployee.query.filter(
+            or_(
+                ObEmployee.employee_name.ilike(f"%{query_str}%"),
+                ObEmployee.employee_id.cast(db.String).ilike(f"%{query_str}%")
+            )
+        ).all()
+
+        for ob in results_ob:
+            cc_name_val = ob.cc_master.org_name if hasattr(ob, 'cc_master') and ob.cc_master else None
+
+            data_result.append({
+                "source": "OB",
+                "emp_pk_id": ob.employee_id,
+                "employee_code": ob.employee_id,
+                "name": ob.employee_name,
+                "is_active": True,
+                "status_text": "Aktif"
+            })
+            
+        return jsonify({
+            "status": "success",
+            "data": data_result
+        }), 200
+
     except Exception as e:
         return jsonify({
             "status": "error",

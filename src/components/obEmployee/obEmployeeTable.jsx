@@ -51,7 +51,7 @@ const ObEmployeeTable = ({ refreshTrigger, searchTerm }) => {
                         <td>{sub.employee_id}</td>
                         <td>{sub.employee_name}</td>
                         <td>{sub.card_no}</td>
-                        <td>{sub.cost_center}</td>
+                        <td>{sub.cc_name}</td>
                     </tr>
                 ))}
             </tbody>

@@ -8,11 +8,14 @@ class ObEmployee(db.Model):
     card_no = db.Column(db.String(50))
     grade = db.Column(db.String(5))
 
+    cc_master = db.relationship('costCenter', backref='ob_cc', lazy=True)
+
     def to_dict(self):
         return {
             'employee_id': self.employee_id,
             'employee_name': self.employee_name,
             'cost_center': self.cost_center,
+            'cc_name': self.cc_master.org_name,
             'card_no': self.card_no,
             'grade': self.grade
         }
