@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from model.ob_emp import ObEmployee
 from .auth_bp import login_required
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 
 ob_emp_bp = Blueprint('ob_emp_bp', __name__)
 
@@ -12,12 +12,13 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
-        query = ObEmployee.query.filter(ObEmployee.company_id.ilike(1111))
+        query = ObEmployee.query.filter()
         if search:                    
             query = query.filter(
                 or_(
                     ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
-                    ObEmployee.employee_name.ilike(f"%{search}%")
+                    ObEmployee.employee_name.ilike(f"%{search}%"),
+                    ObEmployee.card_no.ilike(f"%{search}%")
                 )
             )
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)

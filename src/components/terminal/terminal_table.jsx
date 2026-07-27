@@ -3,7 +3,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Terminal_table = ({ refreshTrigger, onEditClick, searchTerm }) => { 
+const Terminal_table = ({ refreshTrigger, searchTerm }) => { 
        
     const [terminal, setTerminal] = useState([]);   
     const [error, setError] = useState(null); 
@@ -62,28 +62,19 @@ const Terminal_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
             <table className="app-table">
             <thead>
                 <tr>
+                    <th>Node ID</th>
                     <th>Terminal Id</th>
                     <th>Terminal Name</th>
                     <th>Terminal Type</th>
-                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>{                  
                 terminal.map((sub, index) => (
                     <tr key={`row-${index+1}`} >
+                        <td>{sub.node_id}</td>
                         <td>{sub.terminal_id}</td>
                         <td>{sub.terminal_name}</td>
-                        <td>{sub.terminal_type}</td>
-                        <td>
-                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(sub)}>
-                                <i className="bi bi-pencil-square"></i>
-                            </button>
-                            <button className="btn-app btn-danger-app btn-sm-app"
-                                onClick={() => handleDelete(sub.id, sub.terminal_name)}
-                            >
-                                <i className="bi bi-trash"></i>
-                            </button>
-                        </td>
+                        <td>{sub.terminal_type}</td>                        
                     </tr>
                 ))}
             </tbody>

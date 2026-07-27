@@ -1,11 +1,53 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useCrudPage } from '../utils/useCrudPage';
 import PageHeader from '../components/PageHeader';
-import Terminal_form from '../components/terminal/terminal_form';
 import Terminal_table from '../components/terminal/terminal_table';
+import api from '../api/api';
+import { Toast, Confirm } from '../utils/sweetalert';
 
 const Terminal = () => {
   const crud = useCrudPage();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Handler untuk tombol Sync
+  const handleSync = async () => {
+    Confirm.fire({
+      title: 'Sinkronisasi Data?',
+      text: 'Data terminal akan diperbarui dari Google Sheet.',
+      icon: 'question',
+      confirmButtonText: 'Ya, Sync sekarang!',
+      cancelButtonText: 'Batal'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        setIsSyncing(true);
+        try {
+          const response = await api.post('/terminal/sync-sheet');
+          
+          if (response.data.status === 'success') {
+            Toast.fire({
+              icon: 'success',
+              title: response.data.message || 'Sync berhasil!'
+            });
+            
+            if (crud.triggerRefresh) {
+              crud.triggerRefresh();
+            } else {
+              crud.handleSearch(); 
+            }
+          }
+        } catch (error) {
+          const msg = error.response?.data?.message || error.message || 'Gagal sinkronisasi data';
+          Toast.fire({
+            icon: 'error',
+            title: 'Gagal Sync',
+            text: msg
+          });
+        } finally {
+          setIsSyncing(false);
+        }
+      }
+    });
+  };
 
   return (
     <div>
@@ -14,32 +56,26 @@ const Terminal = () => {
         searchPlaceholder="Cari Terminal ID..."
         searchValue={crud.searchInput}
         onSearchChange={crud.setSearchInput}
-        onSearch={crud.handleSearch}
+        onSearch={crud.handleSearch}        
       >
         <button
-          className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
-          onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
+          className='btn-app btn-primary-app'
+          onClick={handleSync}
+          disabled={isSyncing}
         >
-          {crud.showForm ? <><i className="bi bi-x" /> Tutup</> : <><i className="bi bi-plus" /> Tambah</>}
+          <i className={`bi bi-arrow-repeat ${isSyncing ? 'spin-icon' : ''}`} /> 
+          {isSyncing ? ' Memproses...' : ' Sync'}
         </button>
       </PageHeader>
-
-      {crud.showForm && (
-        <Terminal_form
-          onClose={crud.handleClose}
-          onSuccess={crud.handleRefresh}
-          initialData={crud.editingData}
-        />
-      )}
 
       <div className="app-card">
         <Terminal_table
           refreshTrigger={crud.refreshKey}
-          onEditClick={crud.handleEdit}
           searchTerm={crud.appliedSearch}
         />
       </div>
     </div>
   );
 };
+
 export default Terminal;

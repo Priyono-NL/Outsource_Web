@@ -42,14 +42,7 @@ export const routesConfig = [
     ]
   },
 
-  {
-    label: 'Master Karyawan',
-    icon: 'bi-person-check',
-    group: 2,
-    children: [
-      { path: '/employment', label: 'Karyawan Tetap/Kontrak', icon: 'bi-person-badge', element: <ObEmployee /> },
-    ]
-  },
+  { path: '/employment', label: 'Karyawan Tetap/Kontrak', icon: 'bi-person-badge', element: <ObEmployee />, group: 2 },,
 
   {
     label: 'Transaksional',
