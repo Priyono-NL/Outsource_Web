@@ -15,7 +15,7 @@ class ObEmployee(db.Model):
             'employee_id': self.employee_id,
             'employee_name': self.employee_name,
             'cost_center': self.cost_center,
-            'cc_name': self.cc_master.org_name,
+            'cc_name': self.cc_master.org_name if self.cc_master else "-",
             'card_no': self.card_no,
             'grade': self.grade
         }

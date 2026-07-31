@@ -66,6 +66,7 @@ const Terminal_table = ({ refreshTrigger, searchTerm }) => {
                     <th>Terminal Id</th>
                     <th>Terminal Name</th>
                     <th>Terminal Type</th>
+                    <th>Direction</th>
                 </tr>
             </thead>
             <tbody>{                  
@@ -74,7 +75,8 @@ const Terminal_table = ({ refreshTrigger, searchTerm }) => {
                         <td>{sub.node_id}</td>
                         <td>{sub.terminal_id}</td>
                         <td>{sub.terminal_name}</td>
-                        <td>{sub.terminal_type}</td>                        
+                        <td>{sub.terminal_type}</td>
+                        <td>{sub.direction}</td>
                     </tr>
                 ))}
             </tbody>

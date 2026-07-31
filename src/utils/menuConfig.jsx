@@ -19,7 +19,7 @@ import OsType from '../pages/OsType';
 import Terminal from '../pages/Terminal';
 import ObEmployee from '../pages/ObEmployee';
 import PeriodePuasa from '../pages/periode_puasa';
-
+import AbsensiAll from '../pages/AbsensiAll';
 import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
 
@@ -57,9 +57,18 @@ export const routesConfig = [
   },
 
   {
+    label: 'Report',
+    icon: 'bi-file-earmark-check',
+    group: 3,
+    children: [ 
+      { path: '/absensiAll', label: 'Absensi Report', icon: 'bi-file-earmark', element: <AbsensiAll /> },   
+    ]
+  },
+
+  {
     label: 'Master Data',
     icon: 'bi-database-fill-gear',
-    group: 4,
+    group: 5,
     children: [
       { path: "/costcenter", label: "Master Cost Center", icon: "bi-cash-stack", element: <CostCenter /> },
       { path: "/canteen", label: "Master Kantin", icon: "bi-cup-hot", element: <Canteen /> },
