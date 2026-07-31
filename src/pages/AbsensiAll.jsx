@@ -81,7 +81,7 @@ const AbsensiAll = () => {
   return (
     <div>
       <PageHeader
-        title="Absensi OS"
+        title="Absensi All"
         searchPlaceholder="Cari ID Karyawan / Nama ..."
         searchValue={crud.searchInput}
         onSearchChange={crud.setSearchInput}

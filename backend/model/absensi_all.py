@@ -1,17 +1,18 @@
 from extensions import db
+from datetime import date
 
 class Absensi_all(db.Model):
     __table_args__ = {'schema': 'db-webapps'}
     __tablename__ = 'TBL_ATTENDANCE'
     
-    # Composite Primary Key untuk ORM mapping
+    # Composite Primary Key untuk ORM mapping SQLAlchemy
     employee_id = db.Column(db.Integer, primary_key=True)
     clocking_date = db.Column(db.Date, primary_key=True)    
     
     clock_in = db.Column(db.DateTime)
     clock_out = db.Column(db.DateTime)
 
-    # 1. Relasi ke OS / Outsource
+    # 1. Relasi ke Outsource (OsEmployment)
     employement = db.relationship(
         'OsEmployment', 
         primaryjoin="cast(Absensi_all.employee_id, String) == cast(OsEmployment.employee_code, String)",
@@ -21,7 +22,7 @@ class Absensi_all(db.Model):
         viewonly=True
     )
     
-    # 2. Relasi ke Organic / Internal (Sesuaikan nama kolom NRP jika di ObEmployee menggunakan employee_code)
+    # 2. Relasi ke Organic / Internal (ObEmployee)
     ob_employee = db.relationship(
         'ObEmployee',
         primaryjoin="cast(Absensi_all.employee_id, String) == cast(ObEmployee.employee_id, String)",
@@ -36,7 +37,7 @@ class Absensi_all(db.Model):
         emp_os = self.employement
         emp_ob = self.ob_employee
 
-        # Variable penampung
+        # Variable Penampung Data Karyawan
         emp_code = str(self.employee_id)
         emp_name = None
         gender = None
@@ -45,9 +46,11 @@ class Absensi_all(db.Model):
         cc = None
         emp_type = None
 
-        # ---------------------------------------------------------------------
-        # LOGIKA FALLBACK: Cek OS Karyawan dulu, jika Kosong Baru Cek Organic
-        # ---------------------------------------------------------------------
+        today = date.today()
+
+        # =====================================================================
+        # LOGIKA FALLBACK 1: Karyawan Outsource (OS)
+        # =====================================================================
         if emp_os:
             emp_code = emp_os.employee_code or str(self.employee_id)
             emp_name = emp_os.person.name if getattr(emp_os, 'person', None) else None
@@ -55,19 +58,39 @@ class Absensi_all(db.Model):
             subcom = emp_os.sub_con.sub_company_name if getattr(emp_os, 'sub_con', None) else None
             card = emp_os.OsCard[0].card_number if (getattr(emp_os, 'OsCard', None) and len(emp_os.OsCard) > 0) else None
             cc = emp_os.OsCC[0].cc_master.org_name if (getattr(emp_os, 'OsCC', None) and len(emp_os.OsCC) > 0 and getattr(emp_os.OsCC[0], 'cc_master', None)) else None
-            emp_type = emp_os.OsType[0].type_worker if (getattr(emp_os, 'OsType', None) and len(emp_os.OsType) > 0) else 'OS'
 
+            # Penanganan Presisi OsType (Enum: DAILYWAGE / PIECERATE)
+            if getattr(emp_os, 'OsType', None) and len(emp_os.OsType) > 0:
+                # Cari record tipe pekerja yang masih aktif
+                active_type_obj = next((ot for ot in emp_os.OsType if ot.valid_to and ot.valid_to >= today), emp_os.OsType[0])
+                if active_type_obj and active_type_obj.type_worker:
+                    raw_type = active_type_obj.type_worker
+                    emp_type = raw_type.value if hasattr(raw_type, 'value') else str(raw_type)
+            
+            if not emp_type:
+                emp_type = 'OS'
+
+        # =====================================================================
+        # LOGIKA FALLBACK 2: Karyawan Internal (OB)
+        # =====================================================================
         elif emp_ob:
-            # Ambil properti dari ObEmployee (Safe Navigation pakai getattr)
-            emp_code = getattr(emp_ob, 'employee_id', None)
+            emp_code = getattr(emp_ob, 'employee_id', str(self.employee_id))
             emp_name = getattr(emp_ob, 'employee_name', None)
             gender = getattr(emp_ob, 'gender', None)
             subcom = getattr(emp_ob, 'company_name', 'CRS')
             card = getattr(emp_ob, 'card_no', None)
-            cc = getattr(emp_ob, 'cost_center', None)
+
+            # Ambil nama Cost Center dari cc_master jika ada, fallback ke kode angka
+            if getattr(emp_ob, 'cc_master', None) and getattr(emp_ob.cc_master, 'org_name', None):
+                cc = emp_ob.cc_master.org_name
+            else:
+                cc = getattr(emp_ob, 'cost_center', None)
+
             emp_type = 'TETAP/KONTRAK'
 
-        # Helper pemformatan waktu (HH:mm)
+        # =====================================================================
+        # HELPER FORMATTER WAKTU & TANGGAL
+        # =====================================================================
         def format_time_str(dt_obj):
             if not dt_obj:
                 return None
@@ -76,7 +99,6 @@ class Absensi_all(db.Model):
             dt_str = str(dt_obj)
             return dt_str[11:16] if ' ' in dt_str else dt_str[:5]
 
-        # Helper pemformatan tanggal
         def format_date_str(date_obj, fmt='%Y-%m-%d'):
             if not date_obj:
                 return None

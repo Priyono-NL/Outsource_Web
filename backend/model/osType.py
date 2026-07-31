@@ -5,7 +5,7 @@ class osType(db.Model, AuditMixin):
     __tablename__ = 'os_type'
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.id'))
-    type_worker = db.Column(db.Enum('DAILYWAGE', 'PIECERATE'))
+    type_worker = db.Column(db.String(50))
     posisi = db.Column(db.String(50))
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)    

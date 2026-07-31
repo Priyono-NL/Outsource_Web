@@ -49,7 +49,6 @@ export const routesConfig = [
     icon: 'bi-arrow-left-right',
     group: 3,
     children: [ 
-      { path: '/absensi', label: 'Absensi OS', icon: 'bi-card-checklist', element: <Absensi /> },
       { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
       { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical /> },
       { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },      
@@ -61,7 +60,7 @@ export const routesConfig = [
     icon: 'bi-file-earmark-check',
     group: 3,
     children: [ 
-      { path: '/absensiAll', label: 'Absensi Report', icon: 'bi-file-earmark', element: <AbsensiAll /> },   
+      { path: '/absensiAll', label: 'Absensi Report', icon: 'bi-card-checklist', element: <AbsensiAll /> },   
     ]
   },
 
