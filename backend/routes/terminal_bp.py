@@ -1,9 +1,10 @@
 from flask import Blueprint, request, jsonify
+from datetime import datetime
+import pandas as pd
 from extensions import db
 from model.terminal import terminal
+from .auth_bp import login_required
 from sqlalchemy import or_
-import pandas as pd
-from sqlalchemy import text
 
 SHEET_MIRROR_CSV_URL = "https://docs.google.com/spreadsheets/d/1Fcf6yzxMp5hNm1-YhzO0rwNfk2cL1tmevnJcFM3JDhg/export?format=csv&gid=0"
 
@@ -40,14 +41,9 @@ def index():
 @terminal_bp.route('/terminal/sync-sheet', methods=['POST'])
 def sync_sheet():
     try:
-        # 1. Baca CSV dari Google Sheet Mirror
-        df = pd.read_csv(SHEET_MIRROR_CSV_URL, skiprows=2, dtype=str)
-        
-        # 2. Rapikan Nama Header
+        df = pd.read_csv(SHEET_MIRROR_CSV_URL, dtype=str)
         df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
-        
-        # 3. Filter baris jika kolom 'node' kosong
-        df = df.dropna(subset=['node'])
+        df = df.dropna(subset=['node_id'])
 
         SERVER_CODE_MAP = {
             'ceres': 'CRS',
@@ -56,45 +52,57 @@ def sync_sheet():
         }
         
         success_count = 0
+        now = datetime.now()
         
         for index, row in df.iterrows():
-            raw_node = str(row['node']).strip() if pd.notna(row['node']) else ''
+            # Formatting Value dari Sheet
+            raw_node = str(row['node_id']).strip() if pd.notna(row['node_id']) else ''
             node_val = raw_node.zfill(3) if raw_node.isdigit() else raw_node
-            name_val = str(row['name']) if pd.notna(row['name']) else None
-            kategori_val = str(row['kategori']) if pd.notna(row['kategori']) else None
-            jenis_val = str(row['jenis']) if pd.notna(row['jenis']) else None
-            server_val = str(row['server']) if pd.notna(row['server']) else None
+            name_val = str(row['name']).strip() if pd.notna(row['name']) else None
+            direction_val = str(row['jenis']).strip() if pd.notna(row['jenis']) else None
+            server_val = str(row['server']).strip() if pd.notna(row['server']) else None
+            type_val = str(row['type']).strip() if pd.notna(row['type']) else None
 
             if not node_val:
                 continue
 
+            # Menentukan Prefix terminal_id
             server_key = server_val.lower() if server_val else ''
             server_prefix = SERVER_CODE_MAP.get(server_key, server_val[:3].upper() if server_val else 'UNK')
             terminal_id_val = f"{server_prefix}{node_val}"
 
-            # --- CEK APAKAH DATA TERMINAL SUDAH ADA DI DATABASE ---
+            # --- CEK KE DATABASE (Cek terminal_id & company_id) ---
             existing_terminal = terminal.query.filter_by(
                 terminal_id=terminal_id_val, 
                 company_id=1111
             ).first()
 
             if existing_terminal:
-                # 4a. JIKA SUDAH ADA -> UPDATE
+                # 4a. UPDATE JIKA DATA SUDAH ADA
                 existing_terminal.node_id = node_val
                 existing_terminal.terminal_name = name_val
-                existing_terminal.terminal_type = kategori_val
-                existing_terminal.direction = jenis_val
+                existing_terminal.direction = direction_val
                 existing_terminal.server_loc = server_val
+                existing_terminal.terminal_type = type_val
+                
+                # Audit Trails
+                if hasattr(existing_terminal, 'modified_date'):
+                    existing_terminal.modified_date = now
+                if hasattr(existing_terminal, 'modified_by'):
+                    existing_terminal.modified_by = 'SYNC_SHEET'
+
             else:
-                # 4b. JIKA BELUM ADA -> INSERT BARU
+                # 4b. INSERT JIKA DATA BELUM ADA
                 new_terminal = terminal(
+                    company_id=1111,
                     terminal_id=terminal_id_val,
                     node_id=node_val,
                     terminal_name=name_val,
-                    terminal_type=kategori_val,
-                    direction=jenis_val,
+                    direction=direction_val,
                     server_loc=server_val,
-                    company_id=1111
+                    terminal_type=type_val,
+                    created_date=now,
+                    created_by='SYNC_SHEET'
                 )
                 db.session.add(new_terminal)
 
@@ -113,3 +121,8 @@ def sync_sheet():
             "status": "error",
             "message": f"Gagal Sinkronisasi Data: {str(e)}"
         }), 500
+
+# @terminal_bp.before_request
+# @login_required
+# def before_request():
+#     pass

@@ -2,7 +2,7 @@ from extensions import db
 from model.base import AuditMixin
 
 class terminal(db.Model, AuditMixin):
-    __tablename__ = 'tbl_terminal'
+    __tablename__ = 'terminal_master'
     id = db.Column(db.Integer, primary_key=True)
     node_id = db.Column(db.Integer)
     cost_center = db.Column(db.Integer)
