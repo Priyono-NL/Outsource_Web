@@ -25,6 +25,7 @@ from routes.terminal_bp import terminal_bp
 from routes.ob_emp_bp import ob_emp_bp
 from routes.periode_bp import periode_bp
 from routes.absensi_all_bp import AbsenAll_bp
+from routes.absenReport_bp import AbsenReport_bp
 
 def create_app():
     app = Flask(__name__)
@@ -82,7 +83,8 @@ def create_app():
     app.register_blueprint(periode_bp, url_prefix='/')
     
     app.register_blueprint(AbsenOs_bp, url_prefix='/')
-    app.register_blueprint(AbsenAll_bp, url_prefix= '/')
+    app.register_blueprint(AbsenAll_bp, url_prefix='/')
+    app.register_blueprint(AbsenReport_bp, url_prefix ='/')
     return app
 
 if __name__ == '__main__':

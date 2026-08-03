@@ -1,24 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
-import PageNav from '../PageNav';
 
 const ReportMpCcTable = ({ refreshTrigger, subCompany, searchDate }) => { 
     
     const [absensi, setAbsensi] = useState([]); 
     const [subCompanies, setSubCompanies] = useState([]); 
     const [error, setError] = useState(null); 
-    const [loading, setLoading] = useState(false); // Perbaikan 1: State Loading
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(20);
-    const [totalPages, setTotalPages] = useState(0);
+    const [loading, setLoading] = useState(false);
 
     const fetchData = async () => {
         try {
             setLoading(true);
             setError(null);
             const params = new URLSearchParams({
-                page: currentPage,
-                pageSize: itemsPerPage,
                 sub_company: subCompany || '',
                 search_date: searchDate || '',
             }).toString();
@@ -29,7 +23,6 @@ const ReportMpCcTable = ({ refreshTrigger, subCompany, searchDate }) => {
             if (result && result.status === 'success') { 
                 setAbsensi(Array.isArray(result.data) ? result.data : []);
                 setSubCompanies(Array.isArray(result.sub_companies) ? result.sub_companies : []); 
-                setTotalPages(result.total_page || 0);
             } else { 
                 throw new Error(result?.message || 'Terjadi kesalahan saat mengambil data laporan'); 
             }
@@ -42,18 +35,13 @@ const ReportMpCcTable = ({ refreshTrigger, subCompany, searchDate }) => {
         }
     };
 
-    // Reset ke halaman 1 jika filter berubah
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [subCompany, searchDate]); // Perbaikan 4: Menghapus duplikasi searchDate
-    
-    // Fetch data jika searchDate tersedia
+    // Fetch data jika searchDate tersedia atau saat filter berubah
     useEffect(() => {
         if (!searchDate) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, subCompany, searchDate]);
+    }, [refreshTrigger, subCompany, searchDate]);
 
-    // Perbaikan 2: Deklarasi safeSubComLength & totalColumns
+    // Deklarasi safeSubComLength & totalColumns
     const safeSubComLength = Array.isArray(subCompanies) ? subCompanies.length : 0;
     const totalColumns = safeSubComLength + 2;
 
@@ -88,12 +76,12 @@ const ReportMpCcTable = ({ refreshTrigger, subCompany, searchDate }) => {
                             <tr>
                                 <td colSpan={totalColumns} className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                                    Memuat data laporan...
+                                    Memuat seluruh data laporan...
                                 </td>
                             </tr>
                         ) : absensi.length > 0 ? (
                             absensi.map((emp, index) => (
-                                <tr key={`mp-cc-${emp.cc}-${index}`}>
+                                <tr key={`mp-cc-${emp.cc || 'none'}-${index}`}>
                                     <td>{emp.cc || '-'}</td>
                                     
                                     {/* Looping Nilai Absensi per Sub Company */}
@@ -136,15 +124,6 @@ const ReportMpCcTable = ({ refreshTrigger, subCompany, searchDate }) => {
                         </tfoot>
                     )}
                 </table>
-
-                {/* Perbaikan 3: Pemasangan Kembali Komponen PageNav */}
-                {totalPages > 1 && (
-                    <PageNav 
-                        currentPage={currentPage} 
-                        totalPages={totalPages} 
-                        onPageChange={(page) => setCurrentPage(page)} 
-                    />
-                )}
             </div>        
         </>
     );

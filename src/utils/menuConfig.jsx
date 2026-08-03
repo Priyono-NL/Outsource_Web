@@ -21,6 +21,7 @@ import ObEmployee from '../pages/ObEmployee';
 import PeriodePuasa from '../pages/periode_puasa';
 import AbsensiAll from '../pages/AbsensiAll';
 import Report_MPCC from '../pages/Report_MPCC';
+import Report_Absen from '../pages/Report_Absen';
 
 import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
@@ -63,6 +64,7 @@ export const routesConfig = [
     group: 3,
     children: [ 
       { path: '/absensiAll', label: 'Absensi Report', icon: 'bi-card-checklist', element: <AbsensiAll /> },
+      { path: '/reportHarian', label: 'Report Harian', icon: 'bi-clipboard-check', element: <Report_Absen /> },
       { path: '/reportMpCc', label: 'Manpower / CC', icon: 'bi-person-workspace', element: <Report_MPCC /> },
     ]
   },
