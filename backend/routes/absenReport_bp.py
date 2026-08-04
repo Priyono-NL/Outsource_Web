@@ -9,7 +9,6 @@ from extensions import db
 
 AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
 
-
 # =============================================================================
 # HELPER 1: PENGAMBILAN & PIVOTING DATA MANPOWER COST CENTER (LAPORAN 1)
 # =============================================================================
@@ -89,7 +88,6 @@ def _get_aggregated_mp_cc(sub_company_id, search_date):
     report_data.sort(key=lambda x: x['total_manpower'], reverse=True)
     return sub_company_list, report_data
 
-
 # =============================================================================
 # HELPER 2: LOGIKA SHIFT & PENGAMBILAN DATA LAPORAN HARIAN (LAPORAN 2)
 # =============================================================================
@@ -120,9 +118,6 @@ def determine_shift(clock_in_val, is_saturday):
         else: return 'NS'
 
 def _get_aggregated_daily_shift(search_date):
-    """
-    Mengembalikan tuple: (report_data, totals_os, totals_ob, grand_total, default_shifts)
-    """
     target_date_obj = datetime.strptime(search_date, "%Y-%m-%d")
     is_saturday = (target_date_obj.weekday() == 5)
     default_shifts = ["NS", "SHIFT 1", "SHIFT 2", "SHIFT 3"]
@@ -200,9 +195,7 @@ def _get_aggregated_daily_shift(search_date):
 
     report_data.sort(key=lambda x: x['total_cc'], reverse=True)
     grand_total = sum(totals_os.values()) + sum(totals_ob.values())
-
     return report_data, totals_os, totals_ob, grand_total, default_shifts
-
 
 # =============================================================================
 # ENDPOINT: LAPORAN MANPOWER PER COST CENTER (VIEW & EXPORT)
@@ -261,7 +254,6 @@ def exportMpCc():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 # =============================================================================
 # ENDPOINT: LAPORAN SUMMARY HARIAN SHIFT (VIEW & EXPORT)
@@ -349,3 +341,7 @@ def exportHarian():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# ENDPOINT: LAPORAN MANPOWER PER EMPLOYEE (VIEW & EXPORT)
+# =============================================================================

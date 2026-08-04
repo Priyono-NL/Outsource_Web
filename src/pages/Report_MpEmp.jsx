@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
-import { saveAs } from 'file-saver';
+import { saveAs } from 'file-saver'; 
 
 import api from '../api/api';
 import { Toast } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
 
 import PageHeader from '../components/PageHeader';
-import Summary_Table from '../components/absensi_all/Summary_Table';
+import MpEmp_Table from '../components/absensi_all/MpEmp_Table';
 
-const Report_Absen = () => {
+const Report_MpEmp = () => {
 
   const getTodayString = () => {
     const today = new Date();
@@ -22,27 +22,45 @@ const Report_Absen = () => {
   const crud = useCrudPage();
   const todayStr = getTodayString();
 
+  const [subCompanies, setSubCompanies] = useState([]);
+  const [subCompanyInput, setSubCompanyInput] = useState('');
+  const [appliedSubCompany, setAppliedSubCompany] = useState('');
+
   const [searchDate, setSearchDate] = useState(todayStr);
   const [appliedSearchDate, setAppliedSearchDate] = useState(todayStr);
 
   const [isExporting, setIsExporting] = useState(false);
 
+  useEffect(() => {
+    const loadSubCompanies = async () => {
+      try {
+        const resSub = await api.get('/subcom?page=1&pageSize=200');
+        setSubCompanies(resSub.data?.data || []);
+      } catch (err) {
+        /* silent */
+      }
+    };
+    loadSubCompanies();
+  }, []);
+
   const handleApplyFilters = () => {
     setAppliedSearchDate(searchDate);
+    setAppliedSubCompany(subCompanyInput);
   };
 
   const handleExportExcel = async () => {
     try {
       setIsExporting(true);
       const params = new URLSearchParams({
+        sub_company: appliedSubCompany || '',
         search_date: appliedSearchDate || '',
       }).toString();
 
-      const response = await api.get(`/exportHarian?${params}`, {
+      const response = await api.get(`/exportMpCc?${params}`, {
         responseType: 'blob'
       });
 
-      const fileName = `Report_Absensi_Harian_${appliedSearchDate || 'all'}.xlsx`;
+      const fileName = `Report_Manpower_CC_${appliedSearchDate || 'all'}.xlsx`;
       saveAs(new Blob([response.data]), fileName);
 
       Toast.fire({
@@ -59,12 +77,38 @@ const Report_Absen = () => {
     }
   };
 
+  const subCompanyOptions = [
+    { value: '', label: 'Semua Sub Company' },
+    ...subCompanies.map(sc => ({ 
+      value: sc.sub_company_id, 
+      label: sc.sub_company_name 
+    })),
+  ];
+
   return (
     <div>
-      <PageHeader title="Laporan Harian Per Cost Center" />
+      <PageHeader title="Manpower Per Employee" />
 
       <div className="app-card">
         <div className="filter-bar">
+
+          {/* Filter Sub Company */}
+          <div className="filter-group" style={{ minWidth: 180 }}>
+            <label>Sub Company</label>
+            <Select
+              options={subCompanyOptions}
+              placeholder="Cari..."
+              value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
+              onChange={o => setSubCompanyInput(o?.value || '')}
+              isClearable 
+              isSearchable
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
+            />
+          </div>
 
           {/* Filter Tanggal */}
           <div className="filter-group" style={{ minWidth: 180 }}>
@@ -103,9 +147,10 @@ const Report_Absen = () => {
 
         </div>
         
-        {/* Tabel Rekap Manpower Per Cost Center */}
-        <Summary_Table
+        {/* Tabel Rekap Manpower Per Employee */}
+        <MpEmp_Table
           refreshTrigger={crud.refreshKey}
+          subCompany={appliedSubCompany}
           searchDate={appliedSearchDate}
         />
       </div>
@@ -113,4 +158,4 @@ const Report_Absen = () => {
   );
 };
 
-export default Report_Absen;
+export default Report_MpEmp;
