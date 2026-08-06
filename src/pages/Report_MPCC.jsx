@@ -22,37 +22,20 @@ const Report_MPCC = () => {
   const crud = useCrudPage();
   const todayStr = getTodayString();
 
-  const [subCompanies, setSubCompanies] = useState([]);
-  const [subCompanyInput, setSubCompanyInput] = useState('');
-  const [appliedSubCompany, setAppliedSubCompany] = useState('');
-
   const [searchDate, setSearchDate] = useState(todayStr);
   const [appliedSearchDate, setAppliedSearchDate] = useState(todayStr);
 
   const [isExporting, setIsExporting] = useState(false);
 
-  useEffect(() => {
-    const loadSubCompanies = async () => {
-      try {
-        const resSub = await api.get('/subcom?page=1&pageSize=200');
-        setSubCompanies(resSub.data?.data || []);
-      } catch (err) {
-        /* silent */
-      }
-    };
-    loadSubCompanies();
-  }, []);
 
   const handleApplyFilters = () => {
     setAppliedSearchDate(searchDate);
-    setAppliedSubCompany(subCompanyInput);
   };
 
   const handleExportExcel = async () => {
     try {
       setIsExporting(true);
       const params = new URLSearchParams({
-        sub_company: appliedSubCompany || '',
         search_date: appliedSearchDate || '',
       }).toString();
 
@@ -77,38 +60,12 @@ const Report_MPCC = () => {
     }
   };
 
-  const subCompanyOptions = [
-    { value: '', label: 'Semua Sub Company' },
-    ...subCompanies.map(sc => ({ 
-      value: sc.sub_company_id, 
-      label: sc.sub_company_name 
-    })),
-  ];
-
   return (
     <div>
       <PageHeader title="Manpower Per Cost Center" />
 
       <div className="app-card">
         <div className="filter-bar">
-
-          {/* Filter Sub Company */}
-          <div className="filter-group" style={{ minWidth: 180 }}>
-            <label>Sub Company</label>
-            <Select
-              options={subCompanyOptions}
-              placeholder="Cari..."
-              value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => setSubCompanyInput(o?.value || '')}
-              isClearable 
-              isSearchable
-              menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
-            />
-          </div>
 
           {/* Filter Tanggal */}
           <div className="filter-group" style={{ minWidth: 180 }}>
@@ -150,7 +107,6 @@ const Report_MPCC = () => {
         {/* Tabel Rekap Manpower Per Cost Center */}
         <MPCC_Table
           refreshTrigger={crud.refreshKey}
-          subCompany={appliedSubCompany}
           searchDate={appliedSearchDate}
         />
       </div>

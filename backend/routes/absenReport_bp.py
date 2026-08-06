@@ -12,7 +12,7 @@ AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
 # =============================================================================
 # HELPER 1: PENGAMBILAN & PIVOTING DATA MANPOWER COST CENTER (LAPORAN 1)
 # =============================================================================
-def _get_aggregated_mp_cc(sub_company_id, search_date):
+def _get_aggregated_mp_cc(search_date):
     att_where = ["employee_id < 10000000", "employee_id IS NOT NULL"]
     params = {}
 
@@ -33,19 +33,16 @@ def _get_aggregated_mp_cc(sub_company_id, search_date):
     if not attendance_rows:
         return [], []
 
-    # Mapping OS
-    os_subcom_clause = " AND os.sub_company_id = :sub_company_id " if sub_company_id else ""
-    sql_os = f"""
+    # Mapping OS (Hapus os_subcom_clause dan os_params)
+    sql_os = """
         SELECT CAST(os.employee_code AS CHAR) AS emp_id, cc.org_name AS cc_name,
                COALESCE(sc.sub_company_name, os.sub_company_id, 'OS') AS sub_com_name
         FROM os_employment os
         LEFT JOIN os_org occ ON os.id = occ.employee_id
         LEFT JOIN org_cost_center cc ON occ.cc_id = cc.cost_center
         LEFT JOIN sub_company sc ON os.sub_company_id = sc.sub_company_id
-        WHERE 1=1 {os_subcom_clause}
     """
-    os_params = {'sub_company_id': sub_company_id} if sub_company_id else {}
-    os_rows = db.session.execute(text(sql_os), os_params).mappings().fetchall()
+    os_rows = db.session.execute(text(sql_os)).mappings().fetchall()
     os_map = {str(r['emp_id']): {"cc": r['cc_name'] or 'TIDAK ADA CC', "sub_com": r['sub_com_name'] or 'UNKNOWN'} for r in os_rows if r['emp_id']}
 
     # Mapping OB
@@ -57,36 +54,34 @@ def _get_aggregated_mp_cc(sub_company_id, search_date):
     ob_rows = db.session.execute(text(sql_ob)).mappings().fetchall()
     ob_map = {str(r['emp_id']): {"cc": r['cc_name'] or 'TIDAK ADA CC', "sub_com": r['sub_com_name']} for r in ob_rows if r['emp_id']}
 
-    # Pivoting
     cc_pivot = defaultdict(lambda: defaultdict(int))
-    all_sub_companies = set()
+    
+    allowed_sub_companies = ["GLB", "PRO"]
 
     for row in attendance_rows:
         str_emp_id = str(row['employee_id'])
         total_absen = row['total_absen']
         info = os_map.get(str_emp_id) or ob_map.get(str_emp_id)
 
-        if sub_company_id and str_emp_id not in os_map:
-            continue
-
         cc_name = info['cc'] if info else 'TIDAK ADA CC'
         sub_com = info['sub_com'] if info else 'UNKNOWN'
 
-        cc_pivot[cc_name][sub_com] += total_absen
-        all_sub_companies.add(sub_com)
+        if sub_com not in allowed_sub_companies:
+            continue
 
-    sub_company_list = sorted(list(all_sub_companies))
-    
+        cc_pivot[cc_name][sub_com] += total_absen
+
     report_data = []
     for cc_name, sub_counts in cc_pivot.items():
         report_data.append({
             "cc": cc_name,
-            "sub_companies": {sc: sub_counts.get(sc, 0) for sc in sub_company_list},
+            "sub_companies": {sc: sub_counts.get(sc, 0) for sc in allowed_sub_companies},
             "total_manpower": sum(sub_counts.values())
         })
 
     report_data.sort(key=lambda x: x['total_manpower'], reverse=True)
-    return sub_company_list, report_data
+    
+    return allowed_sub_companies, report_data
 
 # =============================================================================
 # HELPER 2: LOGIKA SHIFT & PENGAMBILAN DATA LAPORAN HARIAN (LAPORAN 2)
@@ -107,20 +102,30 @@ def determine_shift(clock_in_val, is_saturday):
         return 'NS'
 
     if is_saturday:
-        if 1500 <= jam <= 1900: return 'SHIFT 3'
-        elif 1000 <= jam <= 1400: return 'SHIFT 2'
-        elif 400 <= jam <= 900: return 'SHIFT 1' if jam < 730 else 'NS'
-        else: return 'NS'
+        # ==================== HARI SABTU ====================
+        if 1500 <= jam <= 1900: 
+            return 'SHIFT 3'
+        elif 1000 <= jam <= 1400: 
+            return 'SHIFT 2'
+        elif 400 <= jam <= 900: 
+            return 'SHIFT 1'
+        else: 
+            return 'NS'
     else:
-        if 2000 <= jam <= 2359: return 'SHIFT 3'
-        elif 1300 <= jam <= 1700: return 'SHIFT 2'
-        elif 400 <= jam <= 1000: return 'SHIFT 1' if jam < 730 else 'NS'
-        else: return 'NS'
+        # ==================== HARI BIASA ====================
+        if jam >= 2000 or jam < 400: 
+            return 'SHIFT 3'
+        elif 1300 <= jam <= 1700: 
+            return 'SHIFT 2'
+        elif 400 <= jam <= 1000: 
+            return 'SHIFT 1'
+        else: 
+            return 'NS'
 
 def _get_aggregated_daily_shift(search_date):
     target_date_obj = datetime.strptime(search_date, "%Y-%m-%d")
     is_saturday = (target_date_obj.weekday() == 5)
-    default_shifts = ["NS", "SHIFT 1", "SHIFT 2", "SHIFT 3"]
+    default_shifts = ["SHIFT 1", "SHIFT 2", "SHIFT 3"]
 
     sql_attendance = """
         SELECT employee_id, clock_in
@@ -203,10 +208,8 @@ def _get_aggregated_daily_shift(search_date):
 @AbsenReport_bp.route('/reportMpCc')
 def reportMpCc():
     try:
-        sub_company_id = request.args.get('sub_company', '', type=str).strip()
         search_date = request.args.get('search_date', '', type=str).strip()
-
-        sub_company_list, report_data = _get_aggregated_mp_cc(sub_company_id, search_date)
+        sub_company_list, report_data = _get_aggregated_mp_cc(search_date)
 
         return jsonify({
             "status": "success",
@@ -219,10 +222,8 @@ def reportMpCc():
 @AbsenReport_bp.route('/exportMpCc')
 def exportMpCc():
     try:
-        sub_company_id = request.args.get('sub_company', '', type=str).strip()
         search_date = request.args.get('search_date', '', type=str).strip()
-
-        sub_company_list, report_data = _get_aggregated_mp_cc(sub_company_id, search_date)
+        sub_company_list, report_data = _get_aggregated_mp_cc(search_date)
 
         if not report_data:
             return jsonify({"status": "error", "message": "Data absensi tidak ditemukan"}), 400
@@ -345,3 +346,144 @@ def exportHarian():
 # =============================================================================
 # ENDPOINT: LAPORAN MANPOWER PER EMPLOYEE (VIEW & EXPORT)
 # =============================================================================
+def _get_mp_employee_data(start_date, end_date, sub_company_id):
+    if not start_date or not end_date:
+        raise ValueError("Parameter start_date dan end_date wajib diisi")
+
+    sql_attendance = """
+        SELECT 
+            employee_id, 
+            COUNT(*) AS working_days,
+            SUM(TIMESTAMPDIFF(MINUTE, clock_in, clock_out)) / 60.0 AS working_hours
+        FROM `db-webapps`.`TBL_ATTENDANCE`
+        WHERE clocking_date BETWEEN :start_date AND :end_date
+          AND employee_id < 10000000 
+          AND employee_id IS NOT NULL
+        GROUP BY employee_id
+    """
+    att_rows = db.session.execute(text(sql_attendance), {
+        'start_date': start_date, 
+        'end_date': end_date
+    }).mappings().fetchall()
+
+    if not att_rows:
+        return []
+        
+    att_map = {str(r['employee_id']): r for r in att_rows}
+
+    os_subcom_clause = " AND os.sub_company_id = :sub_company_id " if sub_company_id else ""
+    sql_os = f"""
+        SELECT 
+            CAST(os.employee_code AS CHAR) AS emp_id,
+            p.name AS display_name,
+            cc.org_name AS cc_name,
+            os.valid_from,
+            os.valid_to
+        FROM os_employment os
+        LEFT JOIN os_person p ON os.person_id = p.person_id
+        LEFT JOIN os_org occ ON os.id = occ.employee_id
+        LEFT JOIN org_cost_center cc ON occ.cc_id = cc.cost_center
+        WHERE 1=1 {os_subcom_clause}
+    """
+    os_params = {'sub_company_id': sub_company_id} if sub_company_id else {}
+    os_rows = db.session.execute(text(sql_os), os_params).mappings().fetchall()
+    
+    report_data = []
+    for row in os_rows:
+        emp_id = str(row['emp_id'])
+        
+        if emp_id in att_map:
+            att_data = att_map[emp_id]
+            
+            join_dt = row['valid_from'].strftime('%d-%b-%Y').upper() if row['valid_from'] else '-'
+            term_dt = row['valid_to'].strftime('%d-%b-%Y').upper() if row['valid_to'] else '-'
+            
+            report_data.append({
+                "emp_id": emp_id,
+                "display_name": row['display_name'] or '-',
+                "cc_name": row['cc_name'] or 'TIDAK ADA CC',
+                "working_days": int(att_data['working_days'] or 0),
+                "working_hours": round(float(att_data['working_hours'] or 0), 2),
+                "join_date": join_dt,
+                "termination_date": term_dt
+            }) 
+
+    return report_data
+
+# =============================================================================
+# ENDPOINT: LAPORAN MANPOWER PER EMPLOYEE (VIEW API DENGAN PAGINATION)
+# =============================================================================
+@AbsenReport_bp.route('/reportMpEmp')
+def reportMpEmployee():
+    try:
+        start_date = request.args.get('start_date', '').strip()
+        end_date = request.args.get('end_date', '').strip()
+        sub_company_id = request.args.get('sub_company', '').strip()
+
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('pageSize', 10))
+
+        report_data = _get_mp_employee_data(start_date, end_date, sub_company_id)
+
+        total_item = len(report_data)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        
+        paginated_data = report_data[start_idx:end_idx]
+
+        return jsonify({
+            "status": "success",
+            "data": paginated_data,
+            "total_item": total_item,
+            "current_page": page,
+            "total_page": (total_item + page_size - 1) // page_size
+        }), 200
+
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@AbsenReport_bp.route('/exportMpEmp')
+def exportMpEmployee():
+    try:
+        start_date = request.args.get('start_date', '').strip()
+        end_date = request.args.get('end_date', '').strip()
+        sub_company_id = request.args.get('sub_company', '').strip()
+
+        report_data = _get_mp_employee_data(start_date, end_date, sub_company_id)
+
+        if not report_data:
+            return jsonify({"status": "error", "message": "Data absensi tidak ditemukan untuk periode ini"}), 400
+
+        excel_rows = []
+        for row in report_data:
+            excel_rows.append({
+                'Employee Id': row['emp_id'],
+                'Display Name': row['display_name'],
+                'Cost Center': row['cc_name'],
+                'Number of Working Days': row['working_days'],
+                'Working Hours': row['working_hours'],
+                'Join Date': row['join_date'],
+                'Termination Date': row['termination_date']
+            })
+
+        df = pd.DataFrame(excel_rows)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='MP_Per_Employee')
+        output.seek(0)
+
+        filename = f"Report_Manpower_Employee_{start_date}_to_{end_date}.xlsx"
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

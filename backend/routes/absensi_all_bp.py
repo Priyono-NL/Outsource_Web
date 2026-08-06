@@ -21,7 +21,7 @@ def index():
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str)
         start_date = request.args.get('start_date', '', type=str)
-        search_date = request.args.get('search_date', '', type=str)
+        end_date = request.args.get('end_date', '', type=str)
         status_filter = request.args.get('status_filter', 'all_data', type=str)
 
         query = Absensi_all.query
@@ -32,8 +32,8 @@ def index():
         # Filter Tanggal
         if start_date:
             query = query.filter(Absensi_all.clocking_date >= start_date)
-        if search_date:
-            query = query.filter(Absensi_all.clocking_date <= search_date)
+        if end_date:
+            query = query.filter(Absensi_all.clocking_date <= end_date)
 
         # Filter Status Absensi (Violations)
         if status_filter == 'violation_all':

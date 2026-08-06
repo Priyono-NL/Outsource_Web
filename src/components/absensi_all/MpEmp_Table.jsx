@@ -1,55 +1,62 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
+// Sesuaikan path import di bawah ini dengan struktur folder Anda
+import PageNav from '../PageNav'; 
 
-const ReportMpEmp = ({ refreshTrigger, subCompany, searchDate }) => { 
+const MpEmp_Table = ({ refreshTrigger, subCompany, startDate, endDate }) => { 
     
-    const [absensi, setAbsensi] = useState([]); 
-    const [subCompanies, setSubCompanies] = useState([]); 
+    const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
     const [loading, setLoading] = useState(false);
 
+    // State untuk Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+    const [totalItem, setTotalItem] = useState(0);
+    const [totalPage, setTotalPage] = useState(0);
+
     const fetchData = async () => {
+        if (!startDate || !endDate) return;
+
         try {
             setLoading(true);
             setError(null);
+            
             const params = new URLSearchParams({
                 sub_company: subCompany || '',
-                search_date: searchDate || '',
+                start_date: startDate || '',
+                end_date: endDate || '',
+                page: currentPage,
+                pageSize: pageSize
             }).toString();
 
-            const response = await api.get(`/reportMpCc?${params}`);
+            const response = await api.get(`/reportMpEmp?${params}`);
             const result = response.data;
             
             if (result && result.status === 'success') { 
-                setAbsensi(Array.isArray(result.data) ? result.data : []);
-                setSubCompanies(Array.isArray(result.sub_companies) ? result.sub_companies : []); 
+                setEmployees(Array.isArray(result.data) ? result.data : []);
+                setTotalItem(result.total_item || 0);
+                setTotalPage(result.total_page || 0);
             } else { 
                 throw new Error(result?.message || 'Terjadi kesalahan saat mengambil data laporan'); 
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
-            setAbsensi([]);
-            setSubCompanies([]);
+            setEmployees([]);
+            setTotalItem(0);
+            setTotalPage(0);
         } finally {
             setLoading(false);
         }
     };
 
-    // Fetch data jika searchDate tersedia atau saat filter berubah
     useEffect(() => {
-        if (!searchDate) return;
+        setCurrentPage(1);
+    }, [subCompany, startDate, endDate]);
+
+    useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, searchDate]);
-
-    // Deklarasi safeSubComLength & totalColumns
-    const safeSubComLength = Array.isArray(subCompanies) ? subCompanies.length : 0;
-    const totalColumns = safeSubComLength + 2;
-
-    const grandTotalManpower = absensi.reduce((acc, curr) => acc + (curr?.total_manpower || 0), 0);
-
-    const getSubCompanyTotal = (scName) => {
-        return absensi.reduce((acc, curr) => acc + (curr?.sub_companies?.[scName] || 0), 0);
-    };
+    }, [refreshTrigger, subCompany, startDate, endDate, currentPage]);
 
     return (
         <>
@@ -58,75 +65,64 @@ const ReportMpEmp = ({ refreshTrigger, subCompany, searchDate }) => {
                     <i className="bi bi-exclamation-triangle-fill me-2"></i>{error}
                 </div>
             )}        
-            
+
             <div className="table-responsive">
-                <table className="app-table">
+                <table className="app-table table-hover table-striped mb-3">
                     <thead>
                         <tr>
-                            <th>COST CENTER</th>
-                            {/* Render Nama Sub Company secara Dinamis */}
-                            {safeSubComLength > 0 && subCompanies.map((scName, idx) => (
-                                <th key={`head-sc-${idx}`}>{scName}</th>
-                            ))}
-                            <th>TOTAL MANPOWER</th>
+                            <th className="text-center">Employee ID</th>
+                            <th>Display Name</th>
+                            <th className="text-center">Cost Center</th>
+                            <th className="text-center">Working Days</th>
+                            <th className="text-center">Working Hours</th>
+                            <th className="text-center">Join Date</th>
+                            <th className="text-center">Termination Date</th>
                         </tr>
                     </thead>
                     <tbody>
                         { loading ? (
                             <tr>
-                                <td colSpan={totalColumns} className="text-center py-4 text-muted">
+                                <td colSpan="7" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                                    Memuat seluruh data laporan...
+                                    Memuat data kehadiran karyawan...
                                 </td>
                             </tr>
-                        ) : absensi.length > 0 ? (
-                            absensi.map((emp, index) => (
-                                <tr key={`mp-cc-${emp.cc || 'none'}-${index}`}>
-                                    <td>{emp.cc || '-'}</td>
-                                    
-                                    {/* Looping Nilai Absensi per Sub Company */}
-                                    {safeSubComLength > 0 && subCompanies.map((scName, scIdx) => {
-                                        const count = emp.sub_companies?.[scName] || 0;
-                                        return (
-                                            <td key={`val-${scIdx}`}>
-                                                {count > 0 ? count : '-'}
-                                            </td>
-                                        );
-                                    })}
-                                    
-                                    <td>{emp.total_manpower || 0}</td>
+                        ) : employees.length > 0 ? (
+                            employees.map((emp, index) => (
+                                <tr key={`mp-emp-${emp.emp_id}-${index}`}>
+                                    <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
+                                    <td>{emp.display_name || '-'}</td>
+                                    <td className="text-center">{emp.cc_name || '-'}</td>
+                                    <td className="text-center">{emp.working_days || 0}</td>
+                                    <td className="text-center text-primary fw-bold">
+                                        {(emp.working_hours || 0).toFixed(2)}
+                                    </td>
+                                    <td className="text-center">{emp.join_date || '-'}</td>
+                                    <td className="text-center">{emp.termination_date || '-'}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={totalColumns} className="empty-state text-center py-4 text-muted">
+                                <td colSpan="7" className="empty-state text-center py-4 text-muted">
                                     <i className="bi bi-inbox d-block mb-1 fs-4"></i>
-                                    Data absensi tidak ditemukan
+                                    Data absensi tidak ditemukan untuk periode ini
                                 </td>
                             </tr>
                         )}
                     </tbody>
 
-                    {/* Baris Total di Bagian Bawah */}
-                    {!loading && absensi.length > 0 && (
-                        <tfoot>
-                            <tr className="fw-bold" style={{ backgroundColor: '#f4f5f7', borderTop: '2px solid #333' }}>
-                                <td>TOTAL</td>
-                                
-                                {safeSubComLength > 0 && subCompanies.map((scName, scIdx) => (
-                                    <td key={`foot-sc-${scIdx}`}>
-                                        {getSubCompanyTotal(scName)}
-                                    </td>
-                                ))}
-                                
-                                <td>{grandTotalManpower}</td>
-                            </tr>
-                        </tfoot>
-                    )}
                 </table>
             </div>        
+
+            {!loading && totalPage > 1 && (
+                <PageNav 
+                    currentPage={currentPage} 
+                    totalPages={totalPage} 
+                    onPageChange={setCurrentPage} 
+                />
+            )}
         </>
     );
 };
 
-export default ReportMpEmp;
+export default MpEmp_Table;

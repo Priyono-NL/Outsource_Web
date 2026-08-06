@@ -26,8 +26,10 @@ const Report_MpEmp = () => {
   const [subCompanyInput, setSubCompanyInput] = useState('');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
 
-  const [searchDate, setSearchDate] = useState(todayStr);
-  const [appliedSearchDate, setAppliedSearchDate] = useState(todayStr);
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [appliedStartDate, setAppliedStartDate] = useState(todayStr);
+  const [appliedEndDate, setAppliedEndDate] = useState(todayStr);
 
   const [isExporting, setIsExporting] = useState(false);
 
@@ -43,8 +45,10 @@ const Report_MpEmp = () => {
     loadSubCompanies();
   }, []);
 
+  // Update State yang diaplikasikan saat tombol "Terapkan" ditekan
   const handleApplyFilters = () => {
-    setAppliedSearchDate(searchDate);
+    setAppliedStartDate(startDate);
+    setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
   };
 
@@ -53,14 +57,15 @@ const Report_MpEmp = () => {
       setIsExporting(true);
       const params = new URLSearchParams({
         sub_company: appliedSubCompany || '',
-        search_date: appliedSearchDate || '',
+        start_date: appliedStartDate || '',
+        end_date: appliedEndDate || '',
       }).toString();
 
-      const response = await api.get(`/exportMpCc?${params}`, {
+      const response = await api.get(`/exportMpEmp?${params}`, {
         responseType: 'blob'
       });
 
-      const fileName = `Report_Manpower_CC_${appliedSearchDate || 'all'}.xlsx`;
+      const fileName = `Report_MP_Employee_${appliedStartDate}_to_${appliedEndDate}.xlsx`;
       saveAs(new Blob([response.data]), fileName);
 
       Toast.fire({
@@ -110,14 +115,25 @@ const Report_MpEmp = () => {
             />
           </div>
 
-          {/* Filter Tanggal */}
-          <div className="filter-group" style={{ minWidth: 180 }}>
-            <label>Tanggal</label>
+          {/* Filter Tanggal Mulai */}
+          <div className="filter-group" style={{ minWidth: 150 }}>
+            <label>Tanggal Mulai</label>
             <input 
               type="date" 
               className="form-control-app"
-              value={searchDate}
-              onChange={(e) => setSearchDate(e.target.value)}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+
+          {/* Filter Tanggal Sampai */}
+          <div className="filter-group" style={{ minWidth: 150 }}>
+            <label>Sampai</label>
+            <input 
+              type="date" 
+              className="form-control-app"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
 
@@ -147,11 +163,11 @@ const Report_MpEmp = () => {
 
         </div>
         
-        {/* Tabel Rekap Manpower Per Employee */}
         <MpEmp_Table
           refreshTrigger={crud.refreshKey}
           subCompany={appliedSubCompany}
-          searchDate={appliedSearchDate}
+          startDate={appliedStartDate}
+          endDate={appliedEndDate}
         />
       </div>
     </div>
