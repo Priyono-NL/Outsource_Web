@@ -31,8 +31,12 @@ const AbsensiAll = () => {
   const [editData, setEditData] = useState(null);
 
   const [subCompanies, setSubCompanies] = useState([]);
-  const [subCompanyInput, setSubCompanyInput]   = useState('');
+  const [subCompanyInput, setSubCompanyInput] = useState('');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
+
+  const [departments, setDepartments] = useState([]);
+  const [departmentInput, setDepartmentInput] = useState('');
+  const [appliedDepartment, setAppliedDepartment] = useState('');
 
   const [startDate, setStartDate] = useState(getFirstDayOfMonth());
   const [endDate, setEndDate] = useState(getTodayString());
@@ -50,8 +54,10 @@ const AbsensiAll = () => {
       try {
         const [resSub, resDept] = await Promise.all([
           api.get('/subcom?page=1&pageSize=200'),
+          api.get('/costcenter?page=1&pageSize=200'),
         ]);
         setSubCompanies(resSub.data.data);
+        setDepartments(resDept.data.data);
       } catch { /* silent */ }
     };
     load();
@@ -61,6 +67,7 @@ const AbsensiAll = () => {
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
+    setAppliedDepartment(departmentInput);
     setAppliedStatusFilter(statusFilter);
     crud.handleSearch();
   };
@@ -68,6 +75,11 @@ const AbsensiAll = () => {
   const subCompanyOptions = [
     { value: '', label: 'Semua Sub Company' },
     ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+  ];
+
+  const departmentOptions = [
+    { value: '', label: 'Semua Department' },
+    ...departments.map(d => ({ value: d.cost_center, label: d.org_name })),
   ];
 
   const statusOptions = [
@@ -82,7 +94,7 @@ const AbsensiAll = () => {
     <div>
       <PageHeader
         title="Absensi All"
-        searchPlaceholder="Cari ID Karyawan / Nama ..."
+        searchPlaceholder="Cari ID Karyawan / Nama / Card Number ..."
         searchValue={crud.searchInput}
         onSearchChange={crud.setSearchInput}
         onSearch={handleApplyFilters}
@@ -114,6 +126,22 @@ const AbsensiAll = () => {
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
               onChange={o => setSubCompanyInput(o?.value || '')}
+              isClearable isSearchable
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
+            />
+          </div>
+
+          <div className="filter-group" style={{ minWidth: 180 }}>
+            <label>Department</label>
+            <Select
+              options={departmentOptions}
+              placeholder="Cari..."
+              value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
+              onChange={o => setDepartmentInput(o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
               styles={{ 
@@ -164,6 +192,7 @@ const AbsensiAll = () => {
           refreshTrigger={crud.refreshKey}
           searchTerm={crud.appliedSearch}
           subCompany={appliedSubCompany}
+          department={appliedDepartment}
           startDate={appliedStartDate}
           endDate={appliedEndDate}
           statusFilter={appliedStatusFilter}

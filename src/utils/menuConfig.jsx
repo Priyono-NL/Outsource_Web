@@ -1,24 +1,30 @@
 import React from 'react';
 
 import Dashboard from '../pages/Dashboard';
-import Alokasi from '../pages/Alokasi';
-import OsMedical from '../pages/OsMedical';
-import OsTraining from '../pages/OsTraining';
-import CostCenter from '../pages/CostCenter';
-import SubCompany from '../pages/SubCompany';
-import Training_m from '../pages/Training_m';
-import Medical_m from '../pages/Medical_m';
-import Canteen from '../pages/Canteen';
+
+import Employement from '../pages/Employment';
 import OsCard from '../pages/OsCard';
 import OsCC from '../pages/OsCC';
 import OsGrade from '../pages/OsGrade';
 import Blacklist from '../pages/Blacklist';
 import Biodata from '../pages/Biodata';
-import Employement from '../pages/Employment';
 import OsType from '../pages/OsType';
+
+import Alokasi from '../pages/Alokasi';
+import OsMedical from '../pages/OsMedical';
+import OsTraining from '../pages/OsTraining';
+
+import Canteen from '../pages/Canteen';
+import CostCenter from '../pages/CostCenter';
+import SubCompany from '../pages/SubCompany';
+import Training_m from '../pages/Training_m';
+import Medical_m from '../pages/Medical_m';
 import Terminal from '../pages/Terminal';
-import ObEmployee from '../pages/ObEmployee';
+
 import PeriodePuasa from '../pages/periode_puasa';
+
+import ObEmployee from '../pages/ObEmployee';
+
 import AbsensiAll from '../pages/AbsensiAll';
 import Report_MPCC from '../pages/Report_MPCC';
 import Report_Absen from '../pages/Report_Absen';
@@ -26,8 +32,6 @@ import Report_MpEmp from '../pages/Report_MpEmp';
 
 import RolePermission from '../pages/RolePermission';
 import ChangeLogin from '../pages/ChangeLogin';
-
-import Absensi from '../pages/Absensi';
 
 export const routesConfig = [  
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },

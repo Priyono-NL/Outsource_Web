@@ -3,7 +3,7 @@ from io import BytesIO
 from collections import defaultdict
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, date
 
 from extensions import db
 
@@ -13,7 +13,8 @@ AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
 # HELPER 1: PENGAMBILAN & PIVOTING DATA MANPOWER COST CENTER (LAPORAN 1)
 # =============================================================================
 def _get_aggregated_mp_cc(search_date):
-    att_where = ["employee_id < 10000000", "employee_id IS NOT NULL"]
+    filter_date = search_date if search_date else date.today().strftime('%Y-%m-%d')
+    att_where = ["employee_id < 10000000", "employee_id IS NOT NULL", "card_id != '00000.00000'"]
     params = {}
 
     if search_date:
@@ -25,7 +26,7 @@ def _get_aggregated_mp_cc(search_date):
     sql_attendance = f"""
         SELECT employee_id, COUNT(*) AS total_absen
         FROM `db-webapps`.`TBL_ATTENDANCE`
-        WHERE {att_where_sql}
+        WHERE {att_where_sql} 
         GROUP BY employee_id
     """
     attendance_rows = db.session.execute(text(sql_attendance), params).mappings().fetchall()
@@ -33,7 +34,6 @@ def _get_aggregated_mp_cc(search_date):
     if not attendance_rows:
         return [], []
 
-    # Mapping OS (Hapus os_subcom_clause dan os_params)
     sql_os = """
         SELECT CAST(os.employee_code AS CHAR) AS emp_id, cc.org_name AS cc_name,
                COALESCE(sc.sub_company_name, os.sub_company_id, 'OS') AS sub_com_name
@@ -41,8 +41,9 @@ def _get_aggregated_mp_cc(search_date):
         LEFT JOIN os_org occ ON os.id = occ.employee_id
         LEFT JOIN org_cost_center cc ON occ.cc_id = cc.cost_center
         LEFT JOIN sub_company sc ON os.sub_company_id = sc.sub_company_id
+        WHERE os.valid_to >= :filter_date
     """
-    os_rows = db.session.execute(text(sql_os)).mappings().fetchall()
+    os_rows = db.session.execute(text(sql_os), {'filter_date': filter_date}).mappings().fetchall()
     os_map = {str(r['emp_id']): {"cc": r['cc_name'] or 'TIDAK ADA CC', "sub_com": r['sub_com_name'] or 'UNKNOWN'} for r in os_rows if r['emp_id']}
 
     # Mapping OB
@@ -132,6 +133,7 @@ def _get_aggregated_daily_shift(search_date):
         FROM `db-webapps`.`TBL_ATTENDANCE`
         WHERE clocking_date = :search_date
           AND employee_id IS NOT NULL
+          AND card_id != '00000.00000'
     """
     attendance_rows = db.session.execute(text(sql_attendance), {'search_date': search_date}).mappings().fetchall()
 
@@ -144,8 +146,9 @@ def _get_aggregated_daily_shift(search_date):
         FROM os_employment os
         LEFT JOIN os_org occ ON os.id = occ.employee_id
         LEFT JOIN org_cost_center cc ON occ.cc_id = cc.cost_center
+        WHERE os.valid_to >= :filter_date
     """
-    os_rows = db.session.execute(text(sql_os)).mappings().fetchall()
+    os_rows = db.session.execute(text(sql_os), {'filter_date': target_date_obj}).mappings().fetchall()
     os_map = {str(r['emp_id']): r['cc_name'] or 'TIDAK ADA CC' for r in os_rows if r['emp_id']}
 
     sql_ob = """
@@ -359,6 +362,7 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id):
         WHERE clocking_date BETWEEN :start_date AND :end_date
           AND employee_id < 10000000 
           AND employee_id IS NOT NULL
+          AND card_id != '00000.00000'
         GROUP BY employee_id
     """
     att_rows = db.session.execute(text(sql_attendance), {
@@ -383,9 +387,11 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id):
         LEFT JOIN os_person p ON os.person_id = p.person_id
         LEFT JOIN os_org occ ON os.id = occ.employee_id
         LEFT JOIN org_cost_center cc ON occ.cc_id = cc.cost_center
-        WHERE 1=1 {os_subcom_clause}
+        WHERE os.valid_to >= :start_date {os_subcom_clause}
     """
-    os_params = {'sub_company_id': sub_company_id} if sub_company_id else {}
+    os_params = {'start_date': start_date}
+    if sub_company_id:
+        os_params['sub_company_id'] = sub_company_id
     os_rows = db.session.execute(text(sql_os), os_params).mappings().fetchall()
     
     report_data = []

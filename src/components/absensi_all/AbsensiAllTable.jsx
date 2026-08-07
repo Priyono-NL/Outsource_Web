@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter, onEditClick }) => { 
+const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, onEditClick }) => { 
     
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
@@ -18,6 +18,7 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, startDate, en
                 pageSize: itemsPerPage,
                 search: searchTerm || '',
                 sub_company: subCompany || '',
+                department: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data'
@@ -39,12 +40,12 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, startDate, en
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, startDate, endDate, statusFilter]);
+    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter]);
     
     useEffect(() => {
         if (!startDate || !endDate) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter]);
 
     return (
     <>
