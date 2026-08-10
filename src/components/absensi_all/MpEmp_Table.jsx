@@ -3,7 +3,7 @@ import api from '../../api/api';
 // Sesuaikan path import di bawah ini dengan struktur folder Anda
 import PageNav from '../PageNav'; 
 
-const MpEmp_Table = ({ refreshTrigger, subCompany, startDate, endDate }) => { 
+const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDate }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -24,6 +24,7 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, startDate, endDate }) => {
             
             const params = new URLSearchParams({
                 sub_company: subCompany || '',
+                department: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
                 page: currentPage,
@@ -52,11 +53,11 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, startDate, endDate }) => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, startDate, endDate]);
+    }, [subCompany, department, startDate, endDate]);
 
     useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, startDate, endDate, currentPage]);
+    }, [refreshTrigger, subCompany, department, startDate, endDate, currentPage]);
 
     return (
         <>

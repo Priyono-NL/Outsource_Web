@@ -26,6 +26,10 @@ const Report_MpEmp = () => {
   const [subCompanyInput, setSubCompanyInput] = useState('');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
 
+  const [departments, setDepartments] = useState([]);
+  const [departmentInput, setDepartmentInput] = useState('');
+  const [appliedDepartment, setAppliedDepartment] = useState('');
+
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(todayStr);
   const [appliedStartDate, setAppliedStartDate] = useState(todayStr);
@@ -34,15 +38,17 @@ const Report_MpEmp = () => {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    const loadSubCompanies = async () => {
+    const load = async () => {
       try {
-        const resSub = await api.get('/subcom?page=1&pageSize=200');
-        setSubCompanies(resSub.data?.data || []);
-      } catch (err) {
-        /* silent */
-      }
+        const [resSub, resDept] = await Promise.all([
+          api.get('/subcom?page=1&pageSize=200'),
+          api.get('/costcenter?page=1&pageSize=200'),
+        ]);
+        setSubCompanies(resSub.data.data);
+        setDepartments(resDept.data.data);
+      } catch { /* silent */ }
     };
-    loadSubCompanies();
+    load();
   }, []);
 
   // Update State yang diaplikasikan saat tombol "Terapkan" ditekan
@@ -50,6 +56,7 @@ const Report_MpEmp = () => {
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
+    setAppliedDepartment(departmentInput);
   };
 
   const handleExportExcel = async () => {
@@ -57,6 +64,7 @@ const Report_MpEmp = () => {
       setIsExporting(true);
       const params = new URLSearchParams({
         sub_company: appliedSubCompany || '',
+        department: appliedDepartment || '',
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
       }).toString();
@@ -90,6 +98,11 @@ const Report_MpEmp = () => {
     })),
   ];
 
+  const departmentOptions = [
+    { value: '', label: 'Semua Department' },
+    ...departments.map(d => ({ value: d.cost_center, label: d.org_name })),
+  ];
+
   return (
     <div>
       <PageHeader title="Manpower Per Employee" />
@@ -107,6 +120,22 @@ const Report_MpEmp = () => {
               onChange={o => setSubCompanyInput(o?.value || '')}
               isClearable 
               isSearchable
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
+            />
+          </div>
+
+          <div className="filter-group" style={{ minWidth: 180 }}>
+            <label>Department</label>
+            <Select
+              options={departmentOptions}
+              placeholder="Cari..."
+              value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
+              onChange={o => setDepartmentInput(o?.value || '')}
+              isClearable isSearchable
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
@@ -133,6 +162,7 @@ const Report_MpEmp = () => {
               type="date" 
               className="form-control-app"
               value={endDate}
+              min={startDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
@@ -166,6 +196,7 @@ const Report_MpEmp = () => {
         <MpEmp_Table
           refreshTrigger={crud.refreshKey}
           subCompany={appliedSubCompany}
+          department={appliedDepartment}
           startDate={appliedStartDate}
           endDate={appliedEndDate}
         />
