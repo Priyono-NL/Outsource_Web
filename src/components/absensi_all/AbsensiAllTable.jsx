@@ -69,6 +69,7 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, department, s
             </thead>
             <tbody>
                 { absensi.length > 0 ? absensi.map((emp, index) => {
+                    const isAnomaly = emp.is_anomaly === 1; // <--- Cek apakah data anomali
                     const isViolation = !emp.clock_in || !emp.clock_out;
                     const hasBAC = emp.bac_id ? true : false;
 
@@ -78,7 +79,21 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, department, s
                     let isClockOutFromBAC = false;
                     let statusElement = null;
 
-                    if (!isViolation) {
+                    // ==============================================================
+                    // LOGIKA STATUS & TAMPILAN WAKTU (Original + Anomaly Support)
+                    // ==============================================================
+                    if (isAnomaly) {
+                        // Jika Anomali, paksa gunakan format Full Datetime (YYYY-MM-DD HH:MM:SS)
+                        displayClockIn = (emp.full_clock_in && emp.full_clock_in !== 'null') ? emp.full_clock_in : null;
+                        displayClockOut = (emp.full_clock_out && emp.full_clock_out !== 'null') ? emp.full_clock_out : null;
+                        
+                        statusElement = (
+                            <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
+                                <i className="bi bi-exclamation-triangle-fill" style={{ marginRight: '4px' }}></i>
+                                Anomali / Split
+                            </span>
+                        );
+                    } else if (!isViolation) {
                         // Absensi Lengkap (Lulus / Hijau)
                         statusElement = (
                             <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
@@ -92,12 +107,10 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, department, s
                             displayClockIn = emp.bac_clock_in;
                             isClockInFromBAC = true;
                         }
-
                         if (emp.bac_clock_out) {
                             displayClockOut = emp.bac_clock_out;
                             isClockOutFromBAC = true;
                         }
-
                         statusElement = (
                             <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
                                 <i className="bi bi-file-earmark-check-fill" style={{ marginRight: '4px' }}></i>
@@ -115,7 +128,7 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, department, s
                     }
 
                     return (
-                        <tr key={`abs-${emp.employee_id}-${emp.clocking_date || index}`}>
+                        <tr key={`abs-${emp.employee_id}-${emp.clocking_date}-${index}`} className={isAnomaly ? 'table-warning' : ''}>
                             <td className="fw-bold">{emp.employee_code || emp.employee_id}</td>
                             <td>{emp.employee_name || '-'}</td>
                             <td>{emp.gender || '-'}</td>
@@ -129,14 +142,14 @@ const AbsensiAllTable = ({ refreshTrigger, searchTerm, subCompany, department, s
                                 color: !displayClockIn ? '#dc3545' : (isClockInFromBAC ? '#0d6efd' : 'inherit'),
                                 fontWeight: (isClockInFromBAC || !displayClockIn) ? 'bold' : 'normal'
                             }}>
-                                {displayClockIn || 'No Clock In'}
+                                {displayClockIn || 'null'} {/* Diganti ke null sesuai request */}
                             </td>            
                             
                             <td style={{ 
                                 color: !displayClockOut ? '#dc3545' : (isClockOutFromBAC ? '#0d6efd' : 'inherit'),
                                 fontWeight: (isClockOutFromBAC || !displayClockOut) ? 'bold' : 'normal'
                             }}>
-                                {displayClockOut || 'No Clock Out'}
+                                {displayClockOut || 'null'} {/* Diganti ke null sesuai request */}
                             </td>
 
                             <td style={{ textAlign: 'center' }}>

@@ -3,13 +3,21 @@ from datetime import date
 
 class Absensi_all(db.Model):
     __table_args__ = {'schema': 'db-webapps'}
-    __tablename__ = 'TBL_ATTENDANCE'
+    __tablename__ = 'TBL_ATTENDANCE_TEST'
     
+    # =========================================================================
+    # PERBAIKAN SQLALCHEMY IDENTITY MAP:
+    # Jadikan kolom waktu dan flag sebagai bagian dari Primary Key komposit,
+    # agar SQLAlchemy tahu bahwa 2 baris di hari yang sama adalah data yang berbeda.
+    # =========================================================================
     employee_id = db.Column(db.Integer, primary_key=True)
     card_id = db.Column(db.String(15))
     clocking_date = db.Column(db.Date, primary_key=True)
-    clock_in = db.Column(db.DateTime)
-    clock_out = db.Column(db.DateTime)
+    
+    # Tambahkan primary_key=True di sini
+    clock_in = db.Column(db.DateTime, primary_key=True) 
+    clock_out = db.Column(db.DateTime, primary_key=True)
+    flag_anomaly = db.Column('flag', db.Integer, primary_key=True)
 
     # RELASI BARU: Langsung tembak ke View yang sudah bersih dari data kadaluarsa
     os_active = db.relationship(
@@ -44,6 +52,11 @@ class Absensi_all(db.Model):
             if hasattr(date_obj, 'strftime'): return date_obj.strftime(fmt)
             return str(date_obj)[:10]
 
+        def format_full_datetime(dt_obj):
+            if not dt_obj: return "null" 
+            if hasattr(dt_obj, 'strftime'): return dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+            return str(dt_obj)
+
         emp_os = self.os_active
         emp_ob = self.ob_employee
 
@@ -51,31 +64,22 @@ class Absensi_all(db.Model):
         emp_name = None
         gender = None
         subcom = None
-        card = None
         cc = None
         emp_type = None
 
-        # =====================================================================
-        # LOGIKA OS SANGAT BERSIH & FLAT (KARENA SUDAH DI-HANDLE VIEW MYSQL)
-        # =====================================================================
         if emp_os:
             emp_code = emp_os.employee_code or str(self.employee_id)
             emp_name = emp_os.employee_name
             gender = emp_os.gender
             subcom = emp_os.sub_company_name
-            card = emp_os.card_number
             cc = emp_os.cc_name
             emp_type = emp_os.type_worker or 'OS'
 
-        # =====================================================================
-        # LOGIKA OB (INTERNAL)
-        # =====================================================================
         elif emp_ob:
             emp_code = getattr(emp_ob, 'employee_id', str(self.employee_id))
             emp_name = getattr(emp_ob, 'employee_name', None)
             gender = getattr(emp_ob, 'gender', None)
             subcom = getattr(emp_ob, 'company_name', 'CRS')
-            card = getattr(emp_ob, 'card_no', None)
 
             if getattr(emp_ob, 'cc_master', None) and getattr(emp_ob.cc_master, 'org_name', None):
                 cc = emp_ob.cc_master.org_name
@@ -89,11 +93,17 @@ class Absensi_all(db.Model):
             "employee_name": emp_name,
             "gender": gender,
             "subCom": subcom,
-            "card": card,
+            "card": self.card_id,
             "cc": cc,
             "type": emp_type,
             "v_clocking_date": format_date_str(self.clocking_date, '%d %b %Y'),
             "clocking_date": format_date_str(self.clocking_date, '%Y-%m-%d'),
             "clock_in": format_time_str(self.clock_in),
             "clock_out": format_time_str(self.clock_out),
+            
+            # ---> DITAMBAHKAN KEMBALI AGAR REACT BISA MERENDER TIMESTAMP LENGKAP <---
+            "full_clock_in": format_full_datetime(self.clock_in),
+            "full_clock_out": format_full_datetime(self.clock_out),
+            
+            "is_anomaly": self.flag_anomaly
         }

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from sqlalchemy import or_, and_, func, cast, String
+from sqlalchemy import or_, and_, func, cast, String, tuple_
 
 from extensions import db
 from model.absensi_all import Absensi_all
@@ -29,16 +29,36 @@ def index():
         if end_date:
             query = query.filter(Absensi_all.clocking_date <= end_date)
 
-        # Filter Status (Violations)
-        if status_filter == 'violation_all':
-            query = query.filter(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
+        # =====================================================================
+        # UPDATE: FILTER STATUS (SINKRON DENGAN REACT & LOGIKA ANOMALI)
+        # =====================================================================
+        if status_filter == 'lengkap':
+            query = query.filter(and_(
+                Absensi_all.clock_in.is_not(None), 
+                Absensi_all.clock_out.is_not(None),
+                Absensi_all.flag_anomaly != 1
+            ))
+            
+        elif status_filter == 'anomali':
+            query = query.filter(Absensi_all.flag_anomaly == 1)
+            
+        elif status_filter in ['tidak_lengkap', 'violation_all']:
+            query = query.filter(
+                or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None))
+            )
+            
         elif status_filter == 'no_in':
             query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_not(None)))
+            
         elif status_filter == 'no_out':
             query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_(None)))
+            
         elif status_filter == 'no_both':
             query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
 
+        # =====================================================================
+        # LOOKUP DATA MASTER OS (TIDAK ADA PERUBAHAN)
+        # =====================================================================
         if search or sub_company_id or department_id:
             os_query = db.session.query(VwMasterOsActive.employee_code)
 
