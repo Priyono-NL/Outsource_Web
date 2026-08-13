@@ -3,7 +3,7 @@ from datetime import date
 
 class Absensi_all(db.Model):
     __table_args__ = {'schema': 'db-webapps'}
-    __tablename__ = 'TBL_ATTENDANCE_TEST'
+    __tablename__ = 'TBL_ATTENDANCE'
     
     # =========================================================================
     # PERBAIKAN SQLALCHEMY IDENTITY MAP:
