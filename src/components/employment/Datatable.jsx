@@ -3,7 +3,16 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filterStatus, filterSubCompany, filterDepartment }) => {
+const Datatable = ({ 
+  refreshTrigger, 
+  onViewClick, 
+  onEditClick, 
+  searchTerm, 
+  filterStatus, 
+  filterSubCompany, 
+  filterDepartment,
+  isFilterApplied 
+}) => {
   const [employees, setEmployees] = useState([]);
   const [error, setError]         = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -12,6 +21,7 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
 
   const fetchData = async () => {
     try {
+      setError(null);
       const params = new URLSearchParams({
         page: currentPage, 
         pageSize: PAGE_SIZE,
@@ -31,8 +41,15 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
     }
   };
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, filterStatus, filterSubCompany, filterDepartment]);
-  useEffect(() => { fetchData(); }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment]);
+  useEffect(() => { 
+    if (!isFilterApplied) return;
+    setCurrentPage(1); 
+  }, [searchTerm, filterStatus, filterSubCompany, filterDepartment, isFilterApplied]);
+
+  useEffect(() => { 
+    if (!isFilterApplied) return;
+    fetchData(); 
+  }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment, isFilterApplied]);
 
   const handleDeactivate = async (pkId, empCode) => {
     const res = await Confirm.fire({
@@ -78,59 +95,75 @@ const Datatable = ({ refreshTrigger, onViewClick, onEditClick, searchTerm, filte
             </tr>
           </thead>
           <tbody>
-            {employees.length > 0 ? employees.map((emp, i) => (
-              <tr key={emp.id || i}>
-                <td><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{emp.employee_code}</span></td>
-                <td style={{ fontWeight: 500 }}>{emp.person_name}</td>
-                <td>{emp.gender}</td>
-                <td>{emp.sub_con_name}</td>
-                <td>{emp.cc_name ? emp.cc_name : '-'}</td>
-                <td>{emp.card_number ? emp.card_number : '-'}</td>
-                <td>{emp.type_worker ? emp.type_worker : '-'}</td>
-                <td>{emp.posisi ? emp.posisi : '-'}</td>
-                <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
-                <td>
-                  {emp.valid_to
-                    ? <span className={new Date(emp.valid_to) < new Date() ? 'badge-inactive' : ''}>{emp.v_valid_to}</span>
-                    : <span className="badge-active">Aktif</span>}
-                </td>
-                <td>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button 
-                      className="btn-app btn-ghost-app btn-sm-app" 
-                      onClick={() => onViewClick(emp)}
-                      title="Lihat Detail"
-                    >
-                      <i className="bi bi-eye" />
-                    </button>
-
-                    <button 
-                      className="btn-app btn-ghost-app btn-sm-app" 
-                      onClick={() => onEditClick(emp)}
-                      title="Edit Data"
-                    >
-                      <i className="bi bi-pencil-square" />
-                    </button>
-
-                    {(emp.valid_to === null || new Date(emp.valid_to) >= new Date()) && (
-                      <button 
-                        className="btn-app btn-danger-app btn-sm-app" 
-                        onClick={() => handleDeactivate(emp.id, emp.employee_code)}
-                        title="Nonaktifkan Karyawan"
-                      >
-                        <i className="bi bi-person-x" />
-                      </button>
-                    )}
-                  </div>
+            {!isFilterApplied ? (
+              <tr>
+                <td colSpan="11" className="empty-state text-center py-5 text-muted">
+                  <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
+                  Silakan tentukan parameter filter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                 </td>
               </tr>
-            )) : (
-              <tr><td colSpan="9" className="empty-state">Data tidak ditemukan</td></tr>
+            ) : employees.length > 0 ? (
+              employees.map((emp, i) => (
+                <tr key={emp.id || i}>
+                  <td><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{emp.employee_code}</span></td>
+                  <td style={{ fontWeight: 500 }}>{emp.person_name}</td>
+                  <td>{emp.gender}</td>
+                  <td>{emp.sub_con_name}</td>
+                  <td>{emp.cc_name ? emp.cc_name : '-'}</td>
+                  <td>{emp.card_number ? emp.card_number : '-'}</td>
+                  <td>{emp.type_worker ? emp.type_worker : '-'}</td>
+                  <td>{emp.posisi ? emp.posisi : '-'}</td>
+                  <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
+                  <td>
+                    {emp.valid_to
+                      ? <span className={new Date(emp.valid_to) < new Date() ? 'badge-inactive' : ''}>{emp.v_valid_to}</span>
+                      : <span className="badge-active">Aktif</span>}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button 
+                        className="btn-app btn-ghost-app btn-sm-app" 
+                        onClick={() => onViewClick(emp)}
+                        title="Lihat Detail"
+                      >
+                        <i className="bi bi-eye" />
+                      </button>
+
+                      <button 
+                        className="btn-app btn-ghost-app btn-sm-app" 
+                        onClick={() => onEditClick(emp)}
+                        title="Edit Data"
+                      >
+                        <i className="bi bi-pencil-square" />
+                      </button>
+
+                      {(emp.valid_to === null || new Date(emp.valid_to) >= new Date()) && (
+                        <button 
+                          className="btn-app btn-danger-app btn-sm-app" 
+                          onClick={() => handleDeactivate(emp.id, emp.employee_code)}
+                          title="Nonaktifkan Karyawan"
+                        >
+                          <i className="bi bi-person-x" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="11" className="empty-state text-center py-4 text-muted">
+                  <i className="bi bi-inbox d-block mb-1 fs-4"></i>
+                  Data karyawan tidak ditemukan
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
-      <PageNav currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+      {isFilterApplied && (
+        <PageNav currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+      )}
     </>
   );
 };

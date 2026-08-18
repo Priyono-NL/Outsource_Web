@@ -5,7 +5,10 @@ import Select from 'react-select';
 import { downloadLogFile } from '../utils/logDownloader';
 import api from '../api/api';
 import { useCrudPage } from '../utils/useCrudPage';
+
+// Import Komponen Modular
 import PageHeader from '../components/PageHeader';
+import LoadingButton from '../components/LoadingButton';
 import Datatable from '../components/employment/Datatable';
 import Dataform from '../components/employment/Dataform';
 import ViewDetails from '../components/employment/ViewDetails';
@@ -16,17 +19,28 @@ const Employment = () => {
   const [viewData, setViewData]       = useState(null);
   const [editData, setEditData]       = useState(null);
 
+  // Form Filter States
   const [statusInput, setStatusInput]           = useState('all');
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [departmentInput, setDepartmentInput]   = useState('');
+  
+  // Applied Filter States
   const [appliedStatus, setAppliedStatus]       = useState('all');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
   const [appliedDepartment, setAppliedDepartment] = useState('');
 
+  // Flag Status Filter Terapan
+  const [isFilterApplied, setIsFilterApplied]   = useState(false);
+
   const [subCompanies, setSubCompanies] = useState([]);
   const [departments, setDepartments]   = useState([]);
-  const [isUploading, setIsUploading]   = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+
+  // Loading States Per Action
+  const [isUploading, setIsUploading]             = useState(false);
+  const [isExporting, setIsExporting]             = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [isApplyingFilter, setIsApplyingFilter]   = useState(false);
+
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -44,10 +58,25 @@ const Employment = () => {
   }, []);
 
   const handleApplyFilters = () => {
+    setIsApplyingFilter(true);
     crud.handleSearch();
     setAppliedStatus(statusInput);
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
+    setIsFilterApplied(true); // Aktifkan penanda fetch
+    setTimeout(() => setIsApplyingFilter(false), 300);
+  };
+
+  const handleResetFilters = () => {
+    setStatusInput('all');
+    setSubCompanyInput('');
+    setDepartmentInput('');
+    crud.setSearchInput('');
+    
+    setAppliedStatus('all');
+    setAppliedSubCompany('');
+    setAppliedDepartment('');
+    setIsFilterApplied(false); // Sembunyikan tabel kembali ke mode instruksi
   };
 
   const handleView = (data) => { setViewData(data); setViewForm(true); };
@@ -67,30 +96,37 @@ const Employment = () => {
     crud.handleClose();
   };
 
-    const handleExport = async () => {
-      setIsExporting(true);
-      try {
-        const params = new URLSearchParams({
-          search: crud.appliedSearch || '',
-          status: appliedStatus || 'all',
-          sub_company: appliedSubCompany || '',
-          department: appliedDepartment || '',
-        }).toString();
-        const res = await api.get(`/employee/export?${params}`, { responseType: 'blob' });
-        saveAs(res.data, 'Data_OS_Filtered.xlsx');
-      } catch {
-        Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
-      } finally {
-        setIsExporting(false);
-      }
-    };
+  const handleExport = async () => {
+    if (!isFilterApplied) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter terlebih dahulu untuk mengeksport data.' });
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams({
+        search: crud.appliedSearch || '',
+        status: appliedStatus || 'all',
+        sub_company: appliedSubCompany || '',
+        department: appliedDepartment || '',
+      }).toString();
+      const res = await api.get(`/employee/export?${params}`, { responseType: 'blob' });
+      saveAs(res.data, 'Data_OS_Filtered.xlsx');
+    } catch {
+      Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleDownloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
     try {
       const { data } = await api.get('/employee/template', { responseType: 'blob' });
       saveAs(data, 'Template_Import.xlsx');
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal download template import' });
+    } finally {
+      setIsDownloadingTemplate(false);
     }
   };
 
@@ -156,7 +192,7 @@ const Employment = () => {
       const errList = error.response?.data?.errors;
       const noteList = error.response?.data?.notes; 
 
-      const notesHtml = noteList.length > 0 
+      const notesHtml = noteList?.length > 0 
       ? `<div style="text-align:left; margin-top:10px; max-height:100px; overflow-y:auto; background:#e9ecef; padding:10px; border-radius:5px; font-size:.85em; color:#495057;">
           <strong>Catatan Sistem (${noteList.length}):</strong><br/>
           ${noteList.slice(0, 5).join('<br/>')} ${noteList.length > 5 ? '<br/><i>... (download log)</i>' : ''}
@@ -205,29 +241,44 @@ const Employment = () => {
         onSearchChange={crud.setSearchInput}
         onSearch={handleApplyFilters}
       >
-        <button className="btn-app btn-ghost-app" onClick={handleDownloadTemplate}>
-          <i className="bi bi-download" /> Template
-        </button>
-        <label className="btn-app btn-ghost-app" style={{ cursor: 'pointer' }}>
-          {isUploading
-            ? <><span className="spinner-border spinner-border-sm me-1" role="status" /> Proses...</>
-            : <><i className="bi bi-upload" /> Import</>}
-          <input type="file" hidden ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls" disabled={isUploading} />
-        </label>
-        <button className="btn-app btn-success-app" onClick={handleExport} disabled={isExporting}>
-          {isExporting ? (
-            <>
-              {/* Spinner kecil ala Bootstrap */}
-              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-              Exporting Data...
-            </>
-          ) : (
-            <>
-              <i className="bi bi-file-earmark-excel me-2"></i> {/* Jika pakai Bootstrap Icons */}
-              Eksport Excel
-            </>
-          )}
-        </button>
+        <LoadingButton
+          loading={isDownloadingTemplate}
+          loadingText="Menyiapkan..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-download"
+          onClick={handleDownloadTemplate}
+        >
+          Template
+        </LoadingButton>
+
+        <input 
+          type="file" 
+          hidden 
+          ref={fileInputRef} 
+          onChange={handleImport} 
+          accept=".xlsx,.xls" 
+          disabled={isUploading} 
+        />
+        <LoadingButton
+          loading={isUploading}
+          loadingText="Proses..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-upload"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Import
+        </LoadingButton>
+
+        <LoadingButton
+          loading={isExporting}
+          loadingText="Exporting Data..."
+          className="btn-app btn-success-app"
+          icon="bi bi-file-earmark-excel"
+          onClick={handleExport}
+        >
+          Eksport Excel
+        </LoadingButton>
+
         <button
           className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
           onClick={crud.showForm ? handleCloseForm : handleAddNew}
@@ -284,15 +335,30 @@ const Employment = () => {
             />
           </div>
 
-          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}>
-            <button className="btn-app btn-primary-app" onClick={handleApplyFilters}>
-              <i className="bi bi-funnel" /> Terapkan Filter
-            </button>
+          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end', display: 'flex', gap: '8px' }}>
+            {isFilterApplied && (
+              <button 
+                type="button" 
+                className="btn-app btn-ghost-app" 
+                onClick={handleResetFilters}
+              >
+                <i className="bi bi-x-circle me-1" /> Clear Filter
+              </button>
+            )}
+
+            <LoadingButton
+              loading={isApplyingFilter}
+              loadingText="Memfilter..."
+              className="btn-app btn-primary-app"
+              icon="bi bi-funnel"
+              onClick={handleApplyFilters}
+            >
+              Terapkan Filter
+            </LoadingButton>
           </div>
           
         </div>
         
-        {/* Tambahkan properti onEditClick ke Datatable */}
         <Datatable
           refreshTrigger={crud.refreshKey}
           onViewClick={handleView}
@@ -301,6 +367,7 @@ const Employment = () => {
           filterStatus={appliedStatus}
           filterSubCompany={appliedSubCompany}
           filterDepartment={appliedDepartment}
+          isFilterApplied={isFilterApplied}
         />
       </div>
     </div>
