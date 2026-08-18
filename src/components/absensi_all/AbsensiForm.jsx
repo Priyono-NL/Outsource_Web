@@ -24,10 +24,19 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   
   useEffect(() => {
     if (initialData) {
-      setEmpId(initialData.employee_code || ''); 
-      setEmpPk(initialData.employee_id || '');
-      setHasClockIn(!!initialData.clocking_in);
-      setHasClockOut(!!initialData.clocking_out);
+      const code = initialData.employee_code || initialData.employee_id || '';
+      const pk = initialData.employee_id || '';
+      
+      setEmpId(code); 
+      setEmpPk(pk);
+      if (initialData.employee_name) {
+        setFullName(initialData.employee_name);
+        setIsEmployeeFound(true);
+      }
+      
+      setHasClockIn(!!(initialData.clock_in || initialData.clocking_in));
+      setHasClockOut(!!(initialData.clock_out || initialData.clocking_out));
+      
       setBacOS({        
         bac_no: initialData.bac_no || '',
         bac_ket: initialData.bac_ket || '',
@@ -37,25 +46,30 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
     }
 
     if (initialData && formRef.current) {
-      formRef.current.clock_date.value  = initialData.date_clocking || '';
-      formRef.current.employee_code.value = initialData.employee_code || '';
-      handleSearchEmployee(initialData.employee_code || initialData.employee_id);      
+      formRef.current.clock_date.value = initialData.clocking_date || initialData.date_clocking || '';
+      formRef.current.employee_code.value = initialData.employee_code || initialData.employee_id || '';
+      
+      if (!initialData.employee_name) {
+        handleSearchEmployee(initialData.employee_code || initialData.employee_id);      
+      }
     }  
-  }, [initialData, formRef.current]);
+  }, [initialData]);
 
   const handleSave = async (e) => {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
+    
     const payload = {
       ...data,
-      employee_id: empPk,
+      employee_id: empPk || empId,
+      clock_date: data.clock_date
     };
     delete payload.employee_code;
+
     try {
-      const response = initialData 
-            ? await api.put(`/absensi/${initialData.absensi_id}`, payload) 
-            : await api.post('/absensi/submit', payload);
+      const response = await api.put('/absensi/bac', payload);
+
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
@@ -165,7 +179,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                   </div>
                 </div>
 
-                {/* divider */}
+                {/* Divider */}
                 <div className="d-flex align-items-center mb-3">
                    <hr className="flex-grow-1 my-0 opacity-25" />
                    <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Input BAC</span>
@@ -173,7 +187,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                 </div>
 
                 <div className='row'>
-                  <div className="col-md-6">
+                  <div className="col-md-6 mb-2">
                       <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>No BAC</label>
                       <input 
                         type="text" 
@@ -187,7 +201,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       />
                     </div>
 
-                    <div className='col-md-6'>
+                    <div className='col-md-6 mb-2'>
                       <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clocking Date</label>
                       <input 
                         type="date" 
@@ -199,49 +213,49 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                   </div>
                 </div>
 
-                  {/* rubah jadi select */}
-                  <div className="col-md-12">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Keterangan BAC</label>
-                    <select 
-                      name="bac_ket" className="form-select form-select-sm"
-                      disabled={(!isEmployeeFound && !isEditMode) || isSearching}
-                      required
-                      value={bacOS.bac_ket || ''}
-                      onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })}
-                    >
-                      <option value=""></option>                      
-                      <option value="Kartu Ketinggalan">Kartu Ketinggalan</option>
-                      <option value="Kartu Belum Diterima">Kartu Belum Diterima</option>
-                      <option value="Kartu Error">Kartu Error</option>
-                      <option value="Karyawan Lupa Clocking">Karyawan Lupa Clocking</option>
-                    </select>
+                <div className="col-md-12 mb-2">
+                  <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Keterangan BAC</label>
+                  <select 
+                    name="bac_ket" 
+                    className="form-select form-select-sm"
+                    disabled={(!isEmployeeFound && !isEditMode) || isSearching}
+                    required
+                    value={bacOS.bac_ket || ''}
+                    onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })}
+                  >
+                    <option value=""></option>                      
+                    <option value="Kartu Ketinggalan">Kartu Ketinggalan</option>
+                    <option value="Kartu Belum Diterima">Kartu Belum Diterima</option>
+                    <option value="Kartu Error">Kartu Error</option>
+                    <option value="Karyawan Lupa Clocking">Karyawan Lupa Clocking</option>
+                  </select>
+                </div>
+
+                <div className='row'>
+                  <div className='col-md-6'>
+                    <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock In</label>
+                    <input 
+                      type="datetime-local" 
+                      name="clock_in"
+                      className='form-control form-control-sm'
+                      disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockIn}
+                      value={bacOS.clock_in ? bacOS.clock_in.slice(0, 16) : ''}
+                      onChange={(e) => setBacOS({ ...bacOS, clock_in: e.target.value })} 
+                    />
                   </div>
 
-                  <div className='row'>
-                    <div className='col-md-6'>
-                      <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock In</label>
-                      <input 
-                        type="datetime-local" 
-                        name="clock_in"
-                        className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockIn}
-                        value={bacOS.clock_in ? bacOS.clock_in.slice(0, 16) : ''}
-                        onChange={(e) => setBacOS({ ...bacOS, clock_in: e.target.value })} 
-                      />
-                    </div>
-
-                    <div className='col-md-6'>
-                      <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock Out</label>
-                      <input 
-                        type="datetime-local" 
-                        name="clock_out"
-                        className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockOut}
-                        value={bacOS.clock_out ? bacOS.clock_out.slice(0, 16) : ''}
-                        onChange={(e) => setBacOS({ ...bacOS, clock_out: e.target.value })}
-                      />
-                    </div>
+                  <div className='col-md-6'>
+                    <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock Out</label>
+                    <input 
+                      type="datetime-local" 
+                      name="clock_out"
+                      className='form-control form-control-sm'
+                      disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockOut}
+                      value={bacOS.clock_out ? bacOS.clock_out.slice(0, 16) : ''}
+                      onChange={(e) => setBacOS({ ...bacOS, clock_out: e.target.value })}
+                    />
                   </div>
+                </div>
 
               </div>
 

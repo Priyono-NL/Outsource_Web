@@ -1,20 +1,16 @@
 from extensions import db
 from datetime import date
+from sqlalchemy import and_
+from sqlalchemy.orm import foreign
 
 class Absensi_all(db.Model):
     __table_args__ = {'schema': 'db-webapps'}
     __tablename__ = 'TBL_ATTENDANCE'
-    
-    # =========================================================================
-    # PERBAIKAN SQLALCHEMY IDENTITY MAP:
-    # Jadikan kolom waktu dan flag sebagai bagian dari Primary Key komposit,
-    # agar SQLAlchemy tahu bahwa 2 baris di hari yang sama adalah data yang berbeda.
-    # =========================================================================
+
     employee_id = db.Column(db.Integer, primary_key=True)
     card_id = db.Column(db.String(15))
     clocking_date = db.Column(db.Date, primary_key=True)
-    
-    # Tambahkan primary_key=True di sini
+
     clock_in = db.Column(db.DateTime, primary_key=True) 
     clock_out = db.Column(db.DateTime, primary_key=True)
     flag_anomaly = db.Column('flag', db.Integer, primary_key=True)
@@ -38,6 +34,17 @@ class Absensi_all(db.Model):
         uselist=False,
         viewonly=True,
         overlaps="os_active"
+    )
+
+    bac_os_data = db.relationship(
+        'BAC_os',
+        primaryjoin="and_("
+                    "foreign(BAC_os.employee_id) == Absensi_all.employee_id, "
+                    "foreign(BAC_os.clock_date) == Absensi_all.clocking_date"
+                    ")",
+        lazy=True,
+        uselist=True,
+        viewonly=True
     )
 
     def to_dict(self):
@@ -87,6 +94,8 @@ class Absensi_all(db.Model):
                 cc = getattr(emp_ob, 'cost_center', None)
             emp_type = 'TETAP/KONTRAK'
 
+        bac = self.bac_os_data[-1] if self.bac_os_data and len(self.bac_os_data) > 0 else None
+
         return {
             "employee_id": self.employee_id,
             "employee_code": emp_code,
@@ -103,7 +112,15 @@ class Absensi_all(db.Model):
             
             # ---> DITAMBAHKAN KEMBALI AGAR REACT BISA MERENDER TIMESTAMP LENGKAP <---
             "full_clock_in": format_full_datetime(self.clock_in),
-            "full_clock_out": format_full_datetime(self.clock_out),
-            
-            "is_anomaly": self.flag_anomaly
+            "full_clock_out": format_full_datetime(self.clock_out),            
+            "is_anomaly": self.flag_anomaly,
+
+            "bac_id": bac.id if bac else None,
+            "bac_no": bac.bac_no if bac else None,
+            "bac_ket": bac.bac_ket if bac else None,
+            "bac_clock_in": bac.clock_in.strftime('%Y-%m-%dT%H:%M') if (bac and bac.clock_in) else None,
+            "bac_clock_out": bac.clock_out.strftime('%Y-%m-%dT%H:%M') if (bac and bac.clock_out) else None,
+            "bac_status": bac.status if bac else None,
+            "bac_updated_by": bac.created_by if bac else None,
+            "bac_updated_date": bac.created_date.strftime('%d %b %Y') if (bac and bac.created_date) else None,
         }

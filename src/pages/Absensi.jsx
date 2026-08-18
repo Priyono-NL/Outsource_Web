@@ -3,16 +3,15 @@ import { saveAs } from 'file-saver';
 import Select from 'react-select';
 
 import api from '../api/api';
-
 import { Toast, Confirm } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
 
 import PageHeader from '../components/PageHeader';
-import AbsensiTable from '../components/absensi/AbsensiTable';
-import AbsensiForm from '../components/absensi/AbsensiForm';
+import LoadingButton from '../components/LoadingButton';
+import AbsensiTable from '../components/absensi_all/AbsensiTable';
+import AbsensiForm from '../components/absensi_all/AbsensiForm';
 
 const Absensi = () => {
-  
   const getFirstDayOfMonth = () => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -23,7 +22,7 @@ const Absensi = () => {
   const getTodayString = () => {
     const today = new Date();
     const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0'); // Bulan dimulai dari 0
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   };
@@ -43,27 +42,34 @@ const Absensi = () => {
   const [statusFilter, setStatusFilter] = useState('all_data');
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
 
+  // Loading States Per Action
   const [isUploading, setIsUploading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [isApplyingFilter, setIsApplyingFilter] = useState(false);
+
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [resSub, resDept] = await Promise.all([
+        const [resSub] = await Promise.all([
           api.get('/subcom?page=1&pageSize=200'),
         ]);
-        setSubCompanies(resSub.data.data);
+        setSubCompanies(resSub.data.data || []);
       } catch { /* silent */ }
     };
     load();
   }, []);
 
   const handleApplyFilters = () => {
+    setIsApplyingFilter(true);
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedStatusFilter(statusFilter);
     crud.handleSearch();
+    setTimeout(() => setIsApplyingFilter(false), 300);
   };
 
   const handleEdit = (data) => {
@@ -77,6 +83,7 @@ const Absensi = () => {
   };
 
   const handleExport = async () => {
+    setIsExporting(true);
     try {
       const params = new URLSearchParams({
         search: crud.appliedSearch || '',
@@ -89,21 +96,23 @@ const Absensi = () => {
       saveAs(res.data, 'Absensi_OS_Filtered.xlsx');
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const handleDownloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
     try {
       const { data } = await api.get('/absensi/template', { 
-        params: {
-          start_date: startDate,
-          end_date: endDate
-        },
+        params: { start_date: startDate, end_date: endDate },
         responseType: 'blob' 
       });
       saveAs(data, `Template_Mass_Update_${startDate}_to_${endDate}.xlsx`);
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal download template' });
+    } finally {
+      setIsDownloadingTemplate(false);
     }
   };
 
@@ -142,7 +151,8 @@ const Absensi = () => {
 
   const statusOptions = [
     { value: 'all_data', label: 'Semua Data Absensi' },
-    { value: 'violation_all', label: 'Semua Pelanggaran (Violation)' },
+    { value: 'lengkap', label: 'Data Lengkap' },
+    { value: 'anomali', label: 'Semua Pelanggaran (Violation)' },
     { value: 'no_in', label: 'Clock In Kosong' },
     { value: 'no_out', label: 'Clock Out Kosong' },
     { value: 'no_both', label: 'Clock In & Out Kosong' }
@@ -157,18 +167,39 @@ const Absensi = () => {
         onSearchChange={crud.setSearchInput}
         onSearch={handleApplyFilters}
       >
-        <button className="btn-app btn-ghost-app" onClick={handleDownloadTemplate}>
-          <i className="bi bi-download" /> Template
-        </button>
+        <LoadingButton
+          loading={isDownloadingTemplate}
+          loadingText="Menyiapkan..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-download"
+          onClick={handleDownloadTemplate}
+        >
+          Template
+        </LoadingButton>
+
         <label className={`btn-app ${isUploading ? 'btn-ghost-app' : 'btn-ghost-app'}`} style={{ cursor: 'pointer' }}>
-          {isUploading
-            ? <><span className="spinner-border spinner-border-sm me-1" role="status" /> Proses...</>
-            : <><i className="bi bi-upload" /> Import</>}
+          {isUploading ? (
+            <>
+              <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              Proses...
+            </>
+          ) : (
+            <>
+              <i className="bi bi-upload" /> Import
+            </>
+          )}
           <input type="file" hidden ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls" disabled={isUploading} />
         </label>
-        <button className="btn-app btn-success-app" onClick={handleExport}>
-            <i className="bi bi-file-earmark-excel" /> Export
-        </button>        
+
+        <LoadingButton
+          loading={isExporting}
+          loadingText="Mengeksport..."
+          className="btn-app btn-success-app"
+          icon="bi bi-file-earmark-excel"
+          onClick={handleExport}
+        >
+          Export
+        </LoadingButton>        
       </PageHeader>
 
       {crud.showForm && <AbsensiForm onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />}
@@ -237,9 +268,15 @@ const Absensi = () => {
           </div>
 
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}>
-            <button className="btn-app btn-primary-app" onClick={handleApplyFilters}>
-              <i className="bi bi-funnel" /> Terapkan Filter
-            </button>
+            <LoadingButton
+              loading={isApplyingFilter}
+              loadingText="Memfilter..."
+              className="btn-app btn-primary-app"
+              icon="bi bi-funnel"
+              onClick={handleApplyFilters}
+            >
+              Terapkan Filter
+            </LoadingButton>
           </div>
 
         </div>

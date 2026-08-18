@@ -1,61 +1,174 @@
-import pandas as pd
 from io import BytesIO
-from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_, and_
 from datetime import datetime
+import pandas as pd
+from flask import Blueprint, request, jsonify, send_file
+from sqlalchemy import or_, and_, tuple_, func, cast, String
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
-from model.absensi import Absensi, BAC_os
-from model.employment import OsEmployment
-from model.person import OsPerson
-from openpyxl.worksheet.datavalidation import DataValidation
+from model.absensi_all import Absensi_all
+from model.bac_os import BAC_os
+from model.vw_master_os import VwMasterOsActive
 
 AbsenOs_bp = Blueprint('AbsenOs_bp', __name__)
 
-@AbsenOs_bp.route('/absensi')
-def index():
+# =============================================================================
+# REUSABLE HELPER FUNCTIONS (DRY CORE)
+# =============================================================================
+def clean_str(val):
+    if val is None or pd.isna(val):
+        return None
+    s = str(val).strip()
+    return None if s.lower() in ('', 'none', 'null', 'nan', 'kosong') else s
+
+def parse_dt(dt_val):
+    s = clean_str(dt_val)
+    if not s:
+        return None
+    s = s.replace('Z', '').split('.')[0]
+    formats = (
+        '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M',
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+        '%d/%m/%Y %H:%M', '%Y-%m-%d %H.%M'
+    )
+    for fmt in formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+def format_dt(val, is_time=False, iso=False):
+    if not val or str(val).lower() in ('none', 'null', ''):
+        return "" if not is_time else "KOSONG"
+    
+    if hasattr(val, 'strftime'):
+        if iso:
+            return val.strftime('%Y-%m-%dT%H:%M')
+        return val.strftime('%Y-%m-%d %H:%M' if is_time else '%Y-%m-%d')
+
+    val_str = str(val).strip().replace('T', ' ')
+    return val_str[:16] if is_time else val_str[:10]
+
+def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_out):
+    existing = BAC_os.query.filter_by(
+        employee_id=employee_id,
+        clock_date=clock_date
+    ).first()
+
+    if existing:
+        existing.bac_no = bac_no
+        existing.bac_ket = bac_ket
+        if clock_in is not None: 
+            existing.clock_in = clock_in
+        if clock_out is not None: 
+            existing.clock_out = clock_out
+        return existing, False
+    else:
+        new_bac = BAC_os(
+            employee_id=employee_id,
+            bac_no=bac_no,
+            bac_ket=bac_ket,
+            clock_date=clock_date,
+            clock_in=clock_in,
+            clock_out=clock_out,
+            status=1
+        )
+        db.session.add(new_bac)
+        return new_bac, True
+
+def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_data', search='', sub_company_id=''):
+    query = Absensi_all.query.filter(
+        func.char_length(cast(Absensi_all.employee_id, String)) < 8,
+        Absensi_all.card_id != '00000.00000'
+    )
+
+    if start_date:
+        query = query.filter(Absensi_all.clocking_date >= start_date)
+    if end_date:
+        query = query.filter(Absensi_all.clocking_date <= end_date)
+
+    # NULL-safe Anomaly Condition
+    non_anomaly = or_(Absensi_all.flag_anomaly != 1, Absensi_all.flag_anomaly.is_(None))
+
+    if status_filter == 'lengkap':
+        query = query.filter(and_(
+            Absensi_all.clock_in.is_not(None),
+            Absensi_all.clock_out.is_not(None),
+            non_anomaly
+        ))
+    elif status_filter == 'anomali':
+        query = query.filter(Absensi_all.flag_anomaly == 1)
+    elif status_filter in ('violation_all', 'tidak_lengkap'):
+        query = query.filter(and_(
+            or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)),
+            non_anomaly
+        ))
+    elif status_filter == 'no_in':
+        query = query.filter(and_(
+            Absensi_all.clock_in.is_(None),
+            Absensi_all.clock_out.is_not(None)
+        ))
+    elif status_filter == 'no_out':
+        query = query.filter(and_(
+            Absensi_all.clock_in.is_not(None),
+            Absensi_all.clock_out.is_(None),
+        ))
+    elif status_filter == 'no_both':
+        query = query.filter(and_(
+            Absensi_all.clock_in.is_(None),
+            Absensi_all.clock_out.is_(None)
+        ))
+
+    if search or sub_company_id:
+        os_query = db.session.query(VwMasterOsActive.employee_code)
+        if sub_company_id:
+            os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
+        if search:
+            os_query = os_query.filter(or_(
+                VwMasterOsActive.employee_code.ilike(f"%{search}%"),
+                VwMasterOsActive.employee_name.ilike(f"%{search}%"),
+                VwMasterOsActive.card_number.ilike(f"%{search}%")
+            ))
+            
+        matched_ids = [r[0] for r in os_query.all() if r[0]]
+
+        if matched_ids:
+            if search:
+                query = query.filter(or_(
+                    Absensi_all.employee_id.in_(matched_ids),
+                    Absensi_all.card_id.ilike(f"%{search}%")
+                ))
+            else:
+                query = query.filter(Absensi_all.employee_id.in_(matched_ids))
+        else:
+            if search:
+                query = query.filter(Absensi_all.card_id.ilike(f"%{search}%"))
+            else:
+                query = query.filter(db.false())
+
+    return query
+
+# =============================================================================
+# 1. GET LIST ABSENSI
+# =============================================================================
+@AbsenOs_bp.route('/absensi', methods=['GET'])
+def get_absensi():
     try:
         page = request.args.get('page', 1, type=int)
-        pageSize = request.args.get('pageSize', 10, type=int)
-        search = request.args.get('search', '', type=str)
-        sub_company_id = request.args.get('sub_company', '', type=str)
-        start_date = request.args.get('start_date', '', type=str)
-        end_date = request.args.get('end_date', '', type=str)
-        status_filter = request.args.get('status_filter', 'all_data', type=str)
+        pageSize = request.args.get('pageSize', 20, type=int)
 
-        query = Absensi.query
+        query = build_filtered_absensi_query(
+            start_date=request.args.get('start_date', '', type=str),
+            end_date=request.args.get('end_date', '', type=str),
+            status_filter=request.args.get('status_filter', 'all_data', type=str),
+            search=request.args.get('search', '', type=str).strip(),
+            sub_company_id=request.args.get('sub_company', '', type=str).strip()
+        )
 
-        if status_filter == 'violation_all':
-            query = query.filter(or_(Absensi.clocking_in.is_(None), Absensi.clocking_out.is_(None)))
-        elif status_filter == 'no_in':
-            query = query.filter(and_(Absensi.clocking_in.is_(None), Absensi.clocking_out.is_not(None)))
-        elif status_filter == 'no_out':
-            query = query.filter(and_(Absensi.clocking_in.is_not(None), Absensi.clocking_out.is_(None)))
-        elif status_filter == 'no_both':
-            query = query.filter(and_(Absensi.clocking_in.is_(None), Absensi.clocking_out.is_(None)))
-        
-        needs_employment_join = bool(search or sub_company_id)
-        if needs_employment_join:
-            query = query.join(OsEmployment, Absensi.employee_id == OsEmployment.id)
-
-        if search:
-            query = query.join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
-            query = query.filter(
-                or_(
-                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
-                    OsPerson.name.ilike(f"%{search}%"),                    
-                )
-            )
-            
-        if sub_company_id:
-            query = query.filter(OsEmployment.sub_company_id == sub_company_id)
-
-        if start_date:
-            query = query.filter(Absensi.date_clocking >= start_date)
-        if end_date:
-            query = query.filter(Absensi.date_clocking <= end_date)
-
+        query = query.order_by(Absensi_all.clocking_date.desc(), Absensi_all.employee_id.asc())
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
+
         return jsonify({
             "status": "success",
             "data": [emp.to_dict() for emp in pagination.items],
@@ -63,73 +176,63 @@ def index():
             "current_page": pagination.page,
             "total_item": pagination.total
         }), 200
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
 
-@AbsenOs_bp.route('/absensi/bac/<string:absenId>', methods=['GET'])
-def get_bac(absenId):
-    extra_info = db.session.query(BAC_os).filter(BAC_os.absensi_id == absenId).first()
-    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# 2. GET DETAIL BAC TUNGGAL
+# =============================================================================
+@AbsenOs_bp.route('/absensi/bac/<int:employee_id>/<string:clock_date>', methods=['GET'])
+def get_bac(employee_id, clock_date):
+    extra_info = BAC_os.query.filter_by(
+        employee_id=employee_id,
+        clock_date=clock_date
+    ).first()
+
     if not extra_info:
-        return {"clock_in": "", "clock_out": "", "bac_no": "", "bac_ket": ""}
-        
-    return {
-        "clock_in": extra_info.clock_in.isoformat() if extra_info.clock_in else "",
-        "clock_out": extra_info.clock_out.isoformat() if extra_info.clock_out else "",
+        return jsonify({"clock_in": "", "clock_out": "", "bac_no": "", "bac_ket": ""}), 200
+
+    return jsonify({
+        "clock_in": format_dt(extra_info.clock_in, iso=True),
+        "clock_out": format_dt(extra_info.clock_out, iso=True),
         "bac_no": extra_info.bac_no or "",
         "bac_ket": extra_info.bac_ket or ""
-    }
+    }), 200
 
-@AbsenOs_bp.route('/absensi/<string:id>', methods=['PUT'])
-def update(id):
+# =============================================================================
+# 3. SAVE / UPDATE BAC TUNGGAL (FORM MODAL REACT)
+# =============================================================================
+@AbsenOs_bp.route('/absensi/bac', methods=['PUT', 'POST'])
+def update_bac():
     try:
-        data = request.json
-        
-        if not data:
-            return jsonify({"status": "error", "message": "Tidak ada data yang diterima"}), 400
+        data = request.json or {}
+        employee_id = data.get('employee_id')
+        clock_date = data.get('clock_date')
 
-        clock_in = data.get('clock_in') if data.get('clock_in') != '' else None
-        clock_out = data.get('clock_out') if data.get('clock_out') != '' else None
+        if not employee_id or not clock_date:
+            return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
 
-        existing_bac = BAC_os.query.filter_by(absensi_id=id).first()
-
-        if existing_bac:
-            existing_bac.employee_id = data.get('employee_id')
-            existing_bac.bac_no = data.get('bac_no')
-            existing_bac.bac_ket = data.get('bac_ket')
-            existing_bac.clock_date = data.get('clock_date')
-            existing_bac.clock_in = clock_in
-            existing_bac.clock_out = clock_out
-            
-            message = "BAC Absensi berhasil diupdate!"
-            
-        else:
-            new_bac_os = BAC_os(
-                absensi_id = id,
-                employee_id = data.get('employee_id'),
-                bac_no = data.get('bac_no'),
-                bac_ket = data.get('bac_ket'),
-                clock_date = data.get('clock_date'),
-                clock_in = clock_in,
-                clock_out = clock_out
-            )
-            db.session.add(new_bac_os)
-            message = "BAC Absensi berhasil ditambahkan!"
+        _, is_created = upsert_bac_record(
+            employee_id=employee_id,
+            clock_date=clock_date,
+            bac_no=clean_str(data.get('bac_no')),
+            bac_ket=clean_str(data.get('bac_ket')),
+            clock_in=parse_dt(data.get('clock_in')),
+            clock_out=parse_dt(data.get('clock_out'))
+        )
 
         db.session.commit()
+        msg = "BAC Absensi berhasil ditambahkan!" if is_created else "BAC Absensi berhasil diupdate!"
+        return jsonify({"status": "success", "message": msg}), 200
 
-        return jsonify({
-            "status": "success", 
-            "message": message
-        }), 200
-        
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# =============================================================================
+# 4. GENERATE EXCEL TEMPLATE UNTUK MASS UPDATE
+# =============================================================================
 @AbsenOs_bp.route('/absensi/template', methods=['GET'])
 def template():
     try:
@@ -138,33 +241,34 @@ def template():
 
         if not start_date_raw or not end_date_raw:
             return jsonify({"status": "error", "message": "Parameter start_date dan end_date wajib diisi."}), 400
-        
-        already_revised_subquery = db.session.query(BAC_os.absensi_id) \
-            .filter(BAC_os.absensi_id == Absensi.id).subquery()
 
-        query_results = db.session.query(Absensi, OsEmployment, OsPerson) \
-            .join(OsEmployment, Absensi.employee_id == OsEmployment.id) \
-            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
-            .filter(
-                Absensi.date_clocking >= start_date_raw,
-                Absensi.date_clocking <= end_date_raw,
-                ((Absensi.clocking_in == None) | (Absensi.clocking_out == None)),
-                ~Absensi.id.in_(already_revised_subquery)
-            ).order_by(Absensi.date_clocking.asc(), OsEmployment.employee_code.asc()).all()
+        already_revised_subquery = db.session.query(
+            BAC_os.employee_id, 
+            BAC_os.clock_date
+        ).subquery()
+
+        query_results = Absensi_all.query.filter(
+            func.char_length(cast(Absensi_all.employee_id, String)) < 8,
+            Absensi_all.clocking_date >= start_date_raw,
+            Absensi_all.clocking_date <= end_date_raw,
+            or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)),
+            ~tuple_(Absensi_all.employee_id, Absensi_all.clocking_date).in_(already_revised_subquery)
+        ).order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
 
         if not query_results:
-            return jsonify({"status": "error", "message": "Tidak ditemukan data absensi bolong pada periode ini."}), 444
+            return jsonify({"status": "error", "message": "Tidak ditemukan data absensi tidak lengkap pada periode ini."}), 404
 
         dynamic_data = []
-        for att, emp, person in query_results:
+        for att in query_results:
+            row_dict = att.to_dict()
             dynamic_data.append({
-                "Log ID": att.id,
-                "ID Employee": emp.employee_code,
-                "Nama Karyawan": person.name,
+                "Employee ID": att.employee_id,
+                "Kode Karyawan": row_dict.get('employee_code'),
+                "Nama Karyawan": row_dict.get('employee_name') or '-',
+                "Tanggal Absen": format_dt(att.clocking_date, is_time=False),
+                "Clocking In": format_dt(att.clock_in, is_time=True),
+                "Clocking Out": format_dt(att.clock_out, is_time=True),
                 "No BAC": "",
-                "Clocking Date": att.date_clocking.strftime('%Y-%m-%d') if att.date_clocking else "",
-                "Clocking In": att.clocking_in.strftime('%Y-%m-%d %H:%M') if att.clocking_in else "KOSONG",
-                "Clocking Out": att.clocking_out.strftime('%Y-%m-%d %H:%M') if att.clocking_out else "KOSONG",
                 "Keterangan BAC": ""
             })
 
@@ -174,97 +278,75 @@ def template():
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import_Revisi')
-            workbook = writer.book
             worksheet = writer.sheets['Template_Import_Revisi']
+
             list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking"'
-            
             dv = DataValidation(type="list", formula1=list_pilihan, allow_blank=True)
             dv.error = 'Mohon pilih keterangan yang tersedia pada list dropdown.'
             dv.errorTitle = 'Pilihan Tidak Valid'
+
             worksheet.add_data_validation(dv)
-            
-            range_kolom_h = f"H2:H{num_rows + 100}"
-            dv.add(range_kolom_h)
+            dv.add(f"H2:H{num_rows + 100}")
+
         output.seek(0)
-        
         return send_file(
-            output, 
-            as_attachment=True, 
+            output,
+            as_attachment=True,
             download_name=f"Template_Mass_Update_Absen_{start_date_raw}_to_{end_date_raw}.xlsx"
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# =============================================================================
+# 5. UPLOAD EXCEL MASS UPDATE
+# =============================================================================
 @AbsenOs_bp.route('/absensi/upload', methods=['POST'])
 def upload():
     file = request.files.get('file')
     if not file:
         return jsonify({'message': 'Mohon pilih file Excel terlebih dahulu.'}), 400
-        
+
     try:
-        df = pd.read_excel(file, dtype={'Log ID': str, 'Clocking In': str, 'Clocking Out': str, 'No BAC': str})
-
-        def clean(val):
-            if pd.isna(val) or str(val).strip() in ('nan', 'NaN', ''):
-                return None
-            return str(val).strip()
-
-        def parse_datetime(datetime_str):
-            if not datetime_str or datetime_str.lower() == 'kosong':
-                return None
-            dt_clean = datetime_str.split('.')[0].strip()
-            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d/%m/%Y %H:%M', '%Y-%m-%d %H.%M'):
-                try:
-                    return datetime.strptime(dt_clean, fmt)
-                except ValueError:
-                    continue
-            raise ValueError(f"Format waktu '{datetime_str}' keliru. Gunakan format YYYY-MM-DD HH:MM")
+        df = pd.read_excel(file, dtype={
+            'Employee ID': str, 
+            'Tanggal Absen': str,
+            'Clocking In': str, 
+            'Clocking Out': str, 
+            'No BAC': str
+        })
 
         errors = []
-        notes = []
         success_count = 0
 
         for index, row in df.iterrows():
             line_number = index + 2
             try:
                 with db.session.begin_nested():
-                    log_id_raw = clean(row.get('Log ID'))
-                    if not log_id_raw:
-                        raise ValueError("Kolom 'Log ID' tidak boleh kosong.")
+                    emp_id_raw = clean_str(row.get('Employee ID'))
+                    clock_date_raw = clean_str(row.get('Tanggal Absen'))
 
-                    # 1. Ambil data dari TABEL UTAMA berdasarkan ID Log
-                    main_attendance = Absensi.query.get(int(log_id_raw))
-                    if not main_attendance:
-                        raise ValueError(f"Log ID '{log_id_raw}' tidak ditemukan di tabel utama.")
+                    if not emp_id_raw or not clock_date_raw:
+                        raise ValueError("Kolom 'Employee ID' dan 'Tanggal Absen' tidak boleh kosong.")
 
-                    c_in_raw = clean(row.get('Clocking In'))
-                    c_out_raw = clean(row.get('Clocking Out'))
-                    no_bac = clean(row.get('No BAC'))
-                    ket_bac = clean(row.get('Keterangan BAC'))
+                    c_in_raw = clean_str(row.get('Clocking In'))
+                    c_out_raw = clean_str(row.get('Clocking Out'))
+                    ket_bac = clean_str(row.get('Keterangan BAC'))
 
-                    # Jika kolom jam tidak diubah (tetap KOSONG), lewati baris ini
-                    if (not c_in_raw or c_in_raw.lower() == 'kosong') and (not c_out_raw or c_out_raw.lower() == 'kosong'):
+                    if not c_in_raw and not c_out_raw:
                         continue
 
                     if not ket_bac:
-                        raise ValueError("Kolom 'Keterangan BAC' wajib diisi sebagai bukti audit revisi.")
+                        raise ValueError("Kolom 'Keterangan BAC' wajib diisi.")
 
-                    # Ambil jam baru atau pertahankan jam lama jika tidak direvisi
-                    final_clock_in = parse_datetime(c_in_raw) if (c_in_raw and c_in_raw.lower() != 'kosong') else main_attendance.clocking_in
-                    final_clock_out = parse_datetime(c_out_raw) if (c_out_raw and c_out_raw.lower() != 'kosong') else main_attendance.clocking_out
-
-                    # --- INSERT DATA BARU KE TABEL REVISI ---
-                    new_revision = BAC_os(
-                        absensi_id=main_attendance.id,
-                        employee_id=main_attendance.employee_id,
-                        bac_no=no_bac,
+                    upsert_bac_record(
+                        employee_id=int(emp_id_raw),
+                        clock_date=clock_date_raw,
+                        bac_no=clean_str(row.get('No BAC')),
                         bac_ket=ket_bac,
-                        clock_date=main_attendance.date_clocking,
-                        clock_in=final_clock_in,
-                        clock_out=final_clock_out,
+                        clock_in=parse_dt(c_in_raw),
+                        clock_out=parse_dt(c_out_raw)
                     )
-                    db.session.add(new_revision)
-                
+
                 success_count += 1
 
             except ValueError as ve:
@@ -276,17 +358,109 @@ def upload():
 
         if success_count > 0:
             status = "success" if not errors else "partial_success"
-            msg = f"Berhasil merevisi {success_count} data absensi dan menyimpan log BAC."
-            return jsonify({"status": status, "message": msg, "errors": errors, "notes": notes}), 200
+            msg = f"Berhasil merevisi {success_count} data absensi ke log BAC."
+            return jsonify({"status": status, "message": msg, "errors": errors}), 200
         else:
             return jsonify({
-                "status": "error", 
+                "status": "error",
                 "message": "Tidak ada data absensi yang diperbarui. Periksa kembali file Excel Anda.",
-                "errors": errors,
-                "notes": notes
+                "errors": errors
             }), 400
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal pada server: {str(e)}"}), 500
-    
+
+# =============================================================================
+# 6. EXPORT EXCEL (FILTERED DATA)
+# =============================================================================
+@AbsenOs_bp.route('/absensi/export', methods=['GET'])
+def export_absensi():
+    try:
+        start_date = request.args.get('start_date', '', type=str)
+        end_date = request.args.get('end_date', '', type=str)
+        status_filter = request.args.get('status_filter', 'all_data', type=str)
+        search = request.args.get('search', '', type=str).strip()
+        sub_company_id = request.args.get('sub_company', '', type=str).strip()
+
+        query = build_filtered_absensi_query(
+            start_date=start_date,
+            end_date=end_date,
+            status_filter=status_filter,
+            search=search,
+            sub_company_id=sub_company_id
+        )
+
+        results = query.order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
+
+        if not results:
+            return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
+
+        excel_data = []
+        for row in results:
+            d = row.to_dict() if hasattr(row, 'to_dict') else row.__dict__
+            
+            is_anomaly = d.get('is_anomaly') == 1 or d.get('flag_anomaly') == 1
+            bac_in = d.get('bac_clock_in')
+            bac_out = d.get('bac_clock_out')
+            has_bac = bool(d.get('bac_id') or d.get('bac_no') or bac_in or bac_out)
+
+            if bac_in:
+                c_in = format_dt(bac_in, is_time=True)
+            elif is_anomaly and d.get('full_clock_in') and str(d.get('full_clock_in')).lower() != 'null':
+                c_in = format_dt(d.get('full_clock_in'), is_time=True)
+            else:
+                c_in = format_dt(d.get('clock_in'), is_time=True)
+
+            if bac_out:
+                c_out = format_dt(bac_out, is_time=True)
+            elif is_anomaly and d.get('full_clock_out') and str(d.get('full_clock_out')).lower() != 'null':
+                c_out = format_dt(d.get('full_clock_out'), is_time=True)
+            else:
+                c_out = format_dt(d.get('clock_out'), is_time=True)
+
+            # Menentukan Label Status
+            if has_bac:
+                status_str = "BAC Found"
+            elif is_anomaly:
+                status_str = "Anomali"
+            elif c_in and c_out and c_in != "KOSONG" and c_out != "KOSONG":
+                status_str = "Lengkap"
+            else:
+                status_str = "BAC Not Found"
+
+            excel_data.append({
+                "Employee ID": d.get('employee_code') or d.get('employee_id'),
+                "Nama Karyawan": d.get('employee_name') or '-',
+                "Gender": d.get('gender') or '-',
+                "Sub Company": d.get('subCom') or d.get('sub_company_name') or '-',
+                "Absence Card": d.get('card') or '-',
+                "Cost Center": d.get('cc') or '-',
+                "Type": d.get('type') or '-',
+                "Clocking Date": format_dt(d.get('v_clocking_date') or d.get('clocking_date'), is_time=False),
+                "Clocking In": c_in if c_in != "KOSONG" else "No Clock In",
+                "Clocking Out": c_out if c_out != "KOSONG" else "No Clock Out",
+                "Status": status_str,
+                "Ket BAC": d.get('bac_ket') or '-',
+                "Updated By": d.get('bac_updated_by') or '-',
+                "Updated Date": d.get('bac_updated_date') or '-'
+            })
+
+        # Generate File Excel via OpenPyXL
+        df = pd.DataFrame(excel_data)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Absensi_Outsource')
+        output.seek(0)
+
+        filename = f"Export_Absensi_OS_{start_date}_to_{end_date}.xlsx" if start_date and end_date else "Export_Absensi_OS.xlsx"
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

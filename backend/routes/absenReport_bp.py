@@ -252,8 +252,8 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
             employee_code AS emp_id,
             employee_name AS display_name,
             cc_name,
-            emp_join_date AS valid_from,
-            emp_termination_date AS valid_to
+            join_date AS valid_from,
+            termination_date AS valid_to
         FROM vw_master_os_active
         WHERE 1=1 {filter_clause}
     """

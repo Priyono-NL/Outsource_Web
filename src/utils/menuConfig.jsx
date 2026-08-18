@@ -33,6 +33,7 @@ import Report_MPCC from '../pages/Report_MPCC';
 import Report_Absen from '../pages/Report_Absen';
 import Report_MpEmp from '../pages/Report_MpEmp';
 import Report_Break from '../pages/Report_Break';
+import Report_Access from '../pages/Report_Access';
 
 export const routesConfig = [  
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
@@ -69,12 +70,12 @@ export const routesConfig = [
     icon: 'bi-file-earmark-check',
     group: 3,
     children: [ 
-      { path: '/absensiAll', label: 'Absensi View', icon: 'bi-eye', element: <AbsensiAll /> },
       { path: '/absensi', label: 'Absensi Report', icon: 'bi-card-checklist', element: <Absensi /> },
-      { path: '/reportHarian', label: 'Report Harian', icon: 'bi-clipboard-check', element: <Report_Absen /> },
+      { path: '/reportHarian', label: 'Summary Harian', icon: 'bi-clipboard-check', element: <Report_Absen /> },
       { path: '/reportMpCc', label: 'Manpower / CC', icon: 'bi-person-workspace', element: <Report_MPCC /> },
       { path: '/reportMpEmp', label: 'Manpower / Emp', icon: 'bi-person-fill-gear', element: <Report_MpEmp /> },
       { path: '/reportBreak', label: 'Break Report', icon: 'bi-bell', element: <Report_Break /> },
+      { path: '/reportAccess', label: 'Access Report', icon: 'bi-arrow-left-right', element: <Report_Access /> },
     ]
   },
 
