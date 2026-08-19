@@ -125,11 +125,39 @@ def _get_aggregated_daily_shift(search_date):
     default_shifts = ["SHIFT 1", "SHIFT 2", "SHIFT 3"]
 
     sql_attendance = """
-        SELECT employee_id, clock_in
-        FROM `db-webapps`.`TBL_ATTENDANCE`
-        WHERE clocking_date = :search_date
-          AND employee_id IS NOT NULL
-          AND card_id != '00000.00000'
+        SELECT 
+            sub.card_id AS CARD_ID,
+            sub.clock_in AS first_clock_in,
+            COALESCE(occ.org_name, sub.raw_cc) AS terminal_cc
+        FROM (
+            SELECT 
+                ta.card_id,
+                ta.clock_in,
+                MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS raw_cc
+            FROM `db-webapps`.TBL_ATTENDANCE ta
+            LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
+                ON ta.card_id = tt_in.CARD_ID 
+               AND ta.clock_in = tt_in.CLOCKING_DATE
+            LEFT JOIN `db-it-andreas`.terminal_master tm_in 
+                ON tm_in.node_id COLLATE utf8mb4_general_ci = tt_in.TERMINAL_ID 
+               AND tm_in.company_id = '1111' 
+               AND tm_in.terminal_type = 'Attendance'
+            LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
+                ON ta.card_id = tt_out.CARD_ID 
+               AND ta.clock_out = tt_out.CLOCKING_DATE
+            LEFT JOIN `db-it-andreas`.terminal_master tm_out 
+                ON tm_out.node_id COLLATE utf8mb4_general_ci = tt_out.TERMINAL_ID 
+               AND tm_out.company_id = '1111' 
+               AND tm_out.terminal_type = 'Attendance'
+            WHERE ta.clocking_date = :search_date
+              AND ta.card_id IS NOT NULL 
+              AND ta.card_id != '00000.00000'
+            GROUP BY 
+                ta.card_id,
+                ta.clock_in
+        ) sub
+        LEFT JOIN org_cost_center occ 
+            ON occ.cost_center COLLATE utf8mb4_general_ci = sub.raw_cc
     """
     attendance_rows = db.session.execute(text(sql_attendance), {'search_date': search_date}).mappings().fetchall()
 
@@ -137,40 +165,35 @@ def _get_aggregated_daily_shift(search_date):
         return [], defaultdict(int), defaultdict(int), 0, default_shifts
 
     sql_os = """
-        SELECT employee_code AS emp_id, cc_name
+        SELECT card_number 
         FROM vw_master_os_active
+        WHERE card_number IS NOT NULL AND card_number != ''
     """
     os_rows = db.session.execute(text(sql_os)).mappings().fetchall()
-    os_map = {str(r['emp_id']): r['cc_name'] or 'TIDAK ADA CC' for r in os_rows if r['emp_id']}
+    os_card_set = {str(r['card_number']).strip() for r in os_rows}
 
     sql_ob = """
-        SELECT CAST(ob.employee_id AS CHAR) AS emp_id, COALESCE(cc.org_name, ob.cost_center) AS cc_name
-        FROM vw_master_karyawan ob
-        LEFT JOIN org_cost_center cc ON ob.cost_center = cc.cost_center
+        SELECT card_no
+        FROM vw_master_karyawan
+        WHERE card_no IS NOT NULL AND card_no != ''
     """
     ob_rows = db.session.execute(text(sql_ob)).mappings().fetchall()
-    ob_map = {str(r['emp_id']): r['cc_name'] or 'TIDAK ADA CC' for r in ob_rows if r['emp_id']}
+    ob_card_set = {str(r['card_no']).strip() for r in ob_rows}
 
     pivot = defaultdict(lambda: {"os": defaultdict(int), "ob": defaultdict(int)})
 
     for row in attendance_rows:
-        emp_id = row['employee_id']
-        str_emp_id = str(emp_id)
-        clock_in_val = row['clock_in']
-        
-        shift_detected = determine_shift(clock_in_val, is_saturday)
-        
-        try: emp_id_num = int(emp_id)
-        except ValueError: emp_id_num = 0
+        card_id = str(row['CARD_ID']).strip()
+        first_clock_in = row['first_clock_in']
+        shift_detected = determine_shift(first_clock_in, is_saturday)
+        cc_name = row['terminal_cc'] 
 
-        is_outsource = emp_id_num < 10000000
-
-        if is_outsource:
-            cc_name = os_map.get(str_emp_id, 'TIDAK ADA CC')
+        if card_id in os_card_set:
             pivot[cc_name]["os"][shift_detected] += 1
-        else:
-            cc_name = ob_map.get(str_emp_id, 'TIDAK ADA CC')
+        elif card_id in ob_card_set:
             pivot[cc_name]["ob"][shift_detected] += 1
+        else:
+            pivot[cc_name]["os"][shift_detected] += 1
 
     report_data = []
     totals_os = defaultdict(int)
@@ -194,6 +217,7 @@ def _get_aggregated_daily_shift(search_date):
 
     report_data.sort(key=lambda x: x['total_cc'], reverse=True)
     grand_total = sum(totals_os.values()) + sum(totals_ob.values())
+
     return report_data, totals_os, totals_ob, grand_total, default_shifts
 
 # =============================================================================
