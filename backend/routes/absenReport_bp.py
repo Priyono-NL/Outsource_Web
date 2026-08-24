@@ -132,7 +132,7 @@ def _get_aggregated_daily_shift(search_date):
         FROM (
             SELECT 
                 ta.card_id,
-                ta.clock_in,
+                MIN(COALESCE(ta.clock_in, ta.clock_out)) AS clock_in,
                 MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS raw_cc
             FROM `db-webapps`.TBL_ATTENDANCE ta
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
@@ -471,7 +471,6 @@ def reportMpEmployee():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@AbsenReport_bp.route('/exportMpEmp')
 @AbsenReport_bp.route('/exportMpEmp')
 def exportMpEmployee():
     try:

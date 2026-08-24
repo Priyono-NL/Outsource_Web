@@ -22,15 +22,15 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
             setError(null);
             
             const params = new URLSearchParams({
-                sub_company: subCompany || '',
-                department: department || '',
+                sub_company_id: subCompany || '',
+                department_id: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
                 page: currentPage,
                 pageSize: pageSize
             }).toString();
 
-            const response = await api.get(`/reportMpEmp?${params}`);
+            const response = await api.get(`/reportBreak?${params}`);
             const result = response.data;
             
             if (result && result.status === 'success') { 
@@ -58,6 +58,18 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
         fetchData();
     }, [refreshTrigger, subCompany, department, startDate, endDate, currentPage]);
 
+    // Fungsi helper untuk menentukan warna badge status
+    const getStatusBadgeClass = (statusStr) => {
+        if (!statusStr) return 'bg-secondary';
+        
+        const s = statusStr.toLowerCase();
+        if (s.includes('normal break')) return 'bg-success';
+        if (s.includes('>60')) return 'bg-warning text-dark';
+        if (s.includes('no clocking')) return 'bg-danger';
+        
+        return 'bg-secondary';
+    };
+
     return (
         <>
             {error && (
@@ -67,16 +79,18 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
             )}        
 
             <div className="table-responsive">
-                <table className="app-table table-hover table-striped mb-3">
+                <table className="app-table table-hover table-striped mb-3" style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                     <thead>
                         <tr>
-                            <th className="text-center">Employee ID</th>
+                            <th className="text-center">Employee Id</th>
                             <th>Display Name</th>
-                            <th className="text-center">Cost Center</th>
-                            <th className="text-center">Card Number</th>
-                            <th className="text-center">Clocking Out</th>
+                            <th className="text-center">Absence Card No</th>
+                            <th className="text-center">Tanggal OUT</th>
+                            <th className="text-center">Jam OUT</th>
+                            <th className="text-center">Tanggal Makan</th>
                             <th className="text-center">Jam Makan</th>
-                            <th className="text-center">Clocking In</th>
+                            <th className="text-center">Tanggal IN</th>
+                            <th className="text-center">Jam IN</th>
                             <th className="text-center">Access Area</th>
                             <th className="text-center">Total</th>
                             <th className="text-center">Status</th>
@@ -85,9 +99,9 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                     <tbody>
                         { loading ? (
                             <tr>
-                                <td colSpan="10" className="text-center py-4 text-muted">
+                                <td colSpan="12" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                                    Memuat data kehadiran karyawan...
+                                    Memuat data log istirahat...
                                 </td>
                             </tr>
                         ) : employees.length > 0 ? (
@@ -95,26 +109,31 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                                 <tr key={`mp-emp-${emp.emp_id}-${index}`}>
                                     <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
                                     <td>{emp.display_name || '-'}</td>
-                                    <td className="text-center">{emp.cc_name || '-'}</td>
-                                    <td className="text-center">card</td>
-                                    <td className="text-center">clock in</td>
-                                    <td className="text-center">jam makan</td>
-                                    <td className="text-center">clock out</td>
-                                    <td className="text-center">access</td>
-                                    <td className="text-center">total</td>
-                                    <td className="text-center">status</td>
+                                    <td className="text-center">{emp.card_number || '-'}</td>
+                                    <td className="text-center">{emp.tanggal_out || ''}</td>
+                                    <td className="text-center">{emp.jam_out || ''}</td>
+                                    <td className="text-center">{emp.tanggal_makan || ''}</td>
+                                    <td className="text-center">{emp.jam_makan || ''}</td>
+                                    <td className="text-center">{emp.tanggal_in || ''}</td>
+                                    <td className="text-center">{emp.jam_in || ''}</td>
+                                    <td className="text-center">{emp.access_area || '-'}</td>
+                                    <td className="text-center fw-bold">{emp.total !== undefined ? emp.total : '-'}</td>
+                                    <td className="text-center">
+                                        <span className={`badge ${getStatusBadgeClass(emp.status)}`}>
+                                            {emp.status || '-'}
+                                        </span>
+                                    </td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="10" className="empty-state text-center py-4 text-muted">
+                                <td colSpan="12" className="empty-state text-center py-4 text-muted">
                                     <i className="bi bi-inbox d-block mb-1 fs-4"></i>
-                                    Data absensi tidak ditemukan untuk periode ini
+                                    Data absensi istirahat tidak ditemukan untuk periode ini
                                 </td>
                             </tr>
                         )}
                     </tbody>
-
                 </table>
             </div>        
 
