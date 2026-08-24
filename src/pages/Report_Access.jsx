@@ -70,11 +70,11 @@ const Report_Access = () => {
         end_date: appliedEndDate || '',
       }).toString();
 
-      const response = await api.get(`/exportMpEmp?${params}`, {
+      const response = await api.get(`/exportAccess?${params}`, {
         responseType: 'blob'
       });
 
-      const fileName = `Report_MP_Employee_${appliedStartDate}_to_${appliedEndDate}.xlsx`;
+      const fileName = `Report_Access_Employee_${appliedStartDate}_to_${appliedEndDate}.xlsx`;
       saveAs(new Blob([response.data]), fileName);
 
       Toast.fire({

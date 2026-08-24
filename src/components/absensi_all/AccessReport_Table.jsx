@@ -30,7 +30,7 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
                 pageSize: pageSize
             }).toString();
 
-            const response = await api.get(`/reportMpEmp?${params}`);
+            const response = await api.get(`/reportAccess?${params}`);
             const result = response.data;
             
             if (result && result.status === 'success') { 
@@ -93,10 +93,10 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
                                     <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
                                     <td>{emp.display_name || '-'}</td>
                                     <td>{emp.cc_name || '-'}</td>
-                                    <td className="text-center">card</td>
-                                    <td className="text-center">clock in</td>
-                                    <td className="text-center">clock out</td>
-                                    <td className="text-center">access</td>
+                                    <td className="text-center">{emp.card_number || '-'}</td>
+                                    <td className="text-center">{emp.time_in || ''}</td>
+                                    <td className="text-center">{emp.time_out || ''}</td>
+                                    <td className="text-center">{emp.access_area || '-'}</td>
                                 </tr>
                             ))
                         ) : (

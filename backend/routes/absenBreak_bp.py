@@ -9,9 +9,11 @@ from extensions import db
 AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 
 # =============================================================================
-# HELPER: LAPORAN EMPLOYEE BREAK
+# REUSABLE HELPERS (Mencegah pengulangan kode / DRY)
 # =============================================================================
-def _get_break_data(start_date, end_date, sub_company_id, department_id):
+
+def _build_filters_and_params(start_date, end_date, sub_company_id, department_id):
+    """Membangun filter WHERE clause dinamis dan dictionary parameter SQL"""
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
@@ -27,10 +29,11 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id):
         params['department_id'] = department_id
         
     filter_clause = " AND " + " AND ".join(filters) if filters else ""
+    return filter_clause, params
 
-    # Menggunakan DATE_FORMAT untuk memastikan MySQL melempar string ('HH:MM') ke Python,
-    # Menghindari error timedelta. Dan filter ClockData hanya mengambil action_flag = 'Break'
-    sql_query = f"""
+def _get_base_karyawan_cte():
+    """Mengembalikan CTE dasar untuk menggabungkan master karyawan & OS"""
+    return """
         WITH Karyawan AS (
             SELECT 
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
@@ -51,7 +54,33 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id):
                 CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
                 CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id
             FROM vw_master_os_active
-        ),
+        )
+    """
+
+def _paginate_data(report_data, page, page_size):
+    """Helper untuk memotong data sesuai pagination yang diminta"""
+    total_item = len(report_data)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    
+    return {
+        "status": "success",
+        "data": report_data[start_idx:end_idx],
+        "total_item": total_item,
+        "current_page": page,
+        "total_page": (total_item + page_size - 1) // page_size if total_item > 0 else 1
+    }
+
+# =============================================================================
+# DATA PROCESSORS
+# =============================================================================
+
+def _get_break_data(start_date, end_date, sub_company_id, department_id):
+    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id)
+    base_cte = _get_base_karyawan_cte()
+
+    sql_query = f"""
+        {base_cte},
         ClockData AS (
             SELECT 
                 CONVERT(emp_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
@@ -92,10 +121,9 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id):
     """
     
     rows = db.session.execute(text(sql_query), params).mappings().fetchall()
-    
     report_data = []
-    
-    def get_access_area(node_id):
+
+    def get_break_area(node_id):
         if not node_id: return "-"
         node_str = str(node_id)
         if node_str in ('161', '162'): return 'Access Dekat Loker 94'
@@ -107,11 +135,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id):
         return f"Node {node_str}"
 
     for row in rows:
-        jam_out_str = row['jam_out'] # String (misal: '11:19')
-        jam_makan_str = row['jam_makan']
-        jam_in_str = row['jam_in']
+        jam_out_str, jam_makan_str, jam_in_str = row['jam_out'], row['jam_makan'], row['jam_in']
         
-        # Tanggal tetap dikelola sebagai objek date oleh SQLAlchemy, jadi bisa menggunakan strftime
         tgl_out_str = row['tanggal_out'].strftime('%d-%b-%Y').upper() if row['tanggal_out'] else ""
         tgl_mak_str = row['tanggal_makan'].strftime('%d-%b-%Y').upper() if row['tanggal_makan'] else ""
         tgl_in_str = row['tanggal_in'].strftime('%d-%b-%Y').upper() if row['tanggal_in'] else ""
@@ -122,131 +147,150 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id):
         if not jam_in_str:
             status = "No Clocking IN"
         else:
-            # String bisa dibandingkan secara langsung ('11:19' < '11:20' bernilai True)
-            start_break_str = None
-            if jam_out_str and jam_makan_str:
-                start_break_str = min(jam_out_str, jam_makan_str)
-            elif jam_out_str:
-                start_break_str = jam_out_str
-            elif jam_makan_str:
-                start_break_str = jam_makan_str
+            start_break_str = min(filter(None, [jam_out_str, jam_makan_str]), default=None)
                 
             if start_break_str:
-                # Kalkulasi total waktu dalam menit dengan mengonversi string jam ke objek datetime
-                fmt = '%H:%M'
-                dt_in = datetime.strptime(jam_in_str, fmt)
-                dt_start = datetime.strptime(start_break_str, fmt)
+                dt_in = datetime.strptime(jam_in_str, '%H:%M')
+                dt_start = datetime.strptime(start_break_str, '%H:%M')
                 
-                delta = dt_in - dt_start
-                total_mins = int(delta.total_seconds() // 60)
-                
-                if total_mins < 0: total_mins = 0
-                
-                if total_mins > 60:
-                    status = ">60"
+                total_mins = max(0, int((dt_in - dt_start).total_seconds() // 60))
+                if total_mins > 60: status = ">60"
             else:
                 status = "No Clocking OUT"
                 
         report_data.append({
-            "emp_id": row['emp_id'],
-            "display_name": row['display_name'] or '-',
-            "card_number": row['card_number'] or '-',
-            "tanggal_out": tgl_out_str,
-            "jam_out": jam_out_str or "",
-            "tanggal_makan": tgl_mak_str,
-            "jam_makan": jam_makan_str or "",
-            "tanggal_in": tgl_in_str,
-            "jam_in": jam_in_str or "",
-            "access_area": get_access_area(row['node_id']),
-            "total": total_mins,
-            "status": status
+            "emp_id": row['emp_id'], "display_name": row['display_name'] or '-',
+            "card_number": row['card_number'] or '-', "tanggal_out": tgl_out_str,
+            "jam_out": jam_out_str or "", "tanggal_makan": tgl_mak_str,
+            "jam_makan": jam_makan_str or "", "tanggal_in": tgl_in_str,
+            "jam_in": jam_in_str or "", "access_area": get_break_area(row['node_id']),
+            "total": total_mins, "status": status
         })
 
     return report_data
 
+
+def _get_access_data(start_date, end_date, sub_company_id, department_id):
+    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id)
+    base_cte = _get_base_karyawan_cte()
+
+    sql_query = f"""
+        {base_cte},
+        ClockData AS (
+            SELECT 
+                CONVERT(emp_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
+                DATE(clocking_time) as clock_date,
+                DATE_FORMAT(MIN(CASE WHEN direction = 'IN' THEN clocking_time END), '%H:%i') as time_in,
+                DATE_FORMAT(MAX(CASE WHEN direction = 'OUT' THEN clocking_time END), '%H:%i') as time_out,
+                MAX(node_id) as node_id
+            FROM vw_filter_test
+            WHERE DATE(clocking_time) BETWEEN :start_date AND :end_date
+              AND action_flag = 'Access'
+            GROUP BY emp_id, DATE(clocking_time)
+        )
+        SELECT 
+            k.emp_id, k.display_name, k.card_number, k.cc_name,
+            c.clock_date, c.time_in, c.time_out, c.node_id
+        FROM Karyawan k
+        INNER JOIN ClockData c ON k.emp_id = c.emp_id
+        WHERE 1=1 {filter_clause}
+    """
+    
+    rows = db.session.execute(text(sql_query), params).mappings().fetchall()
+    report_data = []
+    
+    def get_access_area(node_id):
+        if not node_id: return "-"
+        node_str = str(node_id)
+        if node_str in ('188', '189'): return 'Access 86'
+        if node_str in ('173', '175'): return 'Access 92'
+        if node_str in ('111', '112', '113', '114', '115', '215', '219', '116', '117', '118'): return 'Access 94'
+        return f"Node {node_str}"
+
+    for row in rows:
+        report_data.append({
+            "emp_id": row['emp_id'], "display_name": row['display_name'] or '-',
+            "cc_name": row['cc_name'] or '-', "card_number": row['card_number'] or '-',
+            "time_in": row['time_in'] or "", "time_out": row['time_out'] or "",
+            "access_area": get_access_area(row['node_id'])
+        })
+
+    return report_data
+
+
 # =============================================================================
-# ENDPOINT
+# ENDPOINTS
 # =============================================================================
+
 @AbsenBreak_bp.route('/reportBreak')
 def reportBreak():
     try:
-        # Frontend mengirim parameter ini via params URLSearchParams
-        start_date = request.args.get('start_date', '').strip()
-        end_date = request.args.get('end_date', '').strip()
-        sub_company_id = request.args.get('sub_company_id', '').strip()
-        department_id = request.args.get('department_id', '').strip() 
-        page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('pageSize', 10))
-
-        report_data = _get_break_data(start_date, end_date, sub_company_id, department_id)
-
-        # Pagination manual di backend
-        total_item = len(report_data)
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        
-        paginated_data = report_data[start_idx:end_idx]
-
-        return jsonify({
-            "status": "success",
-            "data": paginated_data,
-            "total_item": total_item,
-            "current_page": page,
-            "total_page": (total_item + page_size - 1) // page_size if total_item > 0 else 1
-        }), 200
-
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
+        report_data = _get_break_data(
+            request.args.get('start_date', '').strip(), request.args.get('end_date', '').strip(),
+            request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
+            request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
+        )
+        return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 400 if isinstance(e, ValueError) else 500
+
+
+@AbsenBreak_bp.route('/reportAccess')
+def reportAccess():
+    try:
+        report_data = _get_access_data(
+            request.args.get('start_date', '').strip(), request.args.get('end_date', '').strip(),
+            request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
+            request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
+        )
+        return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400 if isinstance(e, ValueError) else 500
+
 
 @AbsenBreak_bp.route('/exportBreak')
 def exportBreak():
     try:
-        start_date = request.args.get('start_date', '').strip()
-        end_date = request.args.get('end_date', '').strip()
-        sub_company_id = request.args.get('sub_company_id', '').strip()
-        department_id = request.args.get('department_id', '').strip()
+        start = request.args.get('start_date', '').strip()
+        end = request.args.get('end_date', '').strip()
+        report_data = _get_break_data(start, end, request.args.get('sub_company', '').strip(), request.args.get('department', '').strip())
+
+        if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
+
+        df = pd.DataFrame(report_data)
+        df.rename(columns={
+            'emp_id': 'Employee Id', 'display_name': 'Display Name', 'card_number': 'Absence Card No',
+            'tanggal_out': 'Tanggal OUT', 'jam_out': 'Jam OUT', 'tanggal_makan': 'Tanggal Makan',
+            'jam_makan': 'Jam Makan', 'tanggal_in': 'Tanggal IN', 'jam_in': 'Jam IN',
+            'access_area': 'Access Area', 'total': 'Total', 'status': 'Status'
+        }, inplace=True)
         
-        report_data = _get_break_data(start_date, end_date, sub_company_id, department_id)
-
-        if not report_data:
-            return jsonify({"status": "error", "message": "Data absensi istirahat tidak ditemukan untuk periode/departemen ini"}), 400
-
-        # Mapping ulang untuk nama header di file excel
-        excel_rows = []
-        for row in report_data:
-            excel_rows.append({
-                'Employee Id': row['emp_id'],
-                'Display Name': row['display_name'],
-                'Absence Card No': row['card_number'],
-                'Tanggal OUT': row['tanggal_out'],
-                'Jam OUT': row['jam_out'],
-                'Tanggal Makan': row['tanggal_makan'],
-                'Jam Makan': row['jam_makan'],
-                'Tanggal IN': row['tanggal_in'],
-                'Jam IN': row['jam_in'],
-                'Access Area': row['access_area'],
-                'Total': row['total'],
-                'Status': row['status']
-            })
-
-        df = pd.DataFrame(excel_rows)
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Employee_Break_Report')
+        with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Break_Report')
         output.seek(0)
-
-        filename = f"Employee_Break_Report_{start_date}_to_{end_date}.xlsx"
         
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
-        )
+        return send_file(output, as_attachment=True, download_name=f"Employee_Break_Report_{start}_to_{end}.xlsx")
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+
+@AbsenBreak_bp.route('/exportAccess')
+def exportAccess():
+    try:
+        start = request.args.get('start_date', '').strip()
+        end = request.args.get('end_date', '').strip()
+        report_data = _get_access_data(start, end, request.args.get('sub_company', '').strip(), request.args.get('department', '').strip())
+
+        if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
+
+        df = pd.DataFrame(report_data)
+        df.rename(columns={
+            'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center',
+            'card_number': 'Absence Card No', 'time_in': 'Time In', 'time_out': 'Time Out', 'access_area': 'Access Area'
+        }, inplace=True)
+        
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Access_Report')
+        output.seek(0)
+        
+        return send_file(output, as_attachment=True, download_name=f"Access_Clocking_Report_{start}_to_{end}.xlsx")
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
