@@ -12,7 +12,7 @@ AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 # REUSABLE HELPERS (Mencegah pengulangan kode / DRY)
 # =============================================================================
 
-def _build_filters_and_params(start_date, end_date, sub_company_id, department_id):
+def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
     """Membangun filter WHERE clause dinamis dan dictionary parameter SQL"""
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
@@ -27,6 +27,11 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     if department_id:
         filters.append("k.cost_center = :department_id")
         params['department_id'] = department_id
+        
+    # Tambahan filter untuk Search Bar
+    if search_text:
+        filters.append("(k.emp_id LIKE :search OR k.display_name LIKE :search OR k.card_number LIKE :search)")
+        params['search'] = f"%{search_text}%"
         
     filter_clause = " AND " + " AND ".join(filters) if filters else ""
     return filter_clause, params
@@ -75,8 +80,8 @@ def _paginate_data(report_data, page, page_size):
 # DATA PROCESSORS
 # =============================================================================
 
-def _get_break_data(start_date, end_date, sub_company_id, department_id):
-    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id)
+def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None):
+    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     base_cte = _get_base_karyawan_cte()
 
     sql_query = f"""
@@ -170,8 +175,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id):
     return report_data
 
 
-def _get_access_data(start_date, end_date, sub_company_id, department_id):
-    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id)
+def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None):
+    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     base_cte = _get_base_karyawan_cte()
 
     sql_query = f"""
@@ -221,32 +226,33 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id):
 # =============================================================================
 # ENDPOINTS
 # =============================================================================
-
 @AbsenBreak_bp.route('/reportBreak')
 def reportBreak():
     try:
         report_data = _get_break_data(
-            request.args.get('start_date', '').strip(), request.args.get('end_date', '').strip(),
+            request.args.get('start_date', '').strip(), 
+            request.args.get('end_date', '').strip(),
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
-            request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
+            request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
+            request.args.get('search', '').strip()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400 if isinstance(e, ValueError) else 500
-
 
 @AbsenBreak_bp.route('/reportAccess')
 def reportAccess():
     try:
         report_data = _get_access_data(
-            request.args.get('start_date', '').strip(), request.args.get('end_date', '').strip(),
+            request.args.get('start_date', '').strip(), 
+            request.args.get('end_date', '').strip(),
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
-            request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
+            request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
+            request.args.get('search', '').strip()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400 if isinstance(e, ValueError) else 500
-
 
 @AbsenBreak_bp.route('/exportBreak')
 def exportBreak():

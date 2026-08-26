@@ -35,6 +35,8 @@ const Report_Access = () => {
   const [appliedStartDate, setAppliedStartDate] = useState(todayStr);
   const [appliedEndDate, setAppliedEndDate] = useState(todayStr);
 
+  const [appliedSearch, setAppliedSearch] = useState('');
+
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
@@ -57,6 +59,7 @@ const Report_Access = () => {
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
+    setAppliedSearch(crud.searchInput);
     crud.handleSearch();
   };
 
@@ -68,6 +71,7 @@ const Report_Access = () => {
         department: appliedDepartment || '',
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
+        search: appliedSearch || '',
       }).toString();
 
       const response = await api.get(`/exportAccess?${params}`, {
@@ -206,6 +210,7 @@ const Report_Access = () => {
           department={appliedDepartment}
           startDate={appliedStartDate}
           endDate={appliedEndDate}
+          search={appliedSearch}
         />
       </div>
     </div>

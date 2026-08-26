@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate }) => { 
+const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, search }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -26,6 +26,7 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
                 department: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
+                search: search || '',
                 page: currentPage,
                 pageSize: pageSize
             }).toString();
@@ -52,11 +53,11 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, startDate, endDate]);
+    }, [subCompany, department, startDate, endDate, search]);
 
     useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, currentPage]);
+    }, [refreshTrigger, subCompany, department, startDate, endDate, search, currentPage]);
 
     return (
         <>
