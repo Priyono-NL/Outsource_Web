@@ -11,7 +11,7 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
   const formRef = useRef(null);
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);  
-  const [initialData, setInitialData] = useState(propsData || { is_blacklist: "No in Blacklist" });
+  const [initialData, setInitialData] = useState(propsData || { is_blacklist: "No in Blacklist", use_cc: 0 });
   const [previewUrl, setPreviewUrl] = useState("/no_image.png");
   const BASE_URL = import.meta.env.VITE_BACKEND_URL;
   const isEditMode = !!propsData;
@@ -72,6 +72,9 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
     const customConfig = { headers: { 'Content-Type': 'multipart/form-data' } };
     const formData = new FormData(formRef.current);
     
+    // Pastikan nilai flag use_cc terkirim sebagai integer 1 atau 0
+    formData.set('use_cc', initialData?.use_cc === 1 ? '1' : '0');
+
     if (selectedFile) { 
       formData.append('photo', selectedFile); 
     }
@@ -96,7 +99,6 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
       <div className="modal-backdrop fade show" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={onClose}></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-        {/* Tetap menggunakan modal-xl karena konten tab cukup padat */}
         <div className="modal-dialog modal-xl modal-dialog-centered">
           <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
@@ -112,7 +114,7 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
               <div className="modal-body p-3 bg-white">
                 <div className="row g-3">
                   
-                  {/* Sidebar Foto - Lebih Ramping */}
+                  {/* Sidebar Foto & Status Flags */}
                   <div className="col-md-3 border-end text-center pt-2">
                     <div 
                       className="rounded shadow-sm border bg-light mx-auto mb-2"
@@ -137,13 +139,38 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
                       <i className="bi bi-camera me-1"></i> Ganti Foto
                     </button>
 
-                    <div className="px-3">
-                      <label className='fw-bold text-muted mb-1' style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Status Blacklist</label>
+                    {/* Badge Status Blacklist */}
+                    <div className="px-3 mb-2">
+                      <label className='fw-bold text-muted mb-1 d-block text-start' style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Status Blacklist</label>
                       <span className={`badge py-2 w-100 ${initialData?.is_blacklist === 'Blacklist' ? 'bg-danger' : 'bg-success'}`} style={{ borderRadius: '6px', fontSize: '0.7rem' }}>
                         <i className={`bi ${initialData?.is_blacklist === 'Blacklist' ? 'bi-shield-slash-fill' : 'bi-shield-check-fill'} me-1`}></i>
                         {initialData?.is_blacklist === 'Blacklist' ? 'BLACKLISTED' : 'CLEAN / ACTIVE'}
                       </span>
                     </div>
+
+                    {/* Toggle Flag Use Node ID Cost Center */}
+                    <div className="px-3 text-start">
+                      <label className='fw-bold text-muted mb-1 d-block' style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Konfigurasi Cost Center</label>
+                      <div className="form-check form-switch d-flex justify-content-between align-items-center ps-2 pe-2 py-1 bg-light rounded border">
+                        <label className="form-check-label fw-bold text-dark mb-0 cursor-pointer" htmlFor="useNodeCcSwitch" style={{ fontSize: '0.7rem' }}>
+                          Use Cost Cente Master
+                        </label>
+                        <input 
+                          className="form-check-input ms-0 cursor-pointer" 
+                          type="checkbox" 
+                          role="switch"
+                          id="useNodeCcSwitch"
+                          checked={Number(initialData?.use_cc) === 1}
+                          onChange={(e) => setInitialData({ ...initialData, use_cc: e.target.checked ? 1 : 0 })}
+                        />
+                      </div>
+                      <small className="text-muted d-block mt-1" style={{ fontSize: '0.62rem', lineHeight: '1.2' }}>
+                        {Number(initialData?.use_cc) === 1 
+                          ? '*CC dikunci sesuai Data Master Karyawan.' 
+                          : '*CC mengikuti lokasi mesin tempat tapping.'}
+                      </small>
+                    </div>
+
                   </div>
 
                   {/* Area Tab Konten */}
@@ -172,7 +199,7 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
                       })}
                     </ul>
 
-                    {/* Container Tab - Min Height dikurangi agar lebih ramping */}
+                    {/* Container Tab */}
                     <div className="tab-content-container" style={{ minHeight: '320px' }}>
                       <div className={activeTab === 0 ? '' : 'd-none'}>
                         <PersonelTab onPersonSelect={handlePersonSelect} initialData={propsData} />

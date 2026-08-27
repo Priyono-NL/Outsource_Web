@@ -8,6 +8,7 @@ class OsEmployment(db.Model, AuditMixin):
     employee_code = db.Column(db.Integer)
     person_id = db.Column(db.Integer, db.ForeignKey('os_person.person_id'))
     sub_company_id = db.Column(db.String(10), db.ForeignKey('sub_company.sub_company_id')) 
+    use_cc = db.Column(db.Integer, default=0)
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)       
     
@@ -67,6 +68,7 @@ class OsEmployment(db.Model, AuditMixin):
             'employee_code': self.employee_code,
             'sub_company_id': self.sub_company_id,            
             'person_id': self.person_id,
+            "use_cc": getattr(self, 'use_cc', 0),
             'valid_from': self.valid_from.strftime('%Y-%m-%d') if hasattr(self.valid_from, 'strftime') else None,
             'valid_to': self.valid_to.strftime('%Y-%m-%d') if hasattr(self.valid_to, 'strftime') else None,
 

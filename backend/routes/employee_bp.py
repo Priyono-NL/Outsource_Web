@@ -4,7 +4,6 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func
-from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
 from .auth_bp import login_required
@@ -31,6 +30,12 @@ def clean_str(val):
     if val is None or pd.isna(val):
         return None
     return str(val).strip()
+
+def parse_use_cc(val):
+    """Utility untuk konversi input flag use_cc menjadi integer (0 atau 1)"""
+    if str(val).strip() in ['1', 'true', 'True']:
+        return 1
+    return 0
 
 @employee_bp.route('/employee')
 def index():
@@ -79,19 +84,14 @@ def index():
     except Exception as e:
         import traceback
         traceback.print_exc()    
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
 def search_employee(emp_id):
     try:
         result = db.session.query(OsPerson.name, OsEmployment.id) \
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
-            .filter(
-                OsEmployment.employee_code == emp_id,
-            ) \
+            .filter(OsEmployment.employee_code == emp_id) \
             .first()
         if result:
             return jsonify({"status": "success", "full_name": result.name, "emp_pk_id": result.id}), 200
@@ -107,8 +107,6 @@ def search_autocomplete():
             return jsonify({"status": "success", "data": []})
         
         today = datetime.now().date()
-        
-        # Cari berdasarkan Nama Person atau Employee Code (NRP)
         results = db.session.query(OsEmployment, OsPerson)\
             .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)\
             .filter(
@@ -120,7 +118,6 @@ def search_autocomplete():
         
         data_result = []
         for emp, person in results:
-            # Tentukan status keaktifan berdasarkan rentang valid_from dan valid_to kontrak kerja
             is_active = False
             if emp.valid_from and emp.valid_from <= today:
                 if emp.valid_to is None or emp.valid_to >= today:
@@ -131,19 +128,14 @@ def search_autocomplete():
                 "employee_code": emp.employee_code,
                 "name": person.name,
                 "resident_id": person.resident_id,
+                "use_cc": getattr(emp, 'use_cc', 0),
                 "is_active": is_active,
                 "status_text": "Aktif" if is_active else "Non-Aktif"
             })
         
-        return jsonify({
-            "status": "success",
-            "data": data_result
-        }), 200
+        return jsonify({"status": "success", "data": data_result}), 200
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @employee_bp.route('/employee/search-all', methods=['GET'])
 def search_all():
@@ -154,9 +146,6 @@ def search_all():
         today = datetime.now().date()
         data_result = []
 
-        # ==========================================
-        # 1. PENCARIAN DI OS_EMPLOYMENT
-        # ==========================================
         results_os = db.session.query(OsEmployment, OsPerson)\
             .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)\
             .filter(
@@ -177,13 +166,11 @@ def search_all():
                 "emp_pk_id": emp.id,
                 "employee_code": emp.employee_code,
                 "name": person.name,
+                "use_cc": getattr(emp, 'use_cc', 0),
                 "is_active": is_active,
                 "status_text": "Aktif" if is_active else "Non-Aktif"
             })
 
-        # ==========================================
-        # 2. PENCARIAN DI OB_EMPLOYEE (vw_master_karyawan)
-        # ==========================================
         results_ob = ObEmployee.query.filter(
             or_(
                 ObEmployee.employee_name.ilike(f"%{query_str}%"),
@@ -192,27 +179,19 @@ def search_all():
         ).all()
 
         for ob in results_ob:
-            cc_name_val = ob.cc_master.org_name if hasattr(ob, 'cc_master') and ob.cc_master else None
-
             data_result.append({
                 "source": "OB",
                 "emp_pk_id": ob.employee_id,
                 "employee_code": ob.employee_id,
                 "name": ob.employee_name,
+                "use_cc": 0,
                 "is_active": True,
                 "status_text": "Aktif"
             })
             
-        return jsonify({
-            "status": "success",
-            "data": data_result
-        }), 200
-
+        return jsonify({"status": "success", "data": data_result}), 200
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():
@@ -227,19 +206,19 @@ def add():
 
         new_start_date = datetime.strptime(data.get('valid_from'), '%Y-%m-%d').date()
         adjusted_valid_to = new_start_date - timedelta(days=1)
-        employee_code_input = data.get('employee_id')
+        employee_code_input = clean_str(data.get('employee_id'))
         card_number_input = data.get('card_number')
+        use_cc_input = parse_use_cc(data.get('use_cc', 0))
 
         if card_number_input:
             duplicate_card = OsCard.query.filter(
                 OsCard.card_number == card_number_input,
                 (OsCard.valid_to >= new_start_date) | (OsCard.valid_to == None)
             ).first()
-
             if duplicate_card:
                 raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh record lain.")
         
-        #person
+        # --- Update/Insert Person ---
         person_id = data.get('person_id')
         if not person_id or person_id == "" or person_id == "undefined":
             target_person = OsPerson(
@@ -260,11 +239,13 @@ def add():
             target_person.religion = data.get('religion', target_person.religion)
             target_person.resident_id = data.get('resident_id', target_person.resident_id)
 
+        # --- Format Penamaan Foto: employeeCode_YYYYMMDD.ext ---
         if 'photo' in request.files:
             file = request.files['photo']
             if file.filename != '':
                 ext = os.path.splitext(file.filename)[1].lower()
-                new_filename = f"{data.get('nama')}_{data.get('resident_id')}{ext}"
+                upload_date = datetime.now().strftime('%Y%m%d')
+                new_filename = f"{employee_code_input}_{upload_date}{ext}"
                 file_path = os.path.join(UPLOAD_FOLDER, new_filename)
                 file.save(file_path)
                 target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"
@@ -273,26 +254,20 @@ def add():
         db.session.flush()
         person_id = target_person.person_id        
 
+        # Validasi Keaktifan NRP
         check_nrp_owner = OsEmployment.query.filter(
             OsEmployment.employee_code == employee_code_input,
             (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
         ).first()       
         if check_nrp_owner and check_nrp_owner.person_id != person_id:
-            raise Exception(
-                f"NRP / ID Karyawan '{employee_code_input}' sudah terdaftar milik orang lain. "
-                f"Satu NRP tidak boleh digunakan oleh lebih dari satu orang."
-            )
+            raise Exception(f"NRP / ID Karyawan '{employee_code_input}' sudah terdaftar milik orang lain.")
 
         active_emp_for_person = OsEmployment.query.filter(
             OsEmployment.person_id == person_id,
             (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
         ).first()
         if active_emp_for_person and active_emp_for_person.employee_code != employee_code_input:
-            raise Exception(
-                f"Karyawan '{target_person.name}' masih berstatus AKTIF dengan NRP lama "
-                f"({active_emp_for_person.employee_code}). Tidak dapat membuat NRP baru "
-                f"({employee_code_input}) sebelum masa kerja sebelumnya diakhiri."
-            )
+            raise Exception(f"Karyawan '{target_person.name}' masih berstatus AKTIF dengan NRP lama ({active_emp_for_person.employee_code}).")
 
         existing_active_emp = OsEmployment.query.filter(
             OsEmployment.employee_code == employee_code_input,
@@ -300,20 +275,15 @@ def add():
         ).first()
 
         if existing_active_emp and existing_active_emp.valid_from == new_start_date:
-            raise Exception(
-                f"Karyawan dengan ID {employee_code_input} sudah memiliki data aktif "
-                f"dengan tanggal mulai yang sama persis ({new_start_date}). "
-                f"Tidak dapat menimpa atau membuat riwayat baru di tanggal yang sama."
-            )
+            raise Exception(f"Karyawan dengan ID {employee_code_input} sudah memiliki data aktif di tanggal yang sama.")
 
         if existing_active_emp:
             active_emp_pk_id = existing_active_emp.id
-            
             target_models = [
                 {"model": OsEmployment, "field": "person_id",   "val": person_id},
                 {"model": OsCard,       "field": "employee_id", "val": active_emp_pk_id},
                 {"model": OsGrade,      "field": "employee_id", "val": active_emp_pk_id},
-                {"model": osType,      "field": "employee_id", "val": active_emp_pk_id},
+                {"model": osType,       "field": "employee_id", "val": active_emp_pk_id},
                 {"model": OsCostCenter, "field": "employee_id", "val": active_emp_pk_id},
                 {"model": Alokasi,      "field": "employee_id", "val": active_emp_pk_id},
             ]
@@ -337,17 +307,20 @@ def add():
                     db.session.add(rec)
             
         db.session.flush()
-        #employment
+
+        # Insert Employment Baru dengan use_cc
         newEmployment = OsEmployment(
             employee_code = employee_code_input,
             sub_company_id = data.get('sub_company_id'),
             person_id = person_id,
+            use_cc = use_cc_input,
             valid_from = data.get('valid_from'),
             valid_to = data.get('valid_to')
         )
         db.session.add(newEmployment)
         db.session.flush()
-        #card
+
+        # Card
         newCard = OsCard(
             employee_id = newEmployment.id,
             card_number = data.get('card_number'),
@@ -355,7 +328,8 @@ def add():
             valid_to = data.get('c_valid_to')
         )
         db.session.add(newCard)
-        #grade        
+
+        # Grade        
         newGrade = OsGrade(
             employee_id = newEmployment.id,
             grade = data.get('grade'),
@@ -363,7 +337,8 @@ def add():
             valid_to = data.get('valid_to')
         )       
         db.session.add(newGrade)
-        #type
+
+        # Type Work
         newType = osType(
             employee_id = newEmployment.id,
             type_worker = data.get('type_worker'),
@@ -372,7 +347,8 @@ def add():
             valid_to = data.get('valid_to')
         )
         db.session.add(newType)
-        #org cost center
+
+        # Cost Center
         newCC = OsCostCenter(
             employee_id = newEmployment.id,
             cc_id = data.get('cc_id'),
@@ -380,29 +356,25 @@ def add():
             valid_to = data.get('valid_to')
         )       
         db.session.add(newCC)
-        #canteen
+
+        # Canteen Allocation
         if (data.get('cc_id')):
             cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(data.get('cc_id'))).first()
-            newAlokasi = Alokasi(
-                employee_id = newEmployment.id,
-                canteen_id = cc_def.canteen_id,
-                valid_from = data.get('valid_from'),
-                valid_to = data.get('valid_to')
-            )
-            db.session.add(newAlokasi)            
-        #commit all
+            if cc_def:
+                newAlokasi = Alokasi(
+                    employee_id = newEmployment.id,
+                    canteen_id = cc_def.canteen_id,
+                    valid_from = data.get('valid_from'),
+                    valid_to = data.get('valid_to')
+                )
+                db.session.add(newAlokasi)            
+        
         db.session.commit()
+        return jsonify({"status": "success", "message": "Data berhasil disimpan!"}), 201     
 
-        return jsonify({
-            "status": "success",
-            "message": f"Data berhasil disimpan!"
-        }), 201     
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            "status": "error",
-            "message": "Terjadi kesalahan pada server: " + str(e)
-        }), 500
+        return jsonify({"status": "error", "message": "Terjadi kesalahan pada server: " + str(e)}), 500
 
 @employee_bp.route('/employee/<int:id>', methods=['PUT'])
 def edit(id):
@@ -415,11 +387,11 @@ def edit(id):
         if not data.get('employee_id') or str(data.get('employee_id')).strip() == "":
             return jsonify({"status": "error", "message": "ID Karyawan wajib diisi!"}), 400
 
-        employee_code_input = data.get('employee_id')
+        employee_code_input = clean_str(data.get('employee_id'))
         card_number_input = data.get('card_number')
         valid_from_input = data.get('valid_from')
+        use_cc_input = parse_use_cc(data.get('use_cc', 0))
         
-        # Tanggal Efektif Perubahan
         new_start_date = datetime.strptime(valid_from_input, '%Y-%m-%d').date() if valid_from_input else None
         day_before = new_start_date - timedelta(days=1) if new_start_date else None
 
@@ -427,7 +399,6 @@ def edit(id):
         if not target_emp:
             return jsonify({"status": "error", "message": "Data Employment tidak ditemukan!"}), 404
 
-        # --- VALIDASI KARTU DUPLIKAT ---
         if card_number_input and new_start_date:
             duplicate_card = OsCard.query.filter(
                 OsCard.card_number == card_number_input,
@@ -438,7 +409,7 @@ def edit(id):
             if duplicate_card:
                 raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
 
-        # --- UPDATE MASTER PERSON ---
+        # --- UPDATE MASTER PERSON & PENAMAAN FOTO BARU ---
         target_person = OsPerson.query.get(target_emp.person_id)
         if target_person:
             target_person.name = data.get('nama', target_person.name)
@@ -453,21 +424,23 @@ def edit(id):
                 file = request.files['photo']
                 if file.filename != '':
                     ext = os.path.splitext(file.filename)[1].lower()
-                    new_filename = f"{uuid.uuid4().hex}{ext}"
+                    upload_date = datetime.now().strftime('%Y%m%d')
+                    new_filename = f"{employee_code_input}_{upload_date}{ext}"
                     file_path = os.path.join(UPLOAD_FOLDER, new_filename)
                     file.save(file_path)
                     target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"
             
             db.session.add(target_person)
 
-        # --- UPDATE MASTER EMPLOYMENT ---
+        # --- UPDATE MASTER EMPLOYMENT & FLAG USE_CC ---
         target_emp.employee_code = employee_code_input
         target_emp.sub_company_id = data.get('sub_company_id')
+        target_emp.use_cc = use_cc_input
         target_emp.valid_from = data.get('valid_from') or None
         target_emp.valid_to = data.get('valid_to') or None
         db.session.add(target_emp)
 
-        # --- UPDATE KARTU (OsCard) ---
+        # --- UPDATE KARTU ---
         c_valid_from = data.get('c_valid_from') or None
         c_valid_to = data.get('c_valid_to') or None
         valid_to_ref = data.get('valid_to') or None
@@ -490,7 +463,7 @@ def edit(id):
             )
             db.session.add(newCard)
 
-        # --- UPDATE GRADE (OsGrade) ---
+        # --- UPDATE GRADE ---
         target_grade = OsGrade.query.filter_by(employee_id=id).first()
         if target_grade:
             target_grade.grade = data.get('grade')
@@ -498,11 +471,10 @@ def edit(id):
             target_grade.valid_to = data.get('valid_to') or None
             db.session.add(target_grade)
 
-        # --- LOGIKA HISTORI: TYPE WORKER & POSISI (osType) ---
+        # --- LOGIKA HISTORI TYPE WORKER ---
         new_type_worker = data.get('type_worker')
         new_posisi = data.get('posisi')
         if (new_type_worker or new_posisi) and new_start_date:
-            # Ambil data yang aktif saat ini berdasarkan tanggal efektif baru
             current_type = osType.query.filter(
                 osType.employee_id == id,
                 osType.valid_from <= new_start_date,
@@ -510,37 +482,31 @@ def edit(id):
             ).order_by(osType.id.desc()).first()
 
             if current_type:
-                # Jika ada perubahan nilai dari data sebelumnya, lakukan DELIMIT & INSERT
                 if current_type.type_worker != new_type_worker or current_type.posisi != new_posisi:
                     if current_type.valid_from == new_start_date:
-                        # Jika tanggal efektif sama, lakukan koreksi langsung (overwrite)
                         current_type.type_worker = new_type_worker
                         current_type.posisi = new_posisi
                     else:
-                        # 1. Delimit data lama (Berakhir di H-1)
                         original_type_to = current_type.valid_to
                         current_type.valid_to = day_before
                         db.session.add(current_type)
                         
-                        # 2. Insert data baru
                         new_type_rec = osType(
                             employee_id=id, type_worker=new_type_worker, posisi=new_posisi,
                             valid_from=new_start_date, valid_to=original_type_to
                         )
                         db.session.add(new_type_rec)
                 else:
-                    # Jika nilai sama, cukup update valid_to jika ada perubahan jangka waktu
                     current_type.valid_to = data.get('valid_to') or current_type.valid_to
                     db.session.add(current_type)
             else:
-                # Jika belum ada record sama sekali, langsung insert baru
                 new_type_rec = osType(
                     employee_id=id, type_worker=new_type_worker, posisi=new_posisi,
                     valid_from=new_start_date, valid_to=data.get('valid_to') or None
                 )
                 db.session.add(new_type_rec)
 
-        # --- LOGIKA HISTORI: DEPARTEMEN (OsCostCenter) & ALOKASI ---
+        # --- LOGIKA HISTORI COST CENTER & ALOKASI ---
         new_cc_id = data.get('cc_id')
         if new_cc_id and new_start_date:
             current_cc = OsCostCenter.query.filter(
@@ -549,7 +515,6 @@ def edit(id):
                 ((OsCostCenter.valid_to >= new_start_date) | (OsCostCenter.valid_to == None))
             ).order_by(OsCostCenter.id.desc()).first()
 
-            # Variabel penanda apakah kantin alokasi perlu ikut di-delimit
             cc_changed = False 
             original_cc_to = data.get('valid_to') or None
 
@@ -560,12 +525,10 @@ def edit(id):
                         current_cc.cc_id = new_cc_id
                         db.session.add(current_cc)
                     else:
-                        # 1. Delimit Cost Center lama
                         original_cc_to = current_cc.valid_to
                         current_cc.valid_to = day_before
                         db.session.add(current_cc)
 
-                        # 2. Insert Cost Center baru
                         new_cc = OsCostCenter(
                             employee_id=id, cc_id=new_cc_id,
                             valid_from=new_start_date, valid_to=original_cc_to
@@ -581,7 +544,6 @@ def edit(id):
                 )
                 db.session.add(new_cc)
 
-            # --- LOGIKA HISTORI: ALOKASI KANTIN (Mengikuti Perubahan CC) ---
             cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(new_cc_id)).first()
             if cc_def:
                 current_alokasi = Alokasi.query.filter(
@@ -596,11 +558,9 @@ def edit(id):
                             current_alokasi.canteen_id = cc_def.canteen_id
                             db.session.add(current_alokasi)
                         else:
-                            # 1. Delimit Alokasi lama
                             current_alokasi.valid_to = day_before
                             db.session.add(current_alokasi)
 
-                            # 2. Insert Alokasi baru
                             newAlokasi = Alokasi(
                                 employee_id=id, canteen_id=cc_def.canteen_id,
                                 valid_from=new_start_date, valid_to=original_cc_to
@@ -635,6 +595,7 @@ def template():
             "NIK": "32xxxx",
             "Alamat": "Alamat Rumah",
             "Employee Code": "123456",
+            "Use CC": 0,
             "Grade": "1",
             "Sub Company":"PRO/GLB/...",
             "Department": "",
@@ -647,22 +608,9 @@ def template():
             "Card Valid To": "2026-03-11"
         }]
         df = pd.DataFrame(example_data)
-        num_rows = len(df) + 1
-
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import')
-            # workbook = writer.book
-            # worksheet = writer.sheets['Template_Import']
-            # list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking"'
-            
-            # dv = DataValidation(type="list", formula1=list_pilihan, allow_blank=True)
-            # dv.error = 'Mohon pilih keterangan yang tersedia pada list dropdown.'
-            # dv.errorTitle = 'Pilihan Tidak Valid'
-            # worksheet.add_data_validation(dv)
-            
-            # range_kolom_h = f"H2:H{num_rows + 100}"
-            # dv.add(range_kolom_h)
         output.seek(0)
         return send_file(
             output, 
@@ -702,16 +650,15 @@ def upload():
                     nama_input = str(row['Nama']).strip() if clean(row.get('Nama')) else None
                     nik_input = clean(row.get('NIK'))
                     emp_code_input = clean(row.get('Employee Code'))
+                    use_cc_input = parse_use_cc(clean(row.get('Use CC')) or 0)
 
                     if not nama_input or not nik_input or not emp_code_input:
                         raise ValueError("Nama, NIK, dan Employee ID tidak boleh kosong.")
 
-                    # --- Date Parsing ---
                     raw_start_date = clean(row.get('Valid From'))
                     if not raw_start_date:
                         raise ValueError("Tanggal 'Valid From' tidak boleh kosong.")
                     
-                    # Parsing Date
                     if isinstance(raw_start_date, str):
                         new_start_date = datetime.strptime(raw_start_date.strip(), '%Y-%m-%d').date()
                     else:
@@ -720,25 +667,20 @@ def upload():
                     adjusted_valid_to = new_start_date - timedelta(days=1)
                     new_valid_to = clean(row.get('Valid To'))
 
-                    # --- 1. PERSON LOGIC & BLACKLIST CHECK ---
+                    # Person Check
                     target_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
                     if not target_person:
                         target_person = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()
                     
                     if target_person:
                         person_id = target_person.person_id
-                        notes.append(
-                            f"Baris {line_number}: Data Excel '{nama_input}' dihubungkan dengan Data Master '{target_person.name}' (NIK: {target_person.resident_id})."
-                        )
-                        # A. Update NIK jika sebelumnya kosong
+                        notes.append(f"Baris {line_number}: Linked data '{nama_input}' (NIK: {target_person.resident_id}).")
                         if not target_person.resident_id:
                             target_person.resident_id = nik_input
                         
-                        # B. Cek Blacklist
                         if OsBlacklist.query.filter_by(person_id=person_id).first():
-                            raise ValueError(f"Karyawan '{nama_input}' (NIK: {nik_input}) masuk daftar BLACKLIST.")
+                            raise ValueError(f"Karyawan '{nama_input}' masuk daftar BLACKLIST.")
 
-                        # C. Smart Validation: NRP yang masih aktif (Typo vs Re-Hire)
                         active_emp = OsEmployment.query.filter(
                             OsEmployment.person_id == person_id,
                             OsEmployment.valid_from <= new_start_date,
@@ -746,13 +688,8 @@ def upload():
                         ).first()
 
                         if active_emp and active_emp.employee_code != emp_code_input:
-                            raise ValueError(
-                                f"Karyawan {target_person.name} MASIH AKTIF dengan NRP lama ({active_emp.employee_code}). "
-                                f"Tidak dapat membuat NRP baru ({emp_code_input}) sebelum masa kerja sebelumnya diakhiri."
-                            )
-                    
+                            raise ValueError(f"Karyawan {target_person.name} MASIH AKTIF dengan NRP lama ({active_emp.employee_code}).")
                     else:
-                        # Jika benar-benar orang baru
                         newPerson = OsPerson(
                             name=nama_input, gender=clean(row.get('Gender')),
                             pob=clean(row.get('Tempat Lahir')), dob=clean(row.get('Tanggal Lahir')),
@@ -763,7 +700,7 @@ def upload():
                         db.session.flush()
                         person_id = newPerson.person_id
 
-                    # --- 2. SUBCOMPANY & DEPARTMENT CHECK ---
+                    # SubCompany & CC Check
                     subCom_name = str(row['Sub Company']).strip() if clean(row.get('Sub Company')) else ""
                     exist_subCom = SubCompany.query.filter(SubCompany.sub_company_name.ilike(subCom_name)).first()
                     if not exist_subCom:
@@ -774,18 +711,14 @@ def upload():
                     if not exist_cc:
                         raise ValueError(f"Department/CC '{cc_name}' tidak ditemukan.")
 
-                    # --- 3. SCD LOGIC (HISTORY CLOSING) ---
+                    # SCD Delimit Logic
                     existing_active_emp = OsEmployment.query.filter(
                         OsEmployment.employee_code == emp_code_input,
                         (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
                     ).first()
 
                     if existing_active_emp and existing_active_emp.valid_from == new_start_date:
-                        raise ValueError(
-                            f"Karyawan dengan NRP {emp_code_input} sudah memiliki data aktif "
-                            f"dengan tanggal mulai yang sama persis ({new_start_date}). "
-                            f"Tidak dapat menimpa atau membuat riwayat baru di tanggal yang sama."
-                        )
+                        raise ValueError(f"Karyawan {emp_code_input} sudah memiliki data aktif di tanggal yang sama.")
 
                     active_emp_pk_id = None
                     if existing_active_emp:
@@ -795,13 +728,8 @@ def upload():
 
                         if active_emp_pk_id:
                             for M in [OsCard, OsGrade, osType, OsCostCenter, Alokasi]:
-                                # field = "card_number" if M == OsCard else "employee_id"
-                                # val = str(row.get('Card Number', '')).strip() if M == OsCard else active_emp_pk_id
-                                field = "employee_id"
-                                val = active_emp_pk_id
-                                
                                 old_recs = M.query.filter(
-                                    getattr(M, field) == val,
+                                    getattr(M, "employee_id") == active_emp_pk_id,
                                     (M.valid_to >= new_start_date) | (M.valid_to == None),
                                     M.valid_from <= adjusted_valid_to
                                 ).all()
@@ -811,11 +739,12 @@ def upload():
                                     
                     db.session.flush()
 
-                    # --- 4. INSERT DATA BARU (Handling NaN untuk valid_to) ---
+                    # Insert Record Baru
                     newEmployment = OsEmployment(
                         employee_code=emp_code_input,
                         sub_company_id=exist_subCom.sub_company_id,
                         person_id=person_id,
+                        use_cc=use_cc_input,
                         valid_from=new_start_date,
                         valid_to=new_valid_to
                     )
@@ -842,7 +771,7 @@ def upload():
                             valid_to=new_valid_to
                         ))
                     
-                    #type worker
+                    # Type Work
                     type_val = clean(row.get('Type Worker'))
                     posisi_val = clean(row.get('Posisi'))
                     if type_val or posisi_val:
@@ -854,7 +783,7 @@ def upload():
                             valid_to=new_valid_to
                         ))
 
-                    # Cost Center & Alokasi
+                    # Cost Center
                     db.session.add(OsCostCenter(
                         employee_id=newEmployment.id,
                         cc_id=exist_cc.cost_center,
@@ -883,17 +812,16 @@ def upload():
 
         if success_count > 0:
             status = "success" if not errors else "partial_success"
-            msg = f"Berhasil mengimport {success_count} data."
             return jsonify({
                 "status": status,
-                "message": msg,
+                "message": f"Berhasil mengimport {success_count} data.",
                 "errors": errors,
                 "notes": notes
             }), 200
         else:
             return jsonify({
                 "status": "error",
-                "message": "Tidak ada data yang berhasil diimport. Silakan periksa file Anda.",
+                "message": "Tidak ada data yang berhasil diimport.",
                 "errors": errors,
                 "notes": notes
             }), 400
@@ -950,6 +878,7 @@ def export():
                 "Resident ID": d['resident_id'],
                 "Address": d['address'],
                 "Employee ID": d['employee_code'],
+                "Use CC": d.get('use_cc', 0),
                 "Sub Company": d['sub_con_name'],
                 "Department": d['cc_name'],
                 "Grade": d['grade'],

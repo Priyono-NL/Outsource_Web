@@ -6,6 +6,8 @@ function ViewDetails({ onClose, initialData }) {
     ? (initialData.photo.startsWith('http') ? initialData.photo : `${BASE_URL}${initialData.photo}`)
     : "/src/assets/no_image.png";
 
+  const isMasterCc = Number(initialData?.use_cc) === 1;
+
   return (
     <>
       <div 
@@ -30,7 +32,7 @@ function ViewDetails({ onClose, initialData }) {
             <div className="modal-body p-3 bg-white">
               <div className="row g-3">
                 
-                {/* Left Column: Avatar & Blacklist Status */}
+                {/* Left Column: Avatar, Blacklist & Flag Use CC Status */}
                 <div className="col-md-3 border-end text-center pt-2">
                   <div className="mb-2 mx-auto" style={{ width: '130px', height: '130px', overflow: 'hidden', borderRadius: '8px' }}>
                     <img 
@@ -44,10 +46,23 @@ function ViewDetails({ onClose, initialData }) {
                   <h6 className="fw-bold mb-0 text-dark" style={{ fontSize: '0.9rem' }}>{initialData.person_name}</h6>
                   <p className="text-muted mb-3" style={{ fontSize: '0.75rem' }}>{initialData.employee_code || initialData.person_id}</p>
                   
-                  <div className="px-1">
+                  {/* Badge Blacklist */}
+                  <div className="px-1 mb-2">
                     <span className={`badge w-100 py-2 ${initialData?.is_blacklist === 'Blacklist' ? 'bg-danger' : 'bg-success'}`} style={{ fontSize: '0.65rem', borderRadius: '5px' }}>
                       <i className={`bi ${initialData?.is_blacklist === 'Blacklist' ? 'bi-exclamation-octagon-fill' : 'bi-check-circle-fill'} me-1`}></i>
                       {initialData?.is_blacklist === 'Blacklist' ? 'BLACKLISTED' : 'CLEAN / ACTIVE'}
+                    </span>
+                  </div>
+
+                  {/* Badge Status Flag Use CC */}
+                  <div className="px-1">
+                    <span 
+                      className={`badge w-100 py-2 ${isMasterCc ? 'bg-primary' : 'bg-info text-dark'}`} 
+                      style={{ fontSize: '0.65rem', borderRadius: '5px' }}
+                      title={isMasterCc ? "Cost Center dikunci dari Data Master" : "Cost Center mengikuti lokasi Mesin Tap"}
+                    >
+                      <i className={`bi ${isMasterCc ? 'bi-building-lock' : 'bi-geo-alt-fill'} me-1`}></i>
+                      {isMasterCc ? 'Master Cost Center' : 'Node ID Cost Center'}
                     </span>
                   </div>
                 </div>
@@ -84,7 +99,11 @@ function ViewDetails({ onClose, initialData }) {
                         <DetailItem label="Grade" value={initialData.grade} />
                         <DetailItem label="Type Work" value={initialData.type_worker} />
                         <DetailItem label="Posisi" value={initialData.posisi} />
-                        <DetailItem label="Masa Kontrak" value={`${initialData.v_valid_from || '-'} s/d ${initialData.v_valid_to || '-'}`} />
+                        <DetailItem 
+                          label="Mode Cost Center" 
+                          value={isMasterCc ? "Master CC (Dikunci)" : "Node ID CC (Dinamis Mesin)"} 
+                        />
+                        <DetailItem label="Masa Kontrak" value={`${initialData.v_valid_from || '-'} s/d ${initialData.v_valid_to || '-'}`} col={12} />
                       </div>
                     </div>
 
@@ -97,7 +116,7 @@ function ViewDetails({ onClose, initialData }) {
                       <div className="row g-2">
                         <DetailItem label="ID Card" value={initialData.card_number} />
                         <DetailItem label="Card Validity" value={`${initialData.card_number_from || '-'} s/d ${initialData.card_number_to || '-'}`} />
-                        <DetailItem label="Last Modified" value={`${initialData.modified_by || initialData.created_by} (${initialData.modified_date || initialData.created_date})`} col={12} />
+                        <DetailItem label="Last Modified" value={`${initialData.modified_by || initialData.created_by || '-'} (${initialData.modified_date || initialData.created_date || '-'})`} col={12} />
                       </div>
                     </div>
 
