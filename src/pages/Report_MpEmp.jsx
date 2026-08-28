@@ -105,7 +105,7 @@ const Report_MpEmp = () => {
 
   return (
     <div>
-      <PageHeader title="Manpower Per Employee" />
+      <PageHeader title="Working Hours Report" />
 
       <div className="app-card">
         <div className="filter-bar">

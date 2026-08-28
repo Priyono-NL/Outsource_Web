@@ -8,10 +8,9 @@ import { useCrudPage } from '../utils/useCrudPage';
 
 import PageHeader from '../components/PageHeader';
 import LoadingButton from '../components/LoadingButton';
-import AbsensiTable from '../components/absensi_all/AbsensiTable';
-import AbsensiForm from '../components/absensi_all/AbsensiForm';
+import AbsensiReportTable from '../components/absensi_all/AbsensiReportTable';
 
-const Absensi = () => {
+const ReportAbsen = () => {
   const getFirstDayOfMonth = () => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -28,7 +27,6 @@ const Absensi = () => {
   };
 
   const crud = useCrudPage();
-  const [editData, setEditData] = useState(null);
 
   const [subCompanies, setSubCompanies] = useState([]);
   const [subCompanyInput, setSubCompanyInput]   = useState('');
@@ -70,16 +68,6 @@ const Absensi = () => {
     setAppliedStatusFilter(statusFilter);
     crud.handleSearch();
     setTimeout(() => setIsApplyingFilter(false), 300);
-  };
-
-  const handleEdit = (data) => {
-    setEditData(data);
-    crud.handleAdd();
-  };
-
-  const handleCloseForm = () => {
-    setEditData(null);
-    crud.handleClose();
   };
 
   const handleExport = async () => {
@@ -161,7 +149,7 @@ const Absensi = () => {
   return (
     <div>
       <PageHeader
-        title="BAC Absensi OS"
+        title="Report Absensi OS"
         searchPlaceholder="Cari ID Karyawan / Nama ..."
         searchValue={crud.searchInput}
         onSearchChange={crud.setSearchInput}
@@ -281,9 +269,8 @@ const Absensi = () => {
 
         </div>
         
-        <AbsensiTable
+        <AbsensiReportTable
           refreshTrigger={crud.refreshKey}
-          onEditClick={handleEdit} 
           searchTerm={crud.appliedSearch}
           subCompany={appliedSubCompany}
           startDate={appliedStartDate}
@@ -296,4 +283,4 @@ const Absensi = () => {
   );
 };
 
-export default Absensi;
+export default ReportAbsen;

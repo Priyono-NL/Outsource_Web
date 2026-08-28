@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, startDate, endDate, statusFilter }) => { 
+const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter }) => { 
     
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
@@ -75,7 +75,6 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                     <th>Ket BAC</th>
                     <th>Updated By</th>
                     <th>Updated Date</th>
-                    <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -133,17 +132,6 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     <i className="bi bi-shield-check" style={{ marginRight: '4px' }}></i>
                                     BAC Found
                                 </span>
-                            );                        
-                            actionElement = (
-                                <button 
-                                    className="btn-app btn-warning-app" 
-                                    style={{ padding: '4px 8px', fontSize: '12px' }}
-                                    onClick={() => onEditClick(emp)}
-                                    title="Koreksi Data Absensi"
-                                >
-                                    <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
-                                    Koreksi
-                                </button>
                             );
                         } else if (isAnomaly) {
                             statusElement = (
@@ -152,17 +140,6 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     Tidak Lengkap
                                 </span>
                             );
-                            actionElement = (
-                                <button 
-                                    className="btn-app btn-warning-app" 
-                                    style={{ padding: '4px 8px', fontSize: '12px' }}
-                                    onClick={() => onEditClick(emp)}
-                                    title="Koreksi Data Absensi Tidak Lengkap"
-                                >
-                                    <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
-                                    Koreksi
-                                </button>
-                            );
                         } else if (!isViolation) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
@@ -170,25 +147,13 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     Lengkap
                                 </span>
                             );
-                            actionElement = statusElement;
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
                                     <i className="bi bi-x-circle-fill" style={{ marginRight: '4px' }}></i>
                                     BAC not found
                                 </span>
-                            );
-                            actionElement = (
-                                <button 
-                                    className="btn-app btn-warning-app" 
-                                    style={{ padding: '4px 8px', fontSize: '12px' }}
-                                    onClick={() => onEditClick(emp)}
-                                    title="Koreksi Data Absensi"
-                                >
-                                    <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
-                                    Koreksi
-                                </button>
-                            );
+                            );                            
                         }
 
                         return (
@@ -227,9 +192,6 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                 <td>{emp.bac_updated_by || '-'}</td>
                                 <td>{emp.bac_updated_date || '-'}</td>
 
-                                <td style={{ textAlign: 'center' }}>
-                                    {actionElement}
-                                </td>
                             </tr>
                         );
                     })
@@ -256,4 +218,4 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
     );
 };
 
-export default AbsensiTable;
+export default AbsensiReportTable;
