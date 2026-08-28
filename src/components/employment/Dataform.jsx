@@ -153,7 +153,7 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
                       <label className='fw-bold text-muted mb-1 d-block' style={{ fontSize: '0.65rem', textTransform: 'uppercase' }}>Konfigurasi Cost Center</label>
                       <div className="form-check form-switch d-flex justify-content-between align-items-center ps-2 pe-2 py-1 bg-light rounded border">
                         <label className="form-check-label fw-bold text-dark mb-0 cursor-pointer" htmlFor="useNodeCcSwitch" style={{ fontSize: '0.7rem' }}>
-                          Use Cost Cente Master
+                          Use Cost Center Master
                         </label>
                         <input 
                           className="form-check-input ms-0 cursor-pointer" 

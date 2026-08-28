@@ -2,7 +2,7 @@ from io import BytesIO
 from datetime import datetime
 import pandas as pd
 from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_, and_, tuple_, func, cast, String
+from sqlalchemy import or_, and_, tuple_, func, cast, String, text, collate
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
@@ -120,34 +120,123 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             Absensi_all.clock_out.is_(None)
         ))
 
-    if search or sub_company_id:
-        os_query = db.session.query(VwMasterOsActive.employee_code)
-        if sub_company_id:
-            os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
-        if search:
-            os_query = os_query.filter(or_(
-                VwMasterOsActive.employee_code.ilike(f"%{search}%"),
-                VwMasterOsActive.employee_name.ilike(f"%{search}%"),
-                VwMasterOsActive.card_number.ilike(f"%{search}%")
-            ))
-            
-        matched_ids = [r[0] for r in os_query.all() if r[0]]
+    # =====================================================================
+    # UPDATE: FILTER KARYAWAN AKTIF (Selalu Dijalankan via Subquery MySQL)
+    # =====================================================================
+    os_query = db.session.query(collate(VwMasterOsActive.employee_code, 'utf8mb4_general_ci'))
+    
+    if sub_company_id:
+        os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
+        
+    if search:
+        os_query = os_query.filter(or_(
+            VwMasterOsActive.employee_code.ilike(f"%{search}%"),
+            VwMasterOsActive.employee_name.ilike(f"%{search}%"),
+            VwMasterOsActive.card_number.ilike(f"%{search}%")
+        ))
 
-        if matched_ids:
-            if search:
-                query = query.filter(or_(
-                    Absensi_all.employee_id.in_(matched_ids),
-                    Absensi_all.card_id.ilike(f"%{search}%")
-                ))
-            else:
-                query = query.filter(Absensi_all.employee_id.in_(matched_ids))
-        else:
-            if search:
-                query = query.filter(Absensi_all.card_id.ilike(f"%{search}%"))
-            else:
-                query = query.filter(db.false())
+    # Eksekusi filter IN menggunakan SubQuery (Jauh lebih cepat dari list matched_ids)
+    if search:
+        query = query.filter(or_(
+            Absensi_all.employee_id.in_(os_query),
+            Absensi_all.card_id.ilike(f"%{search}%")
+        ))
+    else:
+        query = query.filter(Absensi_all.employee_id.in_(os_query))
 
     return query
+
+
+# =============================================================================
+# HELPER: INJEKSI DINAMIS COST CENTER (NODE ID vs MASTER)
+# =============================================================================
+def _enrich_with_dynamic_cc(items):
+    final_data = []
+    cc_map = {}
+    use_cc_map = {}
+    master_cc_map = {}
+
+    if not items:
+        return []
+
+    card_ids = tuple(set(str(item.card_id).strip() for item in items if item.card_id))
+    dates = tuple(set(str(item.clocking_date) for item in items if item.clocking_date))
+    emp_ids = tuple(set(str(item.employee_id).strip() for item in items if item.employee_id))
+
+    # 1. Lookup Flag use_cc & Master Cost Center Name dari VwMasterOsActive
+    if card_ids or emp_ids:
+        os_filters = []
+        if card_ids: os_filters.append(VwMasterOsActive.card_number.in_(card_ids))
+        if emp_ids:  os_filters.append(VwMasterOsActive.employee_code.in_(emp_ids))
+        
+        os_info = db.session.query(
+            VwMasterOsActive.card_number,
+            VwMasterOsActive.employee_code,
+            VwMasterOsActive.use_cc,
+            VwMasterOsActive.cc_name
+        ).filter(or_(*os_filters)).all()
+
+        for r in os_info:
+            val_use_cc = int(getattr(r, 'use_cc', 0) or 0)
+            cc_master_name = getattr(r, 'cc_name', None)
+            
+            if r.card_number:
+                card_k = str(r.card_number).strip()
+                use_cc_map[card_k] = val_use_cc
+                if cc_master_name: master_cc_map[card_k] = cc_master_name
+            if r.employee_code:
+                emp_k = str(r.employee_code).strip()
+                use_cc_map[emp_k] = val_use_cc
+                if cc_master_name: master_cc_map[emp_k] = cc_master_name
+
+    # 2. Query Terminal CC dari Lokasi Tapping (TBL_TACTIVITIES)
+    if card_ids and dates:
+        sql_terminal_cc = """
+            SELECT 
+                sub.card_id, sub.clocking_date, COALESCE(occ.org_name, sub.raw_cc, 'TIDAK ADA CC') AS terminal_cc
+            FROM (
+                SELECT 
+                    ta.card_id, ta.clocking_date, MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS raw_cc
+                FROM `db-webapps`.TBL_ATTENDANCE ta
+                LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
+                LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id COLLATE utf8mb4_general_ci = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+                LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
+                LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id COLLATE utf8mb4_general_ci = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+                WHERE ta.card_id IN :card_ids AND ta.clocking_date IN :dates
+                GROUP BY ta.card_id, ta.clocking_date
+            ) sub
+            LEFT JOIN org_cost_center occ ON occ.cost_center COLLATE utf8mb4_general_ci = sub.raw_cc
+        """
+        cc_rows = db.session.execute(text(sql_terminal_cc), {'card_ids': card_ids, 'dates': dates}).mappings().fetchall()
+        cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}
+
+    # 3. Penentuan Output Berdasarkan Flag use_cc
+    for emp in items:
+        emp_dict = emp.to_dict() if hasattr(emp, 'to_dict') else emp.__dict__
+        
+        card_key = str(getattr(emp, 'card_id', '')).strip()
+        emp_key = str(getattr(emp, 'employee_id', '')).strip()
+        date_key = str(getattr(emp, 'clocking_date', ''))
+
+        flag_use_cc = use_cc_map.get(card_key, use_cc_map.get(emp_key, 0))
+        fallback_master = master_cc_map.get(card_key, master_cc_map.get(emp_key, emp_dict.get('cc', 'TIDAK ADA CC')))
+
+        if flag_use_cc == 1:
+            emp_dict['cc'] = fallback_master
+            emp_dict['cost_center'] = fallback_master
+        else:
+            terminal_val = cc_map.get((card_key, date_key))
+            if terminal_val and terminal_val != 'TIDAK ADA CC':
+                emp_dict['cc'] = terminal_val
+                emp_dict['cost_center'] = terminal_val
+            else:
+                emp_dict['cc'] = fallback_master
+                emp_dict['cost_center'] = fallback_master
+
+        final_data.append(emp_dict)
+        
+    return final_data
+
 
 # =============================================================================
 # 1. GET LIST ABSENSI
@@ -158,20 +247,38 @@ def get_absensi():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 20, type=int)
 
+        start_date = request.args.get('start_date', '', type=str)
+        end_date = request.args.get('end_date', '', type=str)
+        status_filter = request.args.get('status_filter', 'all_data', type=str)
+        search = request.args.get('search', '', type=str).strip()
+        sub_company_id = request.args.get('sub_company', '', type=str).strip()
+
         query = build_filtered_absensi_query(
-            start_date=request.args.get('start_date', '', type=str),
-            end_date=request.args.get('end_date', '', type=str),
-            status_filter=request.args.get('status_filter', 'all_data', type=str),
-            search=request.args.get('search', '', type=str).strip(),
-            sub_company_id=request.args.get('sub_company', '', type=str).strip()
+            start_date=start_date,
+            end_date=end_date,
+            status_filter=status_filter,
+            search=search,
+            sub_company_id=sub_company_id
         )
 
         query = query.order_by(Absensi_all.clocking_date.desc(), Absensi_all.employee_id.asc())
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
 
+        # =====================================================================
+        # [DEBUG LOGGER] REKONSILIASI OS DETAIL ABSENSI (TABEL)
+        # =====================================================================
+        print(f"\n[DEBUG - DETAIL ABSENSI (TABEL)] === PERIODE: {start_date} s/d {end_date} ===")
+        print(f"-> Filter Status  : {status_filter}")
+        print(f"-> Pencarian Teks : '{search}' | Sub Company: '{sub_company_id}'")
+        print(f"-> Total Data OS Ditemukan: {pagination.total} records")
+        print(f"==================================================================\n")
+
+        # Suntikkan dynamic CC (Node ID vs Master CC)
+        final_data = _enrich_with_dynamic_cc(pagination.items)
+
         return jsonify({
             "status": "success",
-            "data": [emp.to_dict() for emp in pagination.items],
+            "data": final_data,
             "total_page": pagination.pages,
             "current_page": pagination.page,
             "total_item": pagination.total
@@ -396,10 +503,11 @@ def export_absensi():
         if not results:
             return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
 
+        # Suntikkan dynamic CC ke hasil All sebelum di-loop menjadi excel rows
+        enriched_results = _enrich_with_dynamic_cc(results)
+
         excel_data = []
-        for row in results:
-            d = row.to_dict() if hasattr(row, 'to_dict') else row.__dict__
-            
+        for d in enriched_results:
             is_anomaly = d.get('is_anomaly') == 1 or d.get('flag_anomaly') == 1
             bac_in = d.get('bac_clock_in')
             bac_out = d.get('bac_clock_out')
@@ -435,7 +543,7 @@ def export_absensi():
                 "Gender": d.get('gender') or '-',
                 "Sub Company": d.get('subCom') or d.get('sub_company_name') or '-',
                 "Absence Card": d.get('card') or '-',
-                "Cost Center": d.get('cc') or '-',
+                "Cost Center": d.get('cc') or '-',  # Ini sekarang berisi CC yang sudah disesuaikan (Terminal vs Master)
                 "Type": d.get('type') or '-',
                 "Clocking Date": format_dt(d.get('v_clocking_date') or d.get('clocking_date'), is_time=False),
                 "Clocking In": c_in if c_in != "KOSONG" else "No Clock In",

@@ -15,3 +15,4 @@ class VwMasterOsActive(db.Model):
     position = db.Column(db.String(100))    
     join_date = db.Column(db.Date)
     termination_date = db.Column(db.Date)
+    use_cc = db.Column(db.Integer)

@@ -88,18 +88,59 @@ def index():
         items = pagination.items
 
         # =====================================================================
-        # ENRICHMENT (SUNTIK COST CENTER DARI TERMINAL KE HASIL JSON)
+        # [DEBUG LOGGER] REKONSILIASI OS DETAIL ABSENSI
+        # =====================================================================
+        print(f"\n[DEBUG - DETAIL ABSENSI] === PERIODE: {start_date} s/d {end_date} ===")
+        print(f"-> Filter Status  : {status_filter}")
+        print(f"-> Pencarian Teks : '{search}' | Sub Company: '{sub_company_id}'")
+        print(f"-> Total Data OS Ditemukan: {pagination.total}")
+        print(f"=========================================================\n")
+
+        # =====================================================================
+        # ENRICHMENT (EVALUASI FLAG use_cc: TERMINAL CC vs MASTER CC)
         # =====================================================================
         final_data = []
         cc_map = {}
+        use_cc_map = {}
+        master_cc_map = {}
 
         if items:
-            # 1. Ambil list card_id dan clocking_date dari halaman saat ini saja (misal: 10 data)
-            card_ids = tuple(set(str(item.card_id) for item in items if item.card_id))
+            card_ids = tuple(set(str(item.card_id).strip() for item in items if item.card_id))
             dates = tuple(set(str(item.clocking_date) for item in items if item.clocking_date))
+            emp_ids = tuple(set(str(item.employee_id).strip() for item in items if item.employee_id))
 
+            # 1. Lookup Flag use_cc & Master Cost Center Name dari VwMasterOsActive
+            if card_ids or emp_ids:
+                os_filters = []
+                if card_ids:
+                    os_filters.append(VwMasterOsActive.card_number.in_(card_ids))
+                if emp_ids:
+                    os_filters.append(VwMasterOsActive.employee_code.in_(emp_ids))
+                
+                os_info = db.session.query(
+                    VwMasterOsActive.card_number,
+                    VwMasterOsActive.employee_code,
+                    VwMasterOsActive.use_cc,
+                    VwMasterOsActive.cc_name
+                ).filter(or_(*os_filters)).all()
+
+                for r in os_info:
+                    val_use_cc = int(getattr(r, 'use_cc', 0) or 0)
+                    cc_master_name = getattr(r, 'cc_name', None)
+                    
+                    if r.card_number:
+                        card_k = str(r.card_number).strip()
+                        use_cc_map[card_k] = val_use_cc
+                        if cc_master_name: 
+                            master_cc_map[card_k] = cc_master_name
+                    if r.employee_code:
+                        emp_k = str(r.employee_code).strip()
+                        use_cc_map[emp_k] = val_use_cc
+                        if cc_master_name: 
+                            master_cc_map[emp_k] = cc_master_name
+
+            # 2. Query Terminal CC dari Lokasi Tapping (TBL_TACTIVITIES)
             if card_ids and dates:
-                # 2. Jalankan Raw SQL buatan Anda, dilimit hanya untuk data yang tampil di tabel React
                 sql_terminal_cc = """
                     SELECT 
                         sub.card_id,
@@ -140,17 +181,33 @@ def index():
                     'dates': dates
                 }).mappings().fetchall()
 
-                # 3. Buat kamus (dictionary) mapping (card_id, tanggal) -> terminal_cc
-                cc_map = {(str(row['card_id']), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}
+                cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}
 
-        # 4. Suntikkan/Timpa nilai cost_center di tiap dictionary sebelum dikirim
+        # 3. Penentuan Output Cost Center Berdasarkan Flag use_cc
         for emp in items:
             emp_dict = emp.to_dict()
-            key = (str(emp.card_id), str(emp.clocking_date))
-            
-            # Ganti output API cost_center dengan hasil mapping terminal
-            emp_dict['cost_center'] = cc_map.get(key, 'TIDAK ADA CC')
-            
+            card_key = str(emp.card_id).strip() if emp.card_id else ''
+            emp_key = str(emp.employee_id).strip() if emp.employee_id else ''
+            date_key = str(emp.clocking_date)
+
+            # Cek nilai flag (prioritas card_key -> emp_key -> default 0)
+            flag_use_cc = use_cc_map.get(card_key, use_cc_map.get(emp_key, 0))
+
+            if flag_use_cc == 1:
+                # Karyawan Menggunakan Master Cost Center
+                master_val = master_cc_map.get(card_key, master_cc_map.get(emp_key, emp_dict.get('cost_center', 'TIDAK ADA CC')))
+                emp_dict['cost_center'] = master_val
+            else:
+                # Karyawan Menggunakan Node ID Cost Center (Terminal Tap)
+                key = (card_key, date_key)
+                terminal_val = cc_map.get(key)
+                if terminal_val:
+                    emp_dict['cost_center'] = terminal_val
+                else:
+                    # Fallback ke Master CC jika data tapping mesin tidak ditemukan
+                    master_val = master_cc_map.get(card_key, master_cc_map.get(emp_key, emp_dict.get('cost_center', 'TIDAK ADA CC')))
+                    emp_dict['cost_center'] = master_val
+
             final_data.append(emp_dict)
 
         # =====================================================================
