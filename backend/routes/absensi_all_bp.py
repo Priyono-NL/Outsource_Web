@@ -90,11 +90,11 @@ def index():
         # =====================================================================
         # [DEBUG LOGGER] REKONSILIASI OS DETAIL ABSENSI
         # =====================================================================
-        print(f"\n[DEBUG - DETAIL ABSENSI] === PERIODE: {start_date} s/d {end_date} ===")
-        print(f"-> Filter Status  : {status_filter}")
-        print(f"-> Pencarian Teks : '{search}' | Sub Company: '{sub_company_id}'")
-        print(f"-> Total Data OS Ditemukan: {pagination.total}")
-        print(f"=========================================================\n")
+        # print(f"\n[DEBUG - DETAIL ABSENSI] === PERIODE: {start_date} s/d {end_date} ===")
+        # print(f"-> Filter Status  : {status_filter}")
+        # print(f"-> Pencarian Teks : '{search}' | Sub Company: '{sub_company_id}'")
+        # print(f"-> Total Data OS Ditemukan: {pagination.total}")
+        # print(f"=========================================================\n")
 
         # =====================================================================
         # ENRICHMENT (EVALUASI FLAG use_cc: TERMINAL CC vs MASTER CC)

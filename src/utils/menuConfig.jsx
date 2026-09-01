@@ -28,6 +28,7 @@ import PeriodePuasa from '../pages/periode_puasa';
 import ObEmployee from '../pages/ObEmployee';
 
 import Absensi from '../pages/Absensi';
+import ReportAktif from '../pages/ReportAktif';
 import ReportAbsen from '../pages/ReportAbsen';
 import Report_MPCC from '../pages/Report_MPCC';
 import Report_Absen from '../pages/Report_Absen';
@@ -71,6 +72,7 @@ export const routesConfig = [
     icon: 'bi-file-earmark-check',
     group: 3,
     children: [ 
+      { path: '/os-active', label: 'Data OS Aktif', icon: 'bi-check2-square', element: <ReportAktif /> },
       { path: '/absensi', label: 'Absensi Report', icon: 'bi-card-checklist', element: <ReportAbsen /> },
       { path: '/reportHarian', label: 'Summary Harian', icon: 'bi-clipboard-check', element: <Report_Absen /> },
       { path: '/reportMpCc', label: 'Manpower / CC', icon: 'bi-person-workspace', element: <Report_MPCC /> },

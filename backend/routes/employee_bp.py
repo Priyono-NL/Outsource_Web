@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, and_
 
 from extensions import db
 from .auth_bp import login_required
@@ -47,12 +47,14 @@ def index():
         status = request.args.get('status', 'all', type=str)
         sub_company_id = request.args.get('sub_company', '', type=str)
         department_id = request.args.get('department', '', type=str)
+        
+        # Parameter baru untuk filter per tanggal
+        target_date_str = request.args.get('target_date', '', type=str)
 
         query = OsEmployment.query
-        now = datetime.now()
+        
         if search:
-            query = query.join(OsPerson)
-            query = query.join(OsCard)    
+            query = query.join(OsPerson).join(OsCard)    
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
@@ -61,10 +63,27 @@ def index():
                 )
             )
 
+        # LOGIKA FILTER AKTIF PER TANGGAL TERTENTU
         if status == 'active':
-            query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
+            if target_date_str:
+                # Jika ada target tanggal, cek apakah valid_from <= target_date DAN valid_to >= target_date (atau None)
+                query = query.filter(
+                    and_(
+                        or_(OsEmployment.valid_from <= target_date_str, OsEmployment.valid_from == None),
+                        or_(OsEmployment.valid_to >= target_date_str, OsEmployment.valid_to == None)
+                    )
+                )
+            else:
+                # Jika tidak ada filter tanggal, gunakan waktu saat ini (Now)
+                now = datetime.now()
+                query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
+                
         elif status == 'inactive':
-            query = query.filter(OsEmployment.valid_to < now)
+            if target_date_str:
+                query = query.filter(OsEmployment.valid_to < target_date_str)
+            else:
+                now = datetime.now()
+                query = query.filter(OsEmployment.valid_to < now)
 
         if sub_company_id:
             query = query.filter(OsEmployment.sub_company_id == sub_company_id)
@@ -81,6 +100,7 @@ def index():
             "current_page": pagination.page,
             "total_item": pagination.total
         }), 200
+        
     except Exception as e:
         import traceback
         traceback.print_exc()    

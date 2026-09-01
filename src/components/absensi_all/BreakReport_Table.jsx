@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, search }) => { 
+// 1. UPDATE: Tambahkan statusFilter pada parameter props
+const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -26,6 +27,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                 department_id: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
+                status_filter: statusFilter || 'all_data', // 2. UPDATE: Suntikkan parameter status ke API
                 search: search || '',
                 page: currentPage,
                 pageSize: pageSize
@@ -51,13 +53,15 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
         }
     };
 
+    // 3. UPDATE: Tambahkan statusFilter ke dependency array agar reset halaman ke-1 saat status diubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, startDate, endDate, search]);
+    }, [subCompany, department, startDate, endDate, statusFilter, search]);
 
+    // 4. UPDATE: Tambahkan statusFilter ke dependency array agar trigger fetch ulang data
     useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, search, currentPage]);
+    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, currentPage]);
 
     // Fungsi helper untuk menentukan warna badge status
     const getStatusBadgeClass = (statusStr) => {
@@ -65,8 +69,9 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
         
         const s = statusStr.toLowerCase();
         if (s.includes('normal break')) return 'bg-success';
-        if (s.includes('>60')) return 'bg-warning text-dark';
-        if (s.includes('no clocking')) return 'bg-danger';
+        if (s.includes('>60') || s.includes('overbreak')) return 'bg-warning text-dark';
+        if (s.includes('no clocking') || s.includes('tidak lengkap')) return 'bg-danger';
+        if (s.includes('anomali')) return 'bg-dark';
         
         return 'bg-secondary';
     };
@@ -93,7 +98,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                             <th className="text-center">Tanggal IN</th>
                             <th className="text-center">Jam IN</th>
                             <th className="text-center">Access Area</th>
-                            <th className="text-center">Total</th>
+                            <th className="text-center">Total (Menit)</th>
                             <th className="text-center">Status</th>
                         </tr>
                     </thead>
