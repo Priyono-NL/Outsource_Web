@@ -9,6 +9,7 @@ from extensions import db
 from model.absensi_all import Absensi_all
 from model.bac_os import BAC_os
 from model.vw_master_os import VwMasterOsActive
+from model.ob_emp import ObEmployee
 
 AbsenOs_bp = Blueprint('AbsenOs_bp', __name__)
 
@@ -77,75 +78,73 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
         db.session.add(new_bac)
         return new_bac, True
 
-def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_data', search='', sub_company_id=''):
-    query = Absensi_all.query.filter(
-        func.char_length(cast(Absensi_all.employee_id, String)) < 8,
-        Absensi_all.card_id != '00000.00000'
-    )
+def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_data', search='', sub_company_id='', worker_type='all'):
+
+    query = Absensi_all.query.filter(Absensi_all.card_id != '00000.00000')
+
+    if worker_type == 'os':
+        query = query.filter(func.char_length(cast(Absensi_all.employee_id, String)) < 8)
+    elif worker_type == 'tetap':
+        query = query.filter(func.char_length(cast(Absensi_all.employee_id, String)) >= 8)
 
     if start_date:
         query = query.filter(Absensi_all.clocking_date >= start_date)
     if end_date:
         query = query.filter(Absensi_all.clocking_date <= end_date)
 
-    # NULL-safe Anomaly Condition
     non_anomaly = or_(Absensi_all.flag_anomaly != 1, Absensi_all.flag_anomaly.is_(None))
 
     if status_filter == 'lengkap':
-        query = query.filter(and_(
-            Absensi_all.clock_in.is_not(None),
-            Absensi_all.clock_out.is_not(None),
-            non_anomaly
-        ))
+        query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_not(None), non_anomaly))
     elif status_filter == 'anomali':
         query = query.filter(Absensi_all.flag_anomaly == 1)
     elif status_filter in ('violation_all', 'tidak_lengkap'):
-        query = query.filter(and_(
-            or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)),
-            non_anomaly
-        ))
+        query = query.filter(and_(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)), non_anomaly))
     elif status_filter == 'no_in':
-        query = query.filter(and_(
-            Absensi_all.clock_in.is_(None),
-            Absensi_all.clock_out.is_not(None)
-        ))
+        query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_not(None)))
     elif status_filter == 'no_out':
-        query = query.filter(and_(
-            Absensi_all.clock_in.is_not(None),
-            Absensi_all.clock_out.is_(None),
-        ))
+        query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_(None)))
     elif status_filter == 'no_both':
-        query = query.filter(and_(
-            Absensi_all.clock_in.is_(None),
-            Absensi_all.clock_out.is_(None)
-        ))
+        query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
 
-    # =====================================================================
-    # UPDATE: FILTER KARYAWAN AKTIF (Selalu Dijalankan via Subquery MySQL)
-    # =====================================================================
-    os_query = db.session.query(collate(VwMasterOsActive.employee_code, 'utf8mb4_general_ci'))
-    
-    if sub_company_id:
-        os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
-        
-    if search:
-        os_query = os_query.filter(or_(
-            VwMasterOsActive.employee_code.ilike(f"%{search}%"),
-            VwMasterOsActive.employee_name.ilike(f"%{search}%"),
-            VwMasterOsActive.card_number.ilike(f"%{search}%")
-        ))
+    active_ids = []    
+    if worker_type in ('all', 'os'):
+        os_query = db.session.query(cast(VwMasterOsActive.employee_code, String)).filter(VwMasterOsActive.employee_code.is_not(None))
+        if sub_company_id:
+            os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
+        if search:
+            os_query = os_query.filter(or_(
+                VwMasterOsActive.employee_code.ilike(f"%{search}%"),
+                VwMasterOsActive.employee_name.ilike(f"%{search}%"),
+                VwMasterOsActive.card_number.ilike(f"%{search}%")
+            ))
+            
+        os_res = os_query.all()
+        active_ids.extend([str(r[0]).strip() for r in os_res])
+    if worker_type in ('all', 'tetap'):
+        ob_query = db.session.query(cast(ObEmployee.employee_id, String)).filter(ObEmployee.employee_id.is_not(None))
+        if search:
+            ob_query = ob_query.filter(or_(
+                ObEmployee.employee_id.ilike(f"%{search}%"),
+                ObEmployee.employee_name.ilike(f"%{search}%"),
+                ObEmployee.card_no.ilike(f"%{search}%")
+            ))
+        ob_res = ob_query.all()
+        active_ids.extend([str(r[0]).strip() for r in ob_res])
 
-    # Eksekusi filter IN menggunakan SubQuery (Jauh lebih cepat dari list matched_ids)
-    if search:
-        query = query.filter(or_(
-            Absensi_all.employee_id.in_(os_query),
-            Absensi_all.card_id.ilike(f"%{search}%")
-        ))
+    if active_ids:
+        if search:
+            query = query.filter(or_(
+                Absensi_all.employee_id.in_(active_ids),
+                Absensi_all.card_id.ilike(f"%{search}%")
+            ))
+        else:
+            query = query.filter(Absensi_all.employee_id.in_(active_ids))
     else:
-        query = query.filter(Absensi_all.employee_id.in_(os_query))
+        # Jika master kosong, cegah error dengan filter false
+        query = query.filter(db.false())
 
     return query
-
 
 # =============================================================================
 # HELPER: INJEKSI DINAMIS COST CENTER (NODE ID vs MASTER)
@@ -155,6 +154,8 @@ def _enrich_with_dynamic_cc(items):
     cc_map = {}
     use_cc_map = {}
     master_cc_map = {}
+    type_map = {} 
+    sub_com_map = {} # TAMBAHAN: Map untuk mengunci nilai Sub Company
 
     if not items:
         return []
@@ -163,7 +164,7 @@ def _enrich_with_dynamic_cc(items):
     dates = tuple(set(str(item.clocking_date) for item in items if item.clocking_date))
     emp_ids = tuple(set(str(item.employee_id).strip() for item in items if item.employee_id))
 
-    # 1. Lookup Flag use_cc & Master Cost Center Name dari VwMasterOsActive
+    # 1. Lookup Flag use_cc, Master CC, Type Worker, & Sub Company (Khusus OS)
     if card_ids or emp_ids:
         os_filters = []
         if card_ids: os_filters.append(VwMasterOsActive.card_number.in_(card_ids))
@@ -173,23 +174,51 @@ def _enrich_with_dynamic_cc(items):
             VwMasterOsActive.card_number,
             VwMasterOsActive.employee_code,
             VwMasterOsActive.use_cc,
-            VwMasterOsActive.cc_name
+            VwMasterOsActive.cc_name,
+            VwMasterOsActive.type_worker,
+            VwMasterOsActive.sub_company_name # Tarik nama sub company untuk OS
         ).filter(or_(*os_filters)).all()
 
         for r in os_info:
             val_use_cc = int(getattr(r, 'use_cc', 0) or 0)
             cc_master_name = getattr(r, 'cc_name', None)
+            emp_type = getattr(r, 'type_worker', None)
+            sub_com = getattr(r, 'sub_company_name', '-') # Default '-' jika OS tidak punya
             
             if r.card_number:
                 card_k = str(r.card_number).strip()
                 use_cc_map[card_k] = val_use_cc
                 if cc_master_name: master_cc_map[card_k] = cc_master_name
+                if emp_type: type_map[card_k] = emp_type
+                sub_com_map[card_k] = sub_com
+                
             if r.employee_code:
                 emp_k = str(r.employee_code).strip()
                 use_cc_map[emp_k] = val_use_cc
                 if cc_master_name: master_cc_map[emp_k] = cc_master_name
+                if emp_type: type_map[emp_k] = emp_type
+                sub_com_map[emp_k] = sub_com
 
-    # 2. Query Terminal CC dari Lokasi Tapping (TBL_TACTIVITIES)
+    # 1B. Lookup Cost Center Master Karyawan Tetap
+    if emp_ids:
+        ob_info = ObEmployee.query.filter(ObEmployee.employee_id.in_(emp_ids)).all()
+        for ob in ob_info:
+            emp_k = str(ob.employee_id).strip()
+            use_cc_map[emp_k] = 0 # Tetap default 0 (Terminal)
+            
+            cc_name = ob.cc_master.org_name if ob.cc_master else str(ob.cost_center)
+            if cc_name: master_cc_map[emp_k] = cc_name
+            
+            type_map[emp_k] = 'Tetap / Kontrak'
+            sub_com_map[emp_k] = '-' # FIX: KOSONGKAN SUB COMPANY UNTUK KARYAWAN TETAP
+            
+            if ob.card_no:
+                card_k = str(ob.card_no).strip()
+                use_cc_map[card_k] = 0
+                if cc_name: master_cc_map[card_k] = cc_name
+                type_map[card_k] = 'Tetap / Kontrak'
+                sub_com_map[card_k] = '-' # FIX: KOSONGKAN SUB COMPANY UNTUK KARYAWAN TETAP
+
     if card_ids and dates:
         sql_terminal_cc = """
             SELECT 
@@ -210,7 +239,6 @@ def _enrich_with_dynamic_cc(items):
         cc_rows = db.session.execute(text(sql_terminal_cc), {'card_ids': card_ids, 'dates': dates}).mappings().fetchall()
         cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}
 
-    # 3. Penentuan Output Berdasarkan Flag use_cc
     for emp in items:
         emp_dict = emp.to_dict() if hasattr(emp, 'to_dict') else emp.__dict__
         
@@ -233,10 +261,12 @@ def _enrich_with_dynamic_cc(items):
                 emp_dict['cc'] = fallback_master
                 emp_dict['cost_center'] = fallback_master
 
+        emp_dict['type'] = type_map.get(card_key, type_map.get(emp_key, emp_dict.get('type', '-')))
+        emp_dict['subCom'] = sub_com_map.get(card_key, sub_com_map.get(emp_key, '-'))
+
         final_data.append(emp_dict)
         
     return final_data
-
 
 # =============================================================================
 # 1. GET LIST ABSENSI
@@ -252,26 +282,21 @@ def get_absensi():
         status_filter = request.args.get('status_filter', 'all_data', type=str)
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
+        
+        # Tangkap parameter baru dari React
+        worker_type = request.args.get('worker_type', 'all', type=str).strip()
 
         query = build_filtered_absensi_query(
             start_date=start_date,
             end_date=end_date,
             status_filter=status_filter,
             search=search,
-            sub_company_id=sub_company_id
+            sub_company_id=sub_company_id,
+            worker_type=worker_type
         )
 
         query = query.order_by(Absensi_all.clocking_date.desc(), Absensi_all.employee_id.asc())
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
-
-        # =====================================================================
-        # [DEBUG LOGGER] REKONSILIASI OS DETAIL ABSENSI (TABEL)
-        # =====================================================================
-        print(f"\n[DEBUG - DETAIL ABSENSI (TABEL)] === PERIODE: {start_date} s/d {end_date} ===")
-        print(f"-> Filter Status  : {status_filter}")
-        print(f"-> Pencarian Teks : '{search}' | Sub Company: '{sub_company_id}'")
-        print(f"-> Total Data OS Ditemukan: {pagination.total} records")
-        print(f"==================================================================\n")
 
         # Suntikkan dynamic CC (Node ID vs Master CC)
         final_data = _enrich_with_dynamic_cc(pagination.items)
@@ -489,13 +514,15 @@ def export_absensi():
         status_filter = request.args.get('status_filter', 'all_data', type=str)
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
+        worker_type = request.args.get('worker_type', 'all', type=str).strip()
 
         query = build_filtered_absensi_query(
             start_date=start_date,
             end_date=end_date,
             status_filter=status_filter,
             search=search,
-            sub_company_id=sub_company_id
+            sub_company_id=sub_company_id,
+            worker_type=worker_type
         )
 
         results = query.order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
@@ -543,7 +570,7 @@ def export_absensi():
                 "Gender": d.get('gender') or '-',
                 "Sub Company": d.get('subCom') or d.get('sub_company_name') or '-',
                 "Absence Card": d.get('card') or '-',
-                "Cost Center": d.get('cc') or '-',  # Ini sekarang berisi CC yang sudah disesuaikan (Terminal vs Master)
+                "Cost Center": d.get('cc') or '-',  
                 "Type": d.get('type') or '-',
                 "Clocking Date": format_dt(d.get('v_clocking_date') or d.get('clocking_date'), is_time=False),
                 "Clocking In": c_in if c_in != "KOSONG" else "No Clock In",
@@ -558,10 +585,11 @@ def export_absensi():
         df = pd.DataFrame(excel_data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Absensi_Outsource')
+            df.to_excel(writer, index=False, sheet_name='Absensi_Karyawan')
         output.seek(0)
 
-        filename = f"Export_Absensi_OS_{start_date}_to_{end_date}.xlsx" if start_date and end_date else "Export_Absensi_OS.xlsx"
+        # Ubah Nama File Dinamis sesuai worker_type
+        filename = f"Export_Absensi_{worker_type.upper()}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"Export_Absensi_{worker_type.upper()}.xlsx"
 
         return send_file(
             output,

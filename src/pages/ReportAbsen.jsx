@@ -28,6 +28,7 @@ const ReportAbsen = () => {
 
   const crud = useCrudPage();
 
+  // --- FILTER STATES ---
   const [subCompanies, setSubCompanies] = useState([]);
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
@@ -40,10 +41,15 @@ const ReportAbsen = () => {
   const [statusFilter, setStatusFilter] = useState('all_data');
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
 
-  // Loading States Per Action
-  const [isUploading, setIsUploading] = useState(false);
+  // FILTER BARU: Tipe Karyawan (OS vs Tetap/Kontrak)
+  const [workerType, setWorkerType] = useState('all');
+  const [appliedWorkerType, setAppliedWorkerType] = useState('all');
+
+  // Flag UI untuk menyembunyikan tabel jika filter diubah namun belum di-apply
+  const [isFilterDirty, setIsFilterDirty] = useState(false);
+
+  // --- LOADING STATES ---
   const [isExporting, setIsExporting] = useState(false);
-  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
   const fileInputRef = useRef(null);
@@ -66,6 +72,8 @@ const ReportAbsen = () => {
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedStatusFilter(statusFilter);
+    setAppliedWorkerType(workerType);     
+    setIsFilterDirty(false);
     crud.handleSearch();
     setTimeout(() => setIsApplyingFilter(false), 300);
   };
@@ -78,10 +86,14 @@ const ReportAbsen = () => {
         sub_company: appliedSubCompany || '',
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
-        status_filter: appliedStatusFilter || 'all_data'
+        status_filter: appliedStatusFilter || 'all_data',
+        worker_type: appliedWorkerType || 'all'
       }).toString();
+      
       const res = await api.get(`/absensi/export?${params}`, { responseType: 'blob' });
-      saveAs(res.data, 'Absensi_OS_Filtered.xlsx');
+      
+      const fileName = `Absensi_${appliedWorkerType.toUpperCase()}_Filtered.xlsx`;
+      saveAs(res.data, fileName);
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
     } finally {
@@ -89,48 +101,12 @@ const ReportAbsen = () => {
     }
   };
 
-  const handleDownloadTemplate = async () => {
-    setIsDownloadingTemplate(true);
-    try {
-      const { data } = await api.get('/absensi/template', { 
-        params: { start_date: startDate, end_date: endDate },
-        responseType: 'blob' 
-      });
-      saveAs(data, `Template_Mass_Update_${startDate}_to_${endDate}.xlsx`);
-    } catch {
-      Toast.fire({ icon: 'error', title: 'Gagal download template' });
-    } finally {
-      setIsDownloadingTemplate(false);
-    }
-  };
-
-  const handleImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      const res = await api.post('/absensi/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      const { status, message, errors } = res.data;
-      if (status === 'partial_success') {
-        Confirm.fire({ icon: 'warning', title: 'Import Selesai dengan Catatan', html: `<p>${message}</p><div style="text-align:left;max-height:200px;overflow-y:auto;background:#f8f9fa;padding:10px;font-size:.85em">${errors.join('<br>')}</div>`, confirmButtonText: 'Tutup', showCancelButton: false });
-      } else {
-        Toast.fire({ icon: 'success', title: message });
-      }
-      crud.handleRefresh();
-    } catch (error) {
-      const errList = error.response?.data?.errors;
-      if (errList?.length) {
-        Confirm.fire({ icon: 'error', title: 'Gagal Import', html: `<div style="text-align:left;max-height:200px;overflow-y:auto;font-size:.85em">${errList.join('<br>')}</div>`, confirmButtonText: 'Perbaiki Excel' });
-      } else {
-        Toast.fire({ icon: 'error', title: error.response?.data?.message || 'Terjadi kesalahan saat upload' });
-      }
-    } finally {
-      setIsUploading(false);
-    }
-  };
+  // --- OPSI DROPDOWN ---
+  const workerTypeOptions = [
+    { value: 'all', label: 'Semua Karyawan (All)' },
+    { value: 'tetap', label: 'Tetap / Kontrak' },
+    { value: 'os', label: 'Outsourcing (OS)' }
+  ];
 
   const subCompanyOptions = [
     { value: '', label: 'Semua Sub Company' },
@@ -146,62 +122,47 @@ const ReportAbsen = () => {
     { value: 'no_both', label: 'Clock In & Out Kosong' }
   ];
 
+  // Helper untuk membersihkan tabel & merubah filter state
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setIsFilterDirty(true);
+  };
+
   return (
     <div>
       <PageHeader
-        title="Report Absensi OS"
+        title="Report Absensi Employee"
         searchPlaceholder="Cari ID Karyawan / Nama ..."
         searchValue={crud.searchInput}
-        onSearchChange={crud.setSearchInput}
+        onSearchChange={(val) => {
+          crud.setSearchInput(val);
+          setIsFilterDirty(true);
+        }}
         onSearch={handleApplyFilters}
       >
-        <LoadingButton
-          loading={isDownloadingTemplate}
-          loadingText="Menyiapkan..."
-          className="btn-app btn-ghost-app"
-          icon="bi bi-download"
-          onClick={handleDownloadTemplate}
-        >
-          Template
-        </LoadingButton>
-
-        <label className={`btn-app ${isUploading ? 'btn-ghost-app' : 'btn-ghost-app'}`} style={{ cursor: 'pointer' }}>
-          {isUploading ? (
-            <>
-              <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-              Proses...
-            </>
-          ) : (
-            <>
-              <i className="bi bi-upload" /> Import
-            </>
-          )}
-          <input type="file" hidden ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls" disabled={isUploading} />
-        </label>
-
         <LoadingButton
           loading={isExporting}
           loadingText="Mengeksport..."
           className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExport}
+          disabled={isFilterDirty} // Cegah export jika filter belum ditekan
         >
           Export
         </LoadingButton>        
       </PageHeader>
 
-      {crud.showForm && <AbsensiForm onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />}
-
       <div className="app-card">
+        <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3">
 
-        <div className="filter-bar">
-
-          <div className="filter-group" style={{ minWidth: 220, margin: 0 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
+          {/* Filter Tipe Karyawan */}
+          <div className="filter-group" style={{ minWidth: 180, margin: 0, flex: 1 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Tipe Karyawan</label>
             <Select 
-              options={statusOptions} 
-              value={statusOptions.find(o => o.value === statusFilter)} 
-              onChange={o => setStatusFilter(o?.value || 'all_data')} 
+              options={workerTypeOptions} 
+              value={workerTypeOptions.find(o => o.value === workerType)} 
+              onChange={o => handleFilterChange(setWorkerType, o?.value || 'all')} 
+              isSearchable={false}
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
@@ -210,13 +171,27 @@ const ReportAbsen = () => {
             />
           </div>
 
-          <div className="filter-group" style={{ minWidth: 180 }}>
-            <label>Sub Company</label>
+          <div className="filter-group" style={{ minWidth: 220, margin: 0, flex: 1 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
+            <Select 
+              options={statusOptions} 
+              value={statusOptions.find(o => o.value === statusFilter)} 
+              onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
+            />
+          </div>
+
+          <div className="filter-group" style={{ minWidth: 180, margin: 0, flex: 1 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
             <Select
               options={subCompanyOptions}
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => setSubCompanyInput(o?.value || '')}
+              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
               styles={{ 
@@ -234,8 +209,8 @@ const ReportAbsen = () => {
                 type="date" 
                 className="form-control-app"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{ fontSize: 13, height: 34, width: '150px' }}
+                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
+                style={{ fontSize: 13, height: 34, width: '130px' }}
               />
             </div>
 
@@ -247,9 +222,9 @@ const ReportAbsen = () => {
                 type="date" 
                 className="form-control-app"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => handleFilterChange(setEndDate, e.target.value)}
                 min={startDate}
-                style={{ fontSize: 13, height: 34, width: '150px' }}
+                style={{ fontSize: 13, height: 34, width: '130px' }}
               />
             </div>
 
@@ -260,6 +235,7 @@ const ReportAbsen = () => {
               loading={isApplyingFilter}
               loadingText="Memfilter..."
               className="btn-app btn-primary-app"
+              style={{ height: '34px', fontSize: '13px', display: 'flex', alignItems: 'center' }}
               icon="bi bi-funnel"
               onClick={handleApplyFilters}
             >
@@ -269,14 +245,25 @@ const ReportAbsen = () => {
 
         </div>
         
-        <AbsensiReportTable
-          refreshTrigger={crud.refreshKey}
-          searchTerm={crud.appliedSearch}
-          subCompany={appliedSubCompany}
-          startDate={appliedStartDate}
-          endDate={appliedEndDate}
-          statusFilter={appliedStatusFilter}
-        />
+        { isFilterDirty ? (
+          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+            <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
+            <span style={{ fontSize: '14px' }}>
+              <strong>Filter Sedang Diubah!</strong><br />
+              Silakan klik tombol <b>Terapkan Filter</b> di pojok kanan atas untuk memuat ulang data.
+            </span>
+          </div>
+        ) : (
+          <AbsensiReportTable
+            workerType={appliedWorkerType}
+            refreshTrigger={crud.refreshKey}
+            searchTerm={crud.appliedSearch}
+            subCompany={appliedSubCompany}
+            startDate={appliedStartDate}
+            endDate={appliedEndDate}
+            statusFilter={appliedStatusFilter}
+          />
+        )}
       </div>
 
     </div>

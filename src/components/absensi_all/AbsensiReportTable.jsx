@@ -2,8 +2,17 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter }) => { 
+const AbsensiReportTable = ({ 
+    refreshTrigger, 
+    searchTerm, 
+    subCompany, 
+    startDate, 
+    endDate, 
+    statusFilter,
+    workerType // PROPS BARU
+}) => { 
     
+    // ... State lainnya tetap sama ...
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
@@ -20,7 +29,8 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
                 sub_company: subCompany || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
-                status_filter: statusFilter || 'all_data'
+                status_filter: statusFilter || 'all_data',
+                worker_type: workerType || 'all' 
             }).toString();
 
             const response = await api.get(`/absensi?${params}`);
@@ -39,12 +49,12 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, startDate, endDate, statusFilter]);
+    }, [searchTerm, subCompany, startDate, endDate, statusFilter, workerType]);
     
     useEffect(() => {
         if (!startDate || !endDate) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter, workerType]);
 
     // Helper formatter jam
     const formatTime = (timeStr) => {
@@ -95,9 +105,6 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
                         let isClockInFromBAC = false;
                         let isClockOutFromBAC = false;
 
-                        // =========================================================
-                        // 1. EVALUASI CLOCK IN (PRIORITAS: BAC > Tidak Lengkap > MESIN)
-                        // =========================================================
                         if (emp.bac_clock_in) {
                             displayClockIn = formatTime(emp.bac_clock_in);
                             isClockInFromBAC = true;
@@ -107,9 +114,6 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
                             displayClockIn = formatTime(emp.clock_in);
                         }
 
-                        // =========================================================
-                        // 2. EVALUASI CLOCK OUT (PRIORITAS: BAC > Tidak Lengkap > MESIN)
-                        // =========================================================
                         if (emp.bac_clock_out) {
                             displayClockOut = formatTime(emp.bac_clock_out);
                             isClockOutFromBAC = true;
@@ -121,11 +125,7 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
 
                         const isViolation = !displayClockIn || !displayClockOut;
                         let statusElement = null;
-                        let actionElement = null;
 
-                        // =========================================================
-                        // 3. BADGE STATUS DAN AKSI KOREKSI
-                        // =========================================================
                         if (hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
@@ -191,7 +191,6 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
                                 <td>{emp.bac_ket || '-'}</td>
                                 <td>{emp.bac_updated_by || '-'}</td>
                                 <td>{emp.bac_updated_date || '-'}</td>
-
                             </tr>
                         );
                     })
@@ -206,7 +205,7 @@ const AbsensiReportTable = ({ refreshTrigger, searchTerm, subCompany, startDate,
             </tbody>
             </table>
             
-            {startDate && endDate && (
+            {startDate && endDate && totalPages > 1 && (
                 <PageNav 
                     currentPage={currentPage} 
                     totalPages={totalPages} 
