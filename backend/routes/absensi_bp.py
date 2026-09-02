@@ -2,7 +2,7 @@ from io import BytesIO
 from datetime import datetime
 import pandas as pd
 from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_, and_, tuple_, func, cast, String, text, collate
+from sqlalchemy import or_, and_, tuple_, func, cast, String, text
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
@@ -228,13 +228,13 @@ def _enrich_with_dynamic_cc(items):
                     ta.card_id, ta.clocking_date, MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS raw_cc
                 FROM `db-webapps`.TBL_ATTENDANCE ta
                 LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-                LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id COLLATE utf8mb4_general_ci = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+                LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
                 LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-                LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id COLLATE utf8mb4_general_ci = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+                LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
                 WHERE ta.card_id IN :card_ids AND ta.clocking_date IN :dates
                 GROUP BY ta.card_id, ta.clocking_date
             ) sub
-            LEFT JOIN org_cost_center occ ON occ.cost_center COLLATE utf8mb4_general_ci = sub.raw_cc
+            LEFT JOIN org_cost_center occ ON occ.cost_center = sub.raw_cc
         """
         cc_rows = db.session.execute(text(sql_terminal_cc), {'card_ids': card_ids, 'dates': dates}).mappings().fetchall()
         cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}

@@ -6,15 +6,14 @@ from sqlalchemy import text
 from datetime import datetime
 
 from extensions import db
+from model.ob_emp import ObEmployee
 
 AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
 
 # =============================================================================
 # REUSABLE HELPERS (MENCEGAH DRY & OPTIMASI PERFORMA)
 # =============================================================================
-
 def _export_to_excel(df, sheet_name, filename, include_index=False):
-    """ Helper tunggal untuk mengekspor DataFrame ke Excel via OpenPyXL """
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=include_index, sheet_name=sheet_name)
@@ -27,7 +26,6 @@ def _export_to_excel(df, sheet_name, filename, include_index=False):
     )
 
 def _clean_cc(val):
-    """ Pembersih string yang mengubah 'None', 'NULL', atau spasi kosong menjadi murni None """
     if val is None:
         return None
     s = str(val).strip()
@@ -36,11 +34,9 @@ def _clean_cc(val):
     return s
 
 def _resolve_cc(terminal_cc, master_cc, use_cc):
-    """ Menentukan Cost Center yang menang dengan validasi tipe data yang ketat """
     t_cc = _clean_cc(terminal_cc)
     m_cc = _clean_cc(master_cc)
     
-    # Pastikan flag berupa Integer
     try:
         flag = int(use_cc)
     except (ValueError, TypeError):
@@ -49,12 +45,9 @@ def _resolve_cc(terminal_cc, master_cc, use_cc):
     if flag == 1:
         return m_cc or 'TIDAK ADA CC'
     
-    # Fallback ke master jika terminal kosong
     return t_cc if t_cc else (m_cc or 'TIDAK ADA CC')
 
 def _get_master_dictionaries():
-    """ Mengambil Data Master OS & OB dengan pengamanan COALESCE ganda """
-    # Master OS
     sql_os = """
         SELECT 
             CAST(os.employee_code AS CHAR) AS emp_id, 
@@ -63,52 +56,63 @@ def _get_master_dictionaries():
             os.cost_center_id,
             os.sub_company_id,
             os.sub_company_name,
-            COALESCE(os.use_cc, 0) AS use_cc, 
-            os.join_date AS valid_from, 
-            os.termination_date AS valid_to
+            COALESCE(os.use_cc, 0) AS use_cc,
+            os.join_date AS valid_from,        
+            os.termination_date AS valid_to    
         FROM vw_master_os_active os
-        LEFT JOIN org_cost_center occ ON occ.cost_center COLLATE utf8mb4_general_ci = os.cost_center_id
+        /* HAPUS COLLATE DI SINI */
+        LEFT JOIN org_cost_center occ ON occ.cost_center = os.cost_center_id
         WHERE os.employee_code IS NOT NULL AND os.employee_code != ''
     """
     os_rows = db.session.execute(text(sql_os)).mappings().fetchall()
     os_map = {str(r['emp_id']).strip(): dict(r) for r in os_rows}
 
-    # Master OB (Karyawan Organik)
-    sql_ob = """
-        SELECT 
-            CAST(ob.employee_id AS CHAR) AS emp_id, 
-            ob.employee_name AS display_name, 
-            COALESCE(cc.org_name, ob.cost_center) AS cc_name 
-        FROM vw_master_karyawan ob
-        LEFT JOIN org_cost_center cc ON cc.cost_center COLLATE utf8mb4_general_ci = ob.cost_center
-        WHERE ob.employee_id IS NOT NULL AND ob.employee_id != ''
-    """
-    ob_rows = db.session.execute(text(sql_ob)).mappings().fetchall()
-    ob_map = {str(r['emp_id']).strip(): dict(r) for r in ob_rows}
+    ob_info = ObEmployee.query.filter(ObEmployee.employee_id.is_not(None)).all()
+    ob_map = {}
+    for ob in ob_info:
+        emp_id_str = str(ob.employee_id).strip()
+        cc_name_resolved = ob.cc_master.org_name if ob.cc_master else str(ob.cost_center)
+        ob_map[emp_id_str] = {
+            'emp_id': emp_id_str,
+            'display_name': ob.employee_name,
+            'cc_name': cc_name_resolved,
+            'use_cc': 1
+        }
 
     return os_map, ob_map
 
-def _fetch_daily_attendance(search_date):
-    """ Mengambil base log absensi & terminal_cc """
+def _fetch_daily_attendance(search_date, worker_type='all'):
     sql = """
         SELECT 
             ta.employee_id,
             ta.card_id,
             MIN(COALESCE(ta.clock_in, ta.clock_out)) AS first_clock_in,
-            MAX(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center)) AS terminal_cc
+            
+            -- FIX: BUNGKUS DENGAN CAST UNTUK MENCEGAH ERROR COLLATION DI MAX()
+            MAX(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc
+            
         FROM `db-webapps`.TBL_ATTENDANCE ta
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-        LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id COLLATE utf8mb4_general_ci = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+        LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-        LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id COLLATE utf8mb4_general_ci = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-        LEFT JOIN org_cost_center occ ON occ.cost_center COLLATE utf8mb4_general_ci = COALESCE(tm_in.cost_center, tm_out.cost_center)
+        LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+        
+        -- FIX: BUNGKUS JUGA PADA SAAT JOIN
+        LEFT JOIN org_cost_center occ ON occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)
+        
         WHERE ta.clocking_date = :search_date
           AND ta.employee_id IS NOT NULL 
           AND ta.card_id != '00000.00000'
-        GROUP BY ta.employee_id, ta.card_id, ta.clocking_date
     """
-    return db.session.execute(text(sql), {'search_date': search_date}).mappings().fetchall()
+    
+    if worker_type == 'os':
+        sql += " AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8 "
+    elif worker_type == 'tetap':
+        sql += " AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) >= 8 "        
+        
+    sql += " GROUP BY ta.employee_id, ta.card_id, ta.clocking_date "
 
+    return db.session.execute(text(sql), {'search_date': search_date}).mappings().fetchall()
 
 # =============================================================================
 # BUSINESS LOGIC: REPORTING (LAPORAN 1, 2, 3)
@@ -244,7 +248,7 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
     """ Laporan 3: MP Per Employee (Rentang Tanggal) """
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
-
+    
     sql_attendance = """
         SELECT 
             daily.employee_id, 
@@ -255,20 +259,27 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
         FROM (
             SELECT 
                 ta.employee_id, ta.clocking_date, MIN(ta.clock_in) AS true_clock_in, MAX(ta.clock_out) AS true_clock_out,
-                MAX(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center)) AS terminal_cc,
-                MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS terminal_cc_id
+                
+                -- BUNGKUS DENGAN CAST UNTUK MERESET COLLATION DI MEMORI
+                MAX(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc,
+                MAX(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id
+                
             FROM `db-webapps`.TBL_ATTENDANCE ta
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-            LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id COLLATE utf8mb4_general_ci = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+            LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-            LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id COLLATE utf8mb4_general_ci = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-            LEFT JOIN org_cost_center occ ON occ.cost_center COLLATE utf8mb4_general_ci = COALESCE(tm_in.cost_center, tm_out.cost_center)
+            LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+            
+            -- BUNGKUS JUGA PADA SAAT JOIN UNTUK KEAMANAN EKSTRA
+            LEFT JOIN org_cost_center occ ON occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)
+            
             WHERE ta.clocking_date BETWEEN :start_date AND :end_date
               AND ta.employee_id IS NOT NULL AND ta.card_id != '00000.00000'
             GROUP BY ta.employee_id, ta.clocking_date
         ) daily
         GROUP BY daily.employee_id
     """
+    
     att_rows = db.session.execute(text(sql_attendance), {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
     os_map, ob_map = _get_master_dictionaries()
     
@@ -306,25 +317,21 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
 
         final_cc_name = _resolve_cc(row['terminal_cc'], info['cc_name'], use_cc_flag)
 
+        valid_from = info.get('valid_from')
+        valid_to = info.get('valid_to')
+
         report_data.append({
             "emp_id": emp_id,
             "display_name": info['display_name'] or '-',
             "cc_name": final_cc_name,
             "working_days": int(row['working_days'] or 0),
             "working_hours": round(float(row['working_hours'] or 0), 2),
-            "join_date": info['valid_from'].strftime('%d-%b-%Y').upper() if info['valid_from'] else '-',
-            "termination_date": info['valid_to'].strftime('%d-%b-%Y').upper() if info['valid_to'] else '-'
+            "join_date": valid_from.strftime('%d-%b-%Y').upper() if hasattr(valid_from, 'strftime') else (valid_from if valid_from else '-'),
+            "termination_date": valid_to.strftime('%d-%b-%Y').upper() if hasattr(valid_to, 'strftime') else (valid_to if valid_to else '-')
         }) 
         debug_os += 1
 
-    print(f"\n[DEBUG] === LAP. MANPOWER PER EMPLOYEE | {start_date} - {end_date} ===")
-    print(f"-> Sub Company Filter : '{sub_company_id}'")
-    print(f"-> Department Filter  : '{department_id}'")
-    print(f"-> Total OS Sesuai Filter Ditemukan : {debug_os}")
-    print(f"===========================================================\n")
-
     return report_data
-
 
 # =============================================================================
 # ENDPOINTS (ROUTE API)

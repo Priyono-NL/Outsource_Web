@@ -12,16 +12,21 @@ const AbsensiReportTable = ({
     workerType // PROPS BARU
 }) => { 
     
-    // ... State lainnya tetap sama ...
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
+    
+    // STATE BARU: Indikator Loading
+    const [loading, setLoading] = useState(false);
+
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async () => {
         try {
+            setLoading(true); // Nyalakan loading sebelum request
             setError(null);
+            
             const params = new URLSearchParams({
                 page: currentPage,
                 pageSize: itemsPerPage,
@@ -44,6 +49,10 @@ const AbsensiReportTable = ({
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
+            setAbsensi([]); // Kosongkan data jika error
+            setTotalPages(0);
+        } finally {
+            setLoading(false); // Matikan loading setelah request selesai (sukses/gagal)
         }
     };
 
@@ -68,7 +77,7 @@ const AbsensiReportTable = ({
     <>
         {error && <div className="alert alert-danger py-2 mb-2" style={{ fontSize: '0.85rem' }}>{error}</div>}        
         <div className="table-responsive">
-            <table className="app-table">
+            <table className="app-table table-hover table-striped mb-3">
             <thead>
                 <tr>
                     <th>Employee ID</th>
@@ -88,13 +97,23 @@ const AbsensiReportTable = ({
                 </tr>
             </thead>
             <tbody>
+                {/* 1. Kondisi jika filter belum diisi */}
                 {(!startDate || !endDate) ? (
                     <tr>
-                        <td colSpan="15" className="empty-state text-center py-5 text-muted">
+                        <td colSpan="14" className="empty-state text-center py-5 text-muted">
                             <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
                             Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                         </td>
                     </tr>
+                
+                ) : loading ? (
+                    <tr>
+                        <td colSpan="14" className="text-center py-4 text-muted">
+                            <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                            Memuat data absensi...
+                        </td>
+                    </tr>
+                
                 ) : absensi.length > 0 ? (
                     absensi.map((emp, index) => {
                         const isAnomaly = emp.is_anomaly === 1;
@@ -194,9 +213,10 @@ const AbsensiReportTable = ({
                             </tr>
                         );
                     })
+                
                 ) : (
                     <tr>
-                        <td colSpan="15" className="empty-state text-center py-4 text-muted">
+                        <td colSpan="14" className="empty-state text-center py-4 text-muted">
                             <i className="bi bi-inbox d-block mb-1 fs-4"></i>
                             Data absensi tidak ditemukan untuk filter tersebut.
                         </td>
@@ -205,7 +225,7 @@ const AbsensiReportTable = ({
             </tbody>
             </table>
             
-            {startDate && endDate && totalPages > 1 && (
+            {!loading && startDate && endDate && totalPages > 1 && (
                 <PageNav 
                     currentPage={currentPage} 
                     totalPages={totalPages} 

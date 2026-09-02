@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import Select from 'react-select';
-import { saveAs } from 'file-saver';
+import React, { useState } from 'react';
+import { saveAs } from 'file-saver'; 
 
 import api from '../api/api';
 import { Toast } from '../utils/sweetalert';
@@ -27,8 +26,19 @@ const Report_Absen = () => {
 
   const [isExporting, setIsExporting] = useState(false);
 
+  // STATE BARU: Flag untuk mendeteksi perubahan filter
+  const [isFilterDirty, setIsFilterDirty] = useState(false);
+
+  // Helper untuk mengubah state sekaligus menyalakan flag Dirty Filter
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setIsFilterDirty(true);
+  };
+
   const handleApplyFilters = () => {
     setAppliedSearchDate(searchDate);
+    // Matikan flag dirty sehingga tabel muncul kembali
+    setIsFilterDirty(false);
   };
 
   const handleExportExcel = async () => {
@@ -64,29 +74,36 @@ const Report_Absen = () => {
       <PageHeader title="Laporan Harian Per Cost Center" />
 
       <div className="app-card">
-        <div className="filter-bar">
+        {/* Container flex disesuaikan agar rapi dan ringkas */}
+        <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3" style={{ fontSize: '12px' }}>
 
           {/* Filter Tanggal */}
-          <div className="filter-group" style={{ minWidth: 180 }}>
-            <label>Tanggal</label>
+          <div className="filter-group" style={{ minWidth: 150 }}>
+            <label className="fw-semibold mb-1">Tanggal</label>
             <input 
               type="date" 
               className="form-control-app"
+              style={{ height: '30px', fontSize: '12px', padding: '4px 8px' }}
               value={searchDate}
-              onChange={(e) => setSearchDate(e.target.value)}
+              onChange={(e) => handleFilterChange(setSearchDate, e.target.value)}
             />
           </div>
 
           {/* Group Tombol Aksi */}
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} className="d-flex gap-2">
-            <button className="btn-app btn-primary-app" onClick={handleApplyFilters}>
-              <i className="bi bi-funnel" /> Terapkan Filter
+            <button 
+              className="btn-app btn-primary-app" 
+              style={{ height: '30px', fontSize: '12px', display: 'flex', alignItems: 'center' }}
+              onClick={handleApplyFilters}
+            >
+              <i className="bi bi-funnel me-1" /> Terapkan Filter
             </button>
 
             <button 
               className="btn-app btn-success-app" 
+              style={{ height: '30px', fontSize: '12px', display: 'flex', alignItems: 'center' }}
               onClick={handleExportExcel}
-              disabled={isExporting}
+              disabled={isExporting || isFilterDirty} // Cegah export jika filter kotor
             >
               {isExporting ? (
                 <>
@@ -103,11 +120,20 @@ const Report_Absen = () => {
 
         </div>
         
-        {/* Tabel Rekap Manpower Per Cost Center */}
-        <Summary_Table
-          refreshTrigger={crud.refreshKey}
-          searchDate={appliedSearchDate}
-        />
+        {isFilterDirty ? (
+          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+            <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
+            <span style={{ fontSize: '14px' }}>
+              <strong>Filter Sedang Diubah!</strong><br />
+              Silakan klik tombol <b>Terapkan Filter</b> di pojok kanan atas untuk memuat ulang data.
+            </span>
+          </div>
+        ) : (
+          <Summary_Table
+            refreshTrigger={crud.refreshKey}
+            searchDate={appliedSearchDate}
+          />
+        )}
       </div>
     </div>
   );
