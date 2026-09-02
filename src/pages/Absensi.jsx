@@ -42,6 +42,9 @@ const Absensi = () => {
   const [statusFilter, setStatusFilter] = useState('all_data');
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
 
+  // STATE BARU: Flag untuk mendeteksi perubahan filter (Dirty Filter)
+  const [isFilterDirty, setIsFilterDirty] = useState(false);
+
   // Loading States Per Action
   const [isUploading, setIsUploading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -62,12 +65,22 @@ const Absensi = () => {
     load();
   }, []);
 
+  // HELPER BARU: Mengubah state filter & menyalakan status dirty
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setIsFilterDirty(true);
+  };
+
   const handleApplyFilters = () => {
     setIsApplyingFilter(true);
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedStatusFilter(statusFilter);
+    
+    // Matikan flag dirty sehingga tabel muncul kembali
+    setIsFilterDirty(false);
+    
     crud.handleSearch();
     setTimeout(() => setIsApplyingFilter(false), 300);
   };
@@ -164,7 +177,10 @@ const Absensi = () => {
         title="BAC Absensi OS"
         searchPlaceholder="Cari ID Karyawan / Nama ..."
         searchValue={crud.searchInput}
-        onSearchChange={crud.setSearchInput}
+        onSearchChange={(val) => {
+          crud.setSearchInput(val);
+          setIsFilterDirty(true); // Nyalakan dirty filter saat user ngetik di search box
+        }}
         onSearch={handleApplyFilters}
       >
         <LoadingButton
@@ -197,6 +213,7 @@ const Absensi = () => {
           className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExport}
+          disabled={isFilterDirty} // Cegah export jika filter belum ditekan
         >
           Export
         </LoadingButton>        
@@ -206,14 +223,14 @@ const Absensi = () => {
 
       <div className="app-card">
 
-        <div className="filter-bar">
+        <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3">
 
-          <div className="filter-group" style={{ minWidth: 220, margin: 0 }}>
+          <div className="filter-group" style={{ minWidth: 220, margin: 0, flex: 1 }}>
             <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
             <Select 
               options={statusOptions} 
               value={statusOptions.find(o => o.value === statusFilter)} 
-              onChange={o => setStatusFilter(o?.value || 'all_data')} 
+              onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
@@ -222,13 +239,13 @@ const Absensi = () => {
             />
           </div>
 
-          <div className="filter-group" style={{ minWidth: 180 }}>
-            <label>Sub Company</label>
+          <div className="filter-group" style={{ minWidth: 180, margin: 0, flex: 1 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
             <Select
               options={subCompanyOptions}
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => setSubCompanyInput(o?.value || '')}
+              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
               styles={{ 
@@ -246,8 +263,8 @@ const Absensi = () => {
                 type="date" 
                 className="form-control-app"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{ fontSize: 13, height: 34, width: '150px' }}
+                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
+                style={{ fontSize: 13, height: 34, width: '130px' }}
               />
             </div>
 
@@ -259,9 +276,9 @@ const Absensi = () => {
                 type="date" 
                 className="form-control-app"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => handleFilterChange(setEndDate, e.target.value)}
                 min={startDate}
-                style={{ fontSize: 13, height: 34, width: '150px' }}
+                style={{ fontSize: 13, height: 34, width: '130px' }}
               />
             </div>
 
@@ -272,6 +289,7 @@ const Absensi = () => {
               loading={isApplyingFilter}
               loadingText="Memfilter..."
               className="btn-app btn-primary-app"
+              style={{ height: '34px', fontSize: '13px', display: 'flex', alignItems: 'center' }}
               icon="bi bi-funnel"
               onClick={handleApplyFilters}
             >
@@ -281,15 +299,26 @@ const Absensi = () => {
 
         </div>
         
-        <AbsensiTable
-          refreshTrigger={crud.refreshKey}
-          onEditClick={handleEdit} 
-          searchTerm={crud.appliedSearch}
-          subCompany={appliedSubCompany}
-          startDate={appliedStartDate}
-          endDate={appliedEndDate}
-          statusFilter={appliedStatusFilter}
-        />
+        {/* LOGIKA CONDITIONAL RENDERING UNTUK DIRTY FILTER */}
+        {isFilterDirty ? (
+          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+            <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
+            <span style={{ fontSize: '14px' }}>
+              <strong>Filter Sedang Diubah!</strong><br />
+              Silakan klik tombol <b>Terapkan Filter</b> untuk memuat ulang data.
+            </span>
+          </div>
+        ) : (
+          <AbsensiTable
+            refreshTrigger={crud.refreshKey}
+            onEditClick={handleEdit} 
+            searchTerm={crud.appliedSearch}
+            subCompany={appliedSubCompany}
+            startDate={appliedStartDate}
+            endDate={appliedEndDate}
+            statusFilter={appliedStatusFilter}
+          />
+        )}
       </div>
 
     </div>

@@ -6,13 +6,19 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
     
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
+    
+    // STATE BARU: Indikator Loading
+    const [loading, setLoading] = useState(false);
+
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async () => {
         try {
+            setLoading(true); // Nyalakan loading sebelum request
             setError(null);
+            
             const params = new URLSearchParams({
                 page: currentPage,
                 pageSize: itemsPerPage,
@@ -20,7 +26,8 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 sub_company: subCompany || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
-                status_filter: statusFilter || 'all_data'
+                status_filter: statusFilter || 'all_data',
+                worker_type: 'os'
             }).toString();
 
             const response = await api.get(`/absensi?${params}`);
@@ -34,6 +41,10 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
+            setAbsensi([]); // Kosongkan data jika error
+            setTotalPages(0);
+        } finally {
+            setLoading(false); // Matikan loading setelah selesai
         }
     };
 
@@ -79,6 +90,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 </tr>
             </thead>
             <tbody>
+                {/* 1. Filter belum diisi */}
                 {(!startDate || !endDate) ? (
                     <tr>
                         <td colSpan="15" className="empty-state text-center py-5 text-muted">
@@ -86,6 +98,15 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                         </td>
                     </tr>
+                
+                ) : loading ? (
+                    <tr>
+                        <td colSpan="15" className="text-center py-4 text-muted">
+                            <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                            Memuat data absensi...
+                        </td>
+                    </tr>
+                
                 ) : absensi.length > 0 ? (
                     absensi.map((emp, index) => {
                         const isAnomaly = emp.is_anomaly === 1;
@@ -170,7 +191,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     Lengkap
                                 </span>
                             );
-                            actionElement = statusElement;
+                            actionElement = statusElement; // Tidak ada aksi jika lengkap
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
@@ -233,6 +254,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             </tr>
                         );
                     })
+                
                 ) : (
                     <tr>
                         <td colSpan="15" className="empty-state text-center py-4 text-muted">
@@ -244,7 +266,8 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
             </tbody>
             </table>
             
-            {startDate && endDate && (
+            {/* Sembunyikan Pagination saat loading agar UI tidak melompat */}
+            {!loading && startDate && endDate && totalPages > 1 && (
                 <PageNav 
                     currentPage={currentPage} 
                     totalPages={totalPages} 

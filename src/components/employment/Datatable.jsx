@@ -15,13 +15,19 @@ const Datatable = ({
 }) => {
   const [employees, setEmployees] = useState([]);
   const [error, setError]         = useState(null);
+  
+  // STATE BARU: Indikator Loading
+  const [loading, setLoading]     = useState(false);
+  
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages]   = useState(0);
   const PAGE_SIZE = 20;
 
   const fetchData = async () => {
     try {
+      setLoading(true); // Nyalakan loading sebelum memanggil API
       setError(null);
+      
       const params = new URLSearchParams({
         page: currentPage, 
         pageSize: PAGE_SIZE,
@@ -35,9 +41,15 @@ const Datatable = ({
       if (res.data.status === 'success') {
         setEmployees(res.data.data);
         setTotalPages(res.data.total_page);
-      } else throw new Error(res.data.message);
+      } else {
+        throw new Error(res.data.message);
+      }
     } catch (err) { 
       setError(err.message); 
+      setEmployees([]); // Kosongkan data jika terjadi error
+      setTotalPages(0);
+    } finally {
+      setLoading(false); // Matikan loading setelah request selesai
     }
   };
 
@@ -63,6 +75,7 @@ const Datatable = ({
       cancelButtonText: 'Batal',
     });
     if (!res.isConfirmed) return;
+    
     try {
       const r = await api.put(`/employee/deactivate/${pkId}`);
       if (r.data.status === 'success') { 
@@ -76,9 +89,9 @@ const Datatable = ({
 
   return (
     <>
-      {error && <div className="alert alert-danger m-3">{error}</div>}
+      {error && <div className="alert alert-danger m-3 py-2" style={{ fontSize: '0.85rem' }}>{error}</div>}
       <div className="table-responsive">
-        <table className="app-table">
+        <table className="app-table table-hover table-striped">
           <thead>
             <tr>
               <th>Employee ID</th>
@@ -95,6 +108,7 @@ const Datatable = ({
             </tr>
           </thead>
           <tbody>
+            {/* 1. Kondisi Filter Belum Diterapkan */}
             {!isFilterApplied ? (
               <tr>
                 <td colSpan="11" className="empty-state text-center py-5 text-muted">
@@ -102,6 +116,15 @@ const Datatable = ({
                   Silakan tentukan parameter filter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                 </td>
               </tr>
+            
+            ) : loading ? (
+              <tr>
+                <td colSpan="11" className="text-center py-4 text-muted">
+                  <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                  Memuat data karyawan...
+                </td>
+              </tr>
+
             ) : employees.length > 0 ? (
               employees.map((emp, i) => (
                 <tr key={emp.id || i}>
@@ -120,7 +143,7 @@ const Datatable = ({
                       : <span className="badge-active">Aktif</span>}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                       <button 
                         className="btn-app btn-ghost-app btn-sm-app" 
                         onClick={() => onViewClick(emp)}
@@ -150,6 +173,7 @@ const Datatable = ({
                   </td>
                 </tr>
               ))
+
             ) : (
               <tr>
                 <td colSpan="11" className="empty-state text-center py-4 text-muted">
@@ -161,8 +185,13 @@ const Datatable = ({
           </tbody>
         </table>
       </div>
-      {isFilterApplied && (
-        <PageNav currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+      
+      {!loading && isFilterApplied && totalPages > 1 && (
+        <PageNav 
+          currentPage={currentPage} 
+          totalPages={totalPages} 
+          onPageChange={setCurrentPage} 
+        />
       )}
     </>
   );

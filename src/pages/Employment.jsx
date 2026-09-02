@@ -32,6 +32,9 @@ const Employment = () => {
   // Flag Status Filter Terapan
   const [isFilterApplied, setIsFilterApplied]   = useState(false);
 
+  // STATE BARU: Flag untuk mendeteksi perubahan filter (Dirty Filter)
+  const [isFilterDirty, setIsFilterDirty]       = useState(false);
+
   const [subCompanies, setSubCompanies] = useState([]);
   const [departments, setDepartments]   = useState([]);
 
@@ -57,13 +60,22 @@ const Employment = () => {
     load();
   }, []);
 
+  // HELPER BARU: Mengubah state filter & menyalakan status dirty
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setIsFilterDirty(true);
+  };
+
   const handleApplyFilters = () => {
     setIsApplyingFilter(true);
     crud.handleSearch();
     setAppliedStatus(statusInput);
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
+    
     setIsFilterApplied(true); // Aktifkan penanda fetch
+    setIsFilterDirty(false);  // Matikan flag dirty sehingga tabel muncul kembali
+    
     setTimeout(() => setIsApplyingFilter(false), 300);
   };
 
@@ -76,7 +88,9 @@ const Employment = () => {
     setAppliedStatus('all');
     setAppliedSubCompany('');
     setAppliedDepartment('');
+    
     setIsFilterApplied(false); // Sembunyikan tabel kembali ke mode instruksi
+    setIsFilterDirty(false);   // Bersihkan juga status dirty
   };
 
   const handleView = (data) => { setViewData(data); setViewForm(true); };
@@ -101,6 +115,11 @@ const Employment = () => {
       Toast.fire({ icon: 'warning', title: 'Terapkan filter terlebih dahulu untuk mengeksport data.' });
       return;
     }
+    if (isFilterDirty) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengeksport data.' });
+      return;
+    }
+
     setIsExporting(true);
     try {
       const params = new URLSearchParams({
@@ -238,7 +257,10 @@ const Employment = () => {
         title="Employment"
         searchPlaceholder="Cari ID / Nama / Card Number..."
         searchValue={crud.searchInput}
-        onSearchChange={crud.setSearchInput}
+        onSearchChange={(val) => {
+          crud.setSearchInput(val);
+          setIsFilterDirty(true); // Search diubah -> filter kotor
+        }}
         onSearch={handleApplyFilters}
       >
         <LoadingButton
@@ -275,6 +297,7 @@ const Employment = () => {
           className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExport}
+          disabled={!isFilterApplied || isFilterDirty} // Cegah export jika kotor atau belum pernah di-apply
         >
           Eksport Excel
         </LoadingButton>
@@ -296,7 +319,11 @@ const Employment = () => {
 
           <div className="filter-group">
             <label>Status</label>
-            <select value={statusInput} onChange={e => setStatusInput(e.target.value)}>
+            <select 
+              value={statusInput} 
+              onChange={e => handleFilterChange(setStatusInput, e.target.value)}
+              className="form-select-app"
+            >
               <option value="all">Semua</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -309,7 +336,7 @@ const Employment = () => {
               options={subCompanyOptions}
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => setSubCompanyInput(o?.value || '')}
+              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
               styles={{ 
@@ -325,7 +352,7 @@ const Employment = () => {
               options={departmentOptions}
               placeholder="Cari..."
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
-              onChange={o => setDepartmentInput(o?.value || '')}
+              onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
               styles={{ 
@@ -359,16 +386,27 @@ const Employment = () => {
           
         </div>
         
-        <Datatable
-          refreshTrigger={crud.refreshKey}
-          onViewClick={handleView}
-          onEditClick={handleEdit} 
-          searchTerm={crud.appliedSearch}
-          filterStatus={appliedStatus}
-          filterSubCompany={appliedSubCompany}
-          filterDepartment={appliedDepartment}
-          isFilterApplied={isFilterApplied}
-        />
+        {/* LOGIKA CONDITIONAL RENDERING UNTUK DIRTY FILTER */}
+        {isFilterDirty ? (
+          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+            <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
+            <span style={{ fontSize: '14px' }}>
+              <strong>Filter Sedang Diubah!</strong><br />
+              Silakan klik tombol <b>Terapkan Filter</b> untuk memuat ulang data.
+            </span>
+          </div>
+        ) : (
+          <Datatable
+            refreshTrigger={crud.refreshKey}
+            onViewClick={handleView}
+            onEditClick={handleEdit} 
+            searchTerm={crud.appliedSearch}
+            filterStatus={appliedStatus}
+            filterSubCompany={appliedSubCompany}
+            filterDepartment={appliedDepartment}
+            isFilterApplied={isFilterApplied}
+          />
+        )}
       </div>
     </div>
   );
