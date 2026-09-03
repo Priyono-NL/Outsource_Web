@@ -898,7 +898,6 @@ def export():
                 "Resident ID": d['resident_id'],
                 "Address": d['address'],
                 "Employee ID": d['employee_code'],
-                "Use CC": d.get('use_cc', 0),
                 "Sub Company": d['sub_con_name'],
                 "Department": d['cc_name'],
                 "Grade": d['grade'],

@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, and_, tuple_, func, cast, String, text
+from sqlalchemy.orm import joinedload, selectinload
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
@@ -516,6 +517,7 @@ def export_absensi():
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
 
+        # 1. Bangun Kueri Dasar
         query = build_filtered_absensi_query(
             start_date=start_date,
             end_date=end_date,
@@ -525,14 +527,30 @@ def export_absensi():
             worker_type=worker_type
         )
 
+        query = query.options(
+            selectinload(Absensi_all.os_active),
+            selectinload(Absensi_all.ob_employee).selectinload(ObEmployee.cc_master),
+            selectinload(Absensi_all.bac_os_data)
+        )
+
+        # 2. Eksekusi Query
         results = query.order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
 
         if not results:
             return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
 
-        # Suntikkan dynamic CC ke hasil All sebelum di-loop menjadi excel rows
-        enriched_results = _enrich_with_dynamic_cc(results)
+        # =====================================================================
+        # TWEAK CHUNKING: PROSES DATA BERTAHAP AGAR RAM TETAP AMAN
+        # =====================================================================
+        CHUNK_SIZE = 500
+        enriched_results = []
+        
+        for i in range(0, len(results), CHUNK_SIZE):
+            chunk = results[i : i + CHUNK_SIZE]
+            enriched_chunk = _enrich_with_dynamic_cc(chunk)
+            enriched_results.extend(enriched_chunk)
 
+        # 3. Format Data untuk Excel
         excel_data = []
         for d in enriched_results:
             is_anomaly = d.get('is_anomaly') == 1 or d.get('flag_anomaly') == 1
@@ -558,7 +576,7 @@ def export_absensi():
             if has_bac:
                 status_str = "BAC Found"
             elif is_anomaly:
-                status_str = "Anomali"
+                status_str = "Tidak Lengkap"
             elif c_in and c_out and c_in != "KOSONG" and c_out != "KOSONG":
                 status_str = "Lengkap"
             else:
@@ -581,10 +599,10 @@ def export_absensi():
                 "Updated Date": d.get('bac_updated_date') or '-'
             })
 
-        # Generate File Excel via OpenPyXL
+        # 4. Generate File Excel via OpenPyXL
         df = pd.DataFrame(excel_data)
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Absensi_Karyawan')
         output.seek(0)
 

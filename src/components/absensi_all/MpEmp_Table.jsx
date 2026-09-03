@@ -75,7 +75,7 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDat
                             <th>Display Name</th>
                             <th className="text-center">Cost Center</th>
                             <th className="text-center">Working Days</th>
-                            <th className="text-center">Working Hours</th>
+                            <th className="text-center">Working Hours (jam)</th>
                             <th className="text-center">Join Date</th>
                             <th className="text-center">Termination Date</th>
                         </tr>

@@ -117,7 +117,6 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
 # =============================================================================
 # BUSINESS LOGIC: REPORTING (LAPORAN 1, 2, 3)
 # =============================================================================
-
 def _get_aggregated_mp_cc(search_date):
     """ Laporan 1: MP Per Cost Center """
     att_rows = _fetch_daily_attendance(search_date) if search_date else []
@@ -157,17 +156,11 @@ def _get_aggregated_mp_cc(search_date):
 
     report_data.sort(key=lambda x: x['total_manpower'], reverse=True)
     
-    print(f"\n[DEBUG] === LAP. MANPOWER PER COST CENTER | {search_date} ===")
-    print(f"-> Valid OS Ditemukan : {debug_os}")
-    print(f"-> Valid OB Ditemukan : {debug_ob}")
-    print(f"===========================================================\n")
-    
     return allowed_sub_companies, report_data
 
-
 def determine_shift(clock_in_val, is_saturday):
-    """ Helper Shift """
-    if not clock_in_val: return 'NS'
+    """ Helper Shift (NS Digabung ke SHIFT 1) """
+    if not clock_in_val: return 'SHIFT 1'
     try:
         if isinstance(clock_in_val, datetime): jam = clock_in_val.hour * 100 + clock_in_val.minute
         else:
@@ -175,19 +168,18 @@ def determine_shift(clock_in_val, is_saturday):
             time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
             t = datetime.strptime(time_str, "%H:%M:%S")
             jam = t.hour * 100 + t.minute 
-    except Exception: return 'NS'
+    except Exception: return 'SHIFT 1'
 
     if is_saturday:
         if 1500 <= jam <= 1900: return 'SHIFT 3'
         elif 1000 <= jam <= 1400: return 'SHIFT 2'
-        elif 400 <= jam <= 900: return 'SHIFT 1'
-        else: return 'NS'
+        # Sisanya (termasuk 400-900 dan anomali jam) masuk Shift 1
+        else: return 'SHIFT 1'
     else:
         if jam >= 2000 or jam < 400: return 'SHIFT 3'
         elif 1300 <= jam <= 1700: return 'SHIFT 2'
-        elif 400 <= jam <= 1000: return 'SHIFT 1'
-        else: return 'NS'
-
+        # Sisanya (termasuk 400-1000 dan anomali jam) masuk Shift 1
+        else: return 'SHIFT 1'
 
 def _get_aggregated_daily_shift(search_date):
     """ Laporan 2: Summary Absensi Harian (Pivot Shift) """
@@ -235,14 +227,7 @@ def _get_aggregated_daily_shift(search_date):
     report_data.sort(key=lambda x: x['total_cc'], reverse=True)
     grand_total = sum(totals_os.values()) + sum(totals_ob.values())
 
-    print(f"\n[DEBUG] === SUMMARY ABSENSI HARIAN SHIFT | {search_date} ===")
-    print(f"-> Total OS: {debug_os}")
-    print(f"-> Total OB: {debug_ob}")
-    print(f"-> Grand Total: {grand_total}")
-    print(f"==========================================================\n")
-
     return report_data, totals_os, totals_ob, grand_total, default_shifts
-
 
 def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
     """ Laporan 3: MP Per Employee (Rentang Tanggal) """
@@ -336,7 +321,6 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
 # =============================================================================
 # ENDPOINTS (ROUTE API)
 # =============================================================================
-
 @AbsenReport_bp.route('/reportMpCc')
 def reportMpCc():
     try:
@@ -374,7 +358,6 @@ def exportMpCc():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @AbsenReport_bp.route('/reportHarian')
 def reportHarian():
     try:
@@ -406,23 +389,25 @@ def exportHarian():
         for row in report_data:
             cc_indices.append(row['cc'])
             data_values.append([
-                row['os']['NS'], row['os']['SHIFT 1'], row['os']['SHIFT 2'], row['os']['SHIFT 3'],
-                row['ob']['NS'], row['ob']['SHIFT 1'], row['ob']['SHIFT 2'], row['ob']['SHIFT 3'],
+                row['os']['SHIFT 1'], row['os']['SHIFT 2'], row['os']['SHIFT 3'],
+                row['ob']['SHIFT 1'], row['ob']['SHIFT 2'], row['ob']['SHIFT 3'],
                 row['total_cc']
             ])
 
         cc_indices.append('TOTAL')
         data_values.append([
-            totals_os['NS'], totals_os['SHIFT 1'], totals_os['SHIFT 2'], totals_os['SHIFT 3'],
-            totals_ob['NS'], totals_ob['SHIFT 1'], totals_ob['SHIFT 2'], totals_ob['SHIFT 3'],
+            totals_os['SHIFT 1'], totals_os['SHIFT 2'], totals_os['SHIFT 3'],
+            totals_ob['SHIFT 1'], totals_ob['SHIFT 2'], totals_ob['SHIFT 3'],
             grand_total
         ])
 
         columns = pd.MultiIndex.from_tuples([
-            ('MAN POWER', 'Outsourcing', 'NS'), ('MAN POWER', 'Outsourcing', 'SHIFT 1'),
-            ('MAN POWER', 'Outsourcing', 'SHIFT 2'), ('MAN POWER', 'Outsourcing', 'SHIFT 3'),
-            ('MAN POWER', 'Tetap / Kontrak', 'NS'), ('MAN POWER', 'Tetap / Kontrak', 'SHIFT 1'),
-            ('MAN POWER', 'Tetap / Kontrak', 'SHIFT 2'), ('MAN POWER', 'Tetap / Kontrak', 'SHIFT 3'),
+            ('MAN POWER', 'Outsourcing', 'SHIFT 1'), 
+            ('MAN POWER', 'Outsourcing', 'SHIFT 2'), 
+            ('MAN POWER', 'Outsourcing', 'SHIFT 3'),
+            ('MAN POWER', 'Tetap / Kontrak', 'SHIFT 1'), 
+            ('MAN POWER', 'Tetap / Kontrak', 'SHIFT 2'), 
+            ('MAN POWER', 'Tetap / Kontrak', 'SHIFT 3'),
             ('TOTAL', '', '')
         ])
 
@@ -432,7 +417,6 @@ def exportHarian():
         return _export_to_excel(df, 'Absensi_Harian', f"Report_Absensi_Harian_{search_date}.xlsx", include_index=True)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @AbsenReport_bp.route('/reportMpEmp')
 def reportMpEmployee():

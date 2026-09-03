@@ -195,9 +195,9 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             "display_name": row['display_name'] or '-',
             "card_number": row['card_number'] or '-', 
             "waktu_out": waktu_out, 
-            "waktu_makan": waktu_makan, 
-            "waktu_in": waktu_in, 
             "node_out": get_break_area(row['node_out']),
+            "waktu_makan": waktu_makan, 
+            "waktu_in": waktu_in,             
             "node_in": get_break_area(row['node_in']),
             "total": total_mins, 
             "status": status
@@ -256,8 +256,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             "cc_name": row['cc_name'] or '-', 
             "card_number": row['card_number'] or '-',
             "waktu_in": waktu_in, 
-            "waktu_out": waktu_out, 
             "node_in": get_access_area(row['node_in']),
+            "waktu_out": waktu_out,             
             "node_out": get_access_area(row['node_out'])
         })
 
