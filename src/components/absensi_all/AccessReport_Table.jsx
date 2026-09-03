@@ -68,48 +68,49 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
             )}        
 
             <div className="table-responsive">
-                <table className="app-table table-hover table-striped mb-3">
+                <table className="app-table table-hover table-striped mb-3" style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                     <thead>
                         <tr>
                             <th className="text-center">Employee ID</th>
                             <th>Display Name</th>
                             <th>Cost Center</th>
                             <th className="text-center">Card Number</th>
-                            <th className="text-center">Clocking In</th>
-                            <th className="text-center">Clocking Out</th>
-                            <th className="text-center">Access Area</th>
+                            <th className="text-center">Waktu IN</th>
+                            <th className="text-center">Node IN</th>
+                            <th className="text-center">Waktu OUT</th>
+                            <th className="text-center">Node OUT</th>
                         </tr>
                     </thead>
                     <tbody>
                         { loading ? (
                             <tr>
-                                <td colSpan="7" className="text-center py-4 text-muted">
+                                <td colSpan="8" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                                    Memuat data kehadiran karyawan...
+                                    Memuat data log akses...
                                 </td>
                             </tr>
                         ) : employees.length > 0 ? (
                             employees.map((emp, index) => (
-                                <tr key={`mp-emp-${emp.emp_id}-${index}`}>
+                                <tr key={`access-emp-${emp.emp_id}-${index}`}>
                                     <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
                                     <td>{emp.display_name || '-'}</td>
                                     <td>{emp.cc_name || '-'}</td>
                                     <td className="text-center">{emp.card_number || '-'}</td>
-                                    <td className="text-center">{emp.time_in || ''}</td>
-                                    <td className="text-center">{emp.time_out || ''}</td>
-                                    <td className="text-center">{emp.access_area || '-'}</td>
+                                    <td className="text-center">{emp.waktu_in || '-'}</td>
+                                    <td className="text-center">{emp.node_in || '-'}</td>
+                                    <td className="text-center">{emp.waktu_out || '-'}</td>
+                                    <td className="text-center">{emp.node_out || '-'}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="7" className="empty-state text-center py-4 text-muted">
+                                <td colSpan="8" className="empty-state text-center py-4 text-muted">
                                     <i className="bi bi-inbox d-block mb-1 fs-4"></i>
                                     Data absensi tidak ditemukan untuk periode ini
                                 </td>
                             </tr>
                         )}
                     </tbody>
-
                 </table>
             </div>        
 

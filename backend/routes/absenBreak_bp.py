@@ -79,8 +79,7 @@ def _paginate_data(report_data, page, page_size):
 # =============================================================================
 # DATA PROCESSORS
 # =============================================================================
-
-def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None):
+def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data'):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     base_cte = _get_base_karyawan_cte()
 
@@ -92,7 +91,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
                 DATE(clocking_time) as clock_date,
                 DATE_FORMAT(MIN(CASE WHEN direction = 'OUT' THEN clocking_time END), '%H:%i') as jam_out,
                 DATE_FORMAT(MAX(CASE WHEN direction = 'IN' THEN clocking_time END), '%H:%i') as jam_in,
-                MAX(node_id) as node_id
+                MAX(CASE WHEN direction = 'OUT' THEN node_id END) as node_out,
+                MAX(CASE WHEN direction = 'IN' THEN node_id END) as node_in
             FROM vw_filter_test
             WHERE DATE(clocking_time) BETWEEN :start_date AND :end_date
               AND action_flag = 'Break'
@@ -117,7 +117,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             m.jam_makan,
             c.clock_date as tanggal_in, 
             c.jam_in,
-            c.node_id
+            c.node_out,
+            c.node_in
         FROM Karyawan k
         LEFT JOIN ClockData c ON k.emp_id = c.emp_id
         LEFT JOIN MakanData m ON k.emp_id = m.emp_id AND c.clock_date = m.tanggal_makan
@@ -140,40 +141,69 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         return f"Node {node_str}"
 
     for row in rows:
-        jam_out_str, jam_makan_str, jam_in_str = row['jam_out'], row['jam_makan'], row['jam_in']
+        jam_out_str = row['jam_out']
+        jam_makan_str = row['jam_makan']
+        jam_in_str = row['jam_in']
         
         tgl_out_str = row['tanggal_out'].strftime('%d-%b-%Y').upper() if row['tanggal_out'] else ""
         tgl_mak_str = row['tanggal_makan'].strftime('%d-%b-%Y').upper() if row['tanggal_makan'] else ""
         tgl_in_str = row['tanggal_in'].strftime('%d-%b-%Y').upper() if row['tanggal_in'] else ""
         
+        waktu_out = f"{tgl_out_str} {jam_out_str}" if tgl_out_str and jam_out_str else "-"
+        waktu_makan = f"{tgl_mak_str} {jam_makan_str}" if tgl_mak_str and jam_makan_str else "-"
+        waktu_in = f"{tgl_in_str} {jam_in_str}" if tgl_in_str and jam_in_str else "-"
+
+        start_break_str = min(filter(None, [jam_out_str, jam_makan_str]), default=None)        
         total_mins = 0
         status = "Normal Break"
         
-        if not jam_in_str:
+        if not start_break_str and not jam_in_str:
+            status = "No Both"
+            total_mins = 0
+        elif not start_break_str:
+            status = "No Clocking OUT"
+            total_mins = 0
+        elif not jam_in_str:
             status = "No Clocking IN"
+            total_mins = 0
         else:
-            start_break_str = min(filter(None, [jam_out_str, jam_makan_str]), default=None)
-                
-            if start_break_str:
-                dt_in = datetime.strptime(jam_in_str, '%H:%M')
-                dt_start = datetime.strptime(start_break_str, '%H:%M')
-                
-                total_mins = max(0, int((dt_in - dt_start).total_seconds() // 60))
-                if total_mins > 60: status = ">60"
-            else:
-                status = "No Clocking OUT"
-                
+            dt_in = datetime.strptime(jam_in_str, '%H:%M')
+            dt_start = datetime.strptime(start_break_str, '%H:%M')
+            
+            total_mins = max(0, int((dt_in - dt_start).total_seconds() // 60))
+            
+            if total_mins == 0:
+                status = "0 Menit"
+            elif total_mins > 60: 
+                status = ">60"
+
+        if status_filter != 'all_data':
+            if status_filter == 'lengkap':
+                if status != 'Normal Break':
+                    continue
+                    
+            elif status_filter == 'overbreak':
+                if status != '>60':
+                    continue
+                    
+            elif status_filter == 'tidak_lengkap':
+                if status not in ('No Clocking IN', 'No Clocking OUT', 'No Both', '0 Menit'):
+                    continue
+
         report_data.append({
-            "emp_id": row['emp_id'], "display_name": row['display_name'] or '-',
-            "card_number": row['card_number'] or '-', "tanggal_out": tgl_out_str,
-            "jam_out": jam_out_str or "", "tanggal_makan": tgl_mak_str,
-            "jam_makan": jam_makan_str or "", "tanggal_in": tgl_in_str,
-            "jam_in": jam_in_str or "", "access_area": get_break_area(row['node_id']),
-            "total": total_mins, "status": status
+            "emp_id": row['emp_id'], 
+            "display_name": row['display_name'] or '-',
+            "card_number": row['card_number'] or '-', 
+            "waktu_out": waktu_out, 
+            "waktu_makan": waktu_makan, 
+            "waktu_in": waktu_in, 
+            "node_out": get_break_area(row['node_out']),
+            "node_in": get_break_area(row['node_in']),
+            "total": total_mins, 
+            "status": status
         })
 
     return report_data
-
 
 def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
@@ -187,7 +217,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
                 DATE(clocking_time) as clock_date,
                 DATE_FORMAT(MIN(CASE WHEN direction = 'IN' THEN clocking_time END), '%H:%i') as time_in,
                 DATE_FORMAT(MAX(CASE WHEN direction = 'OUT' THEN clocking_time END), '%H:%i') as time_out,
-                MAX(node_id) as node_id
+                MAX(CASE WHEN direction = 'IN' THEN node_id END) as node_in,
+                MAX(CASE WHEN direction = 'OUT' THEN node_id END) as node_out
             FROM vw_filter_test
             WHERE DATE(clocking_time) BETWEEN :start_date AND :end_date
               AND action_flag = 'Access'
@@ -195,7 +226,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         )
         SELECT 
             k.emp_id, k.display_name, k.card_number, k.cc_name,
-            c.clock_date, c.time_in, c.time_out, c.node_id
+            c.clock_date, c.time_in, c.time_out, c.node_in, c.node_out
         FROM Karyawan k
         INNER JOIN ClockData c ON k.emp_id = c.emp_id
         WHERE 1=1 {filter_clause}
@@ -213,11 +244,21 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         return f"Node {node_str}"
 
     for row in rows:
+        tgl_str = row['clock_date'].strftime('%d-%b-%Y').upper() if row['clock_date'] else ""
+        
+        # Menggabungkan Tanggal dan Jam menjadi satu kolom
+        waktu_in = f"{tgl_str} {row['time_in']}" if tgl_str and row['time_in'] else "-"
+        waktu_out = f"{tgl_str} {row['time_out']}" if tgl_str and row['time_out'] else "-"
+
         report_data.append({
-            "emp_id": row['emp_id'], "display_name": row['display_name'] or '-',
-            "cc_name": row['cc_name'] or '-', "card_number": row['card_number'] or '-',
-            "time_in": row['time_in'] or "", "time_out": row['time_out'] or "",
-            "access_area": get_access_area(row['node_id'])
+            "emp_id": row['emp_id'], 
+            "display_name": row['display_name'] or '-',
+            "cc_name": row['cc_name'] or '-', 
+            "card_number": row['card_number'] or '-',
+            "waktu_in": waktu_in, 
+            "waktu_out": waktu_out, 
+            "node_in": get_access_area(row['node_in']),
+            "node_out": get_access_area(row['node_out'])
         })
 
     return report_data
@@ -234,7 +275,8 @@ def reportBreak():
             request.args.get('end_date', '').strip(),
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
-            request.args.get('search', '').strip()
+            request.args.get('search', '').strip(),
+            request.args.get('status_filter', 'all_data').strip()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -259,16 +301,23 @@ def exportBreak():
     try:
         start = request.args.get('start_date', '').strip()
         end = request.args.get('end_date', '').strip()
-        report_data = _get_break_data(start, end, request.args.get('sub_company', '').strip(), request.args.get('department', '').strip())
+        report_data = _get_break_data(
+            start, 
+            end, 
+            request.args.get('sub_company', '').strip(), 
+            request.args.get('department', '').strip(),
+            request.args.get('search', '').strip(),
+            request.args.get('status_filter', 'all_data').strip() # <--- TANGKAP FILTER STATUS UNTUK EXPORT
+        )
 
         if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
+        
         df.rename(columns={
             'emp_id': 'Employee Id', 'display_name': 'Display Name', 'card_number': 'Absence Card No',
-            'tanggal_out': 'Tanggal OUT', 'jam_out': 'Jam OUT', 'tanggal_makan': 'Tanggal Makan',
-            'jam_makan': 'Jam Makan', 'tanggal_in': 'Tanggal IN', 'jam_in': 'Jam IN',
-            'access_area': 'Access Area', 'total': 'Total', 'status': 'Status'
+            'waktu_out': 'Waktu OUT', 'waktu_makan': 'Waktu Makan', 'waktu_in': 'Waktu IN',
+            'node_out': 'Node OUT', 'node_in': 'Node IN', 'total': 'Total Menit', 'status': 'Status'
         }, inplace=True)
         
         output = BytesIO()
@@ -289,9 +338,12 @@ def exportAccess():
         if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
+        
+        # Rename dengan kolom yang sudah digabungkan dan dipisah Node-nya
         df.rename(columns={
             'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center',
-            'card_number': 'Absence Card No', 'time_in': 'Time In', 'time_out': 'Time Out', 'access_area': 'Access Area'
+            'card_number': 'Absence Card No', 'waktu_in': 'Waktu IN', 'waktu_out': 'Waktu OUT', 
+            'node_in': 'Node IN', 'node_out': 'Node OUT'
         }, inplace=True)
         
         output = BytesIO()

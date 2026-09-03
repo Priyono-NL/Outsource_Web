@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-// 1. UPDATE: Tambahkan statusFilter pada parameter props
 const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search }) => { 
     
     const [employees, setEmployees] = useState([]); 
@@ -27,7 +26,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                 department_id: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
-                status_filter: statusFilter || 'all_data', // 2. UPDATE: Suntikkan parameter status ke API
+                status_filter: statusFilter || 'all_data',
                 search: search || '',
                 page: currentPage,
                 pageSize: pageSize
@@ -53,12 +52,10 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
         }
     };
 
-    // 3. UPDATE: Tambahkan statusFilter ke dependency array agar reset halaman ke-1 saat status diubah
     useEffect(() => {
         setCurrentPage(1);
     }, [subCompany, department, startDate, endDate, statusFilter, search]);
 
-    // 4. UPDATE: Tambahkan statusFilter ke dependency array agar trigger fetch ulang data
     useEffect(() => {
         fetchData();
     }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, currentPage]);
@@ -91,13 +88,11 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                             <th className="text-center">Employee Id</th>
                             <th>Display Name</th>
                             <th className="text-center">Absence Card No</th>
-                            <th className="text-center">Tanggal OUT</th>
-                            <th className="text-center">Jam OUT</th>
-                            <th className="text-center">Tanggal Makan</th>
-                            <th className="text-center">Jam Makan</th>
-                            <th className="text-center">Tanggal IN</th>
-                            <th className="text-center">Jam IN</th>
-                            <th className="text-center">Access Area</th>
+                            <th className="text-center">Waktu OUT</th>
+                            <th className="text-center">Node OUT</th>
+                            <th className="text-center">Waktu Makan</th>
+                            <th className="text-center">Waktu IN</th>
+                            <th className="text-center">Node IN</th>
                             <th className="text-center">Total (Menit)</th>
                             <th className="text-center">Status</th>
                         </tr>
@@ -105,7 +100,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                     <tbody>
                         { loading ? (
                             <tr>
-                                <td colSpan="12" className="text-center py-4 text-muted">
+                                <td colSpan="10" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                                     Memuat data log istirahat...
                                 </td>
@@ -116,14 +111,12 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                                     <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
                                     <td>{emp.display_name || '-'}</td>
                                     <td className="text-center">{emp.card_number || '-'}</td>
-                                    <td className="text-center">{emp.tanggal_out || ''}</td>
-                                    <td className="text-center">{emp.jam_out || ''}</td>
-                                    <td className="text-center">{emp.tanggal_makan || ''}</td>
-                                    <td className="text-center">{emp.jam_makan || ''}</td>
-                                    <td className="text-center">{emp.tanggal_in || ''}</td>
-                                    <td className="text-center">{emp.jam_in || ''}</td>
-                                    <td className="text-center">{emp.access_area || '-'}</td>
-                                    <td className="text-center fw-bold">{emp.total !== undefined ? emp.total : '-'}</td>
+                                    <td className="text-center">{emp.waktu_out || '-'}</td>
+                                    <td className="text-center">{emp.node_out || '-'}</td>
+                                    <td className="text-center">{emp.waktu_makan || '-'}</td>
+                                    <td className="text-center">{emp.waktu_in || '-'}</td>
+                                    <td className="text-center">{emp.node_in || '-'}</td>
+                                    <td className="text-center fw-bold text-primary">{emp.total !== undefined ? emp.total : '-'}</td>
                                     <td className="text-center">
                                         <span className={`badge ${getStatusBadgeClass(emp.status)}`}>
                                             {emp.status || '-'}
@@ -133,7 +126,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="12" className="empty-state text-center py-4 text-muted">
+                                <td colSpan="10" className="empty-state text-center py-4 text-muted">
                                     <i className="bi bi-inbox d-block mb-1 fs-4"></i>
                                     Data absensi istirahat tidak ditemukan untuk periode ini
                                 </td>
