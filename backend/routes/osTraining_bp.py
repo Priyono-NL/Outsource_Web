@@ -22,20 +22,34 @@ def index():
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
         query = osTraining.query
+
         if search:
-            query = query.outerjoin(OsEmployment, osTraining.employee_id == OsEmployment.id) \
-                            .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
-                            .outerjoin(ObEmployee, osTraining.employee_id == ObEmployee.employee_id)            
-            query = query.filter(
+            search_term = f"%{search}%"
+            matched_employee_ids = []
+
+            os_matches = db.session.query(OsEmployment.id).join(
+                OsPerson, OsEmployment.person_id == OsPerson.person_id
+            ).filter(
                 or_(
-                    # Pencarian untuk data OS
-                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
-                    OsPerson.name.ilike(f"%{search}%"),                    
-                    # Pencarian untuk data OB
-                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
-                    ObEmployee.employee_name.ilike(f"%{search}%")
+                    OsEmployment.employee_code.cast(db.String).ilike(search_term),
+                    OsPerson.name.ilike(search_term)
                 )
-            )
+            ).all()
+            matched_employee_ids.extend([str(row.id) for row in os_matches])
+
+            ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                or_(
+                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                    ObEmployee.employee_name.ilike(search_term)
+                )
+            ).all()
+            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+
+            if matched_employee_ids:
+                query = query.filter(osTraining.employee_id.in_(matched_employee_ids))
+            else:
+                query = query.filter(False)
+
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
@@ -49,7 +63,7 @@ def index():
             "status": "error",
             "message": str(e)
         }), 500
-
+    
 @osTraining_bp.route('/ostraining/submit', methods=['POST'])
 def add():
     try:
@@ -109,19 +123,34 @@ def export():
     try:
         search = request.args.get('search', '', type=str)
         query = osTraining.query
+        
         if search:
-            # DIUBAH KE OUTERJOIN AGAR DATA OS & OB IKUT TER-EXPORT
-            query = query.outerjoin(OsEmployment, osTraining.employee_id == OsEmployment.id) \
-                            .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
-                            .outerjoin(ObEmployee, osTraining.employee_id == ObEmployee.employee_id)            
-            query = query.filter(
+            search_term = f"%{search}%"
+            matched_employee_ids = []
+
+            os_matches = db.session.query(OsEmployment.id).join(
+                OsPerson, OsEmployment.person_id == OsPerson.person_id
+            ).filter(
                 or_(
-                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
-                    OsPerson.name.ilike(f"%{search}%"),                    
-                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
-                    ObEmployee.employee_name.ilike(f"%{search}%")
+                    OsEmployment.employee_code.cast(db.String).ilike(search_term),
+                    OsPerson.name.ilike(search_term)
                 )
-            )
+            ).all()
+            matched_employee_ids.extend([str(row.id) for row in os_matches])
+
+            ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                or_(
+                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                    ObEmployee.employee_name.ilike(search_term)
+                )
+            ).all()
+            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+
+            if matched_employee_ids:
+                query = query.filter(osTraining.employee_id.in_(matched_employee_ids))
+            else:
+                query = query.filter(False) # Tidak ada yang cocok, kembalikan kosong
+
         master = query.all()
         data = []
         for m in master:
@@ -135,8 +164,10 @@ def export():
                 "Result": d['status_result'],
                 "Score": d['training_score']
             })
+            
         if not data:
             return jsonify({'status': 'error', 'message': 'tidak ada data'})
+            
         df = pd.DataFrame(data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
