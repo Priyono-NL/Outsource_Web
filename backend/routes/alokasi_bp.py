@@ -19,20 +19,36 @@ def index():
         filter = request.args.get('filter', '', type=str)
         query = Alokasi.query
         now = datetime.now()
+
         if search:
-            query = query.outerjoin(OsEmployment, Alokasi.employee_id == OsEmployment.id) \
-                         .outerjoin(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
-                         .outerjoin(ObEmployee, Alokasi.employee_id == ObEmployee.employee_id)            
-            query = query.filter(
+            search_term = f"%{search}%"
+            matched_employee_ids = []
+
+            os_matches = db.session.query(OsEmployment.id).join(
+                OsPerson, OsEmployment.person_id == OsPerson.person_id
+            ).filter(
                 or_(
-                    # Pencarian untuk data OS
-                    OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
-                    OsPerson.name.ilike(f"%{search}%"),                    
-                    # Pencarian untuk data OB
-                    ObEmployee.employee_id.cast(db.String).ilike(f"%{search}%"),
-                    ObEmployee.employee_name.ilike(f"%{search}%")
+                    OsEmployment.employee_code.cast(db.String).ilike(search_term),
+                    OsPerson.name.ilike(search_term)
                 )
-            )
+            ).all()
+            
+            matched_employee_ids.extend([str(row.id) for row in os_matches])
+
+            ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                or_(
+                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                    ObEmployee.employee_name.ilike(search_term)
+                )
+            ).all()
+            
+            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+
+            if matched_employee_ids:
+                query = query.filter(Alokasi.employee_id.in_(matched_employee_ids))
+            else:
+                query = query.filter(False)
+
         if filter == 'active':
             query = query.filter((Alokasi.valid_to >= now) | (Alokasi.valid_to == None))
         elif filter == 'inactive':
