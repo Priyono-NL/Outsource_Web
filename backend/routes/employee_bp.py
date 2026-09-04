@@ -90,7 +90,7 @@ def index():
 
         if department_id:
             query = query.join(OsCostCenter)
-            query = query.filter(OsCostCenter.cc_id == department_id)
+            query = query.filter(OsCostCenter.org_cc_id == department_id)
         
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
@@ -369,25 +369,30 @@ def add():
         db.session.add(newType)
 
         # Cost Center
-        newCC = OsCostCenter(
-            employee_id = newEmployment.id,
-            cc_id = data.get('cc_id'),
-            valid_from = data.get('valid_from'),
-            valid_to = data.get('valid_to')
-        )       
-        db.session.add(newCC)
-
-        # Canteen Allocation
-        if (data.get('cc_id')):
-            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(data.get('cc_id'))).first()
-            if cc_def:
-                newAlokasi = Alokasi(
+        selected_cc_id = data.get('cc_id')
+        if selected_cc_id:
+            master_cc = costCenter.query.get(selected_cc_id)
+            if master_cc:
+                newCC = OsCostCenter(
                     employee_id = newEmployment.id,
-                    canteen_id = cc_def.canteen_id,
+                    cc_id = master_cc.cost_center, # Simpan kode (1000)
+                    org_cc_id = master_cc.id,      # Simpan ID unik (1)
                     valid_from = data.get('valid_from'),
                     valid_to = data.get('valid_to')
-                )
-                db.session.add(newAlokasi)            
+                )       
+                db.session.add(newCC)
+
+                # Canteen Allocation
+                cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id)\
+                                      .filter(canteenDetail.org_cc_id == master_cc.id).first()
+                if cc_def:
+                    newAlokasi = Alokasi(
+                        employee_id = newEmployment.id,
+                        canteen_id = cc_def.canteen_id,
+                        valid_from = data.get('valid_from'),
+                        valid_to = data.get('valid_to')
+                    )
+                    db.session.add(newAlokasi)        
         
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil disimpan!"}), 201     
@@ -529,72 +534,77 @@ def edit(id):
         # --- LOGIKA HISTORI COST CENTER & ALOKASI ---
         new_cc_id = data.get('cc_id')
         if new_cc_id and new_start_date:
-            current_cc = OsCostCenter.query.filter(
-                OsCostCenter.employee_id == id,
-                OsCostCenter.valid_from <= new_start_date,
-                ((OsCostCenter.valid_to >= new_start_date) | (OsCostCenter.valid_to == None))
-            ).order_by(OsCostCenter.id.desc()).first()
+            master_cc = costCenter.query.get(new_cc_id)
+            
+            if master_cc:
+                current_cc = OsCostCenter.query.filter(
+                    OsCostCenter.employee_id == id,
+                    OsCostCenter.valid_from <= new_start_date,
+                    ((OsCostCenter.valid_to >= new_start_date) | (OsCostCenter.valid_to == None))
+                ).order_by(OsCostCenter.id.desc()).first()
 
-            cc_changed = False 
-            original_cc_to = data.get('valid_to') or None
+                cc_changed = False 
+                original_cc_to = data.get('valid_to') or None
 
-            if current_cc:
-                if current_cc.cc_id != new_cc_id:
-                    cc_changed = True
-                    if current_cc.valid_from == new_start_date:
-                        current_cc.cc_id = new_cc_id
-                        db.session.add(current_cc)
-                    else:
-                        original_cc_to = current_cc.valid_to
-                        current_cc.valid_to = day_before
-                        db.session.add(current_cc)
-
-                        new_cc = OsCostCenter(
-                            employee_id=id, cc_id=new_cc_id,
-                            valid_from=new_start_date, valid_to=original_cc_to
-                        )
-                        db.session.add(new_cc)
-                else:
-                    current_cc.valid_to = data.get('valid_to') or current_cc.valid_to
-                    db.session.add(current_cc)
-            else:
-                new_cc = OsCostCenter(
-                    employee_id=id, cc_id=new_cc_id,
-                    valid_from=new_start_date, valid_to=data.get('valid_to') or None
-                )
-                db.session.add(new_cc)
-
-            cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id).filter(canteenDetail.cc_id.ilike(new_cc_id)).first()
-            if cc_def:
-                current_alokasi = Alokasi.query.filter(
-                    Alokasi.employee_id == id,
-                    Alokasi.valid_from <= new_start_date,
-                    ((Alokasi.valid_to >= new_start_date) | (Alokasi.valid_to == None))
-                ).order_by(Alokasi.id.desc()).first()
-
-                if current_alokasi:
-                    if cc_changed or current_alokasi.canteen_id != cc_def.canteen_id:
-                        if current_alokasi.valid_from == new_start_date:
-                            current_alokasi.canteen_id = cc_def.canteen_id
-                            db.session.add(current_alokasi)
+                if current_cc:
+                    if current_cc.org_cc_id != master_cc.id:
+                        cc_changed = True
+                        if current_cc.valid_from == new_start_date:
+                            current_cc.cc_id = master_cc.cost_center
+                            current_cc.org_cc_id = master_cc.id
+                            db.session.add(current_cc)
                         else:
-                            current_alokasi.valid_to = day_before
-                            db.session.add(current_alokasi)
+                            original_cc_to = current_cc.valid_to
+                            current_cc.valid_to = day_before
+                            db.session.add(current_cc)
 
-                            newAlokasi = Alokasi(
-                                employee_id=id, canteen_id=cc_def.canteen_id,
+                            new_cc = OsCostCenter(
+                                employee_id=id, cc_id=master_cc.cost_center, org_cc_id=master_cc.id,
                                 valid_from=new_start_date, valid_to=original_cc_to
                             )
-                            db.session.add(newAlokasi)
+                            db.session.add(new_cc)
                     else:
-                        current_alokasi.valid_to = data.get('valid_to') or current_alokasi.valid_to
-                        db.session.add(current_alokasi)
+                        current_cc.valid_to = data.get('valid_to') or current_cc.valid_to
+                        db.session.add(current_cc)
                 else:
-                    newAlokasi = Alokasi(
-                        employee_id=id, canteen_id=cc_def.canteen_id, 
-                        valid_from=new_start_date, valid_to=original_cc_to
+                    new_cc = OsCostCenter(
+                        employee_id=id, cc_id=master_cc.cost_center, org_cc_id=master_cc.id,
+                        valid_from=new_start_date, valid_to=data.get('valid_to') or None
                     )
-                    db.session.add(newAlokasi)
+                    db.session.add(new_cc)
+
+                cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id)\
+                                      .filter(canteenDetail.org_cc_id == master_cc.id).first()
+                if cc_def:
+                    current_alokasi = Alokasi.query.filter(
+                        Alokasi.employee_id == id,
+                        Alokasi.valid_from <= new_start_date,
+                        ((Alokasi.valid_to >= new_start_date) | (Alokasi.valid_to == None))
+                    ).order_by(Alokasi.id.desc()).first()
+
+                    if current_alokasi:
+                        if cc_changed or current_alokasi.canteen_id != cc_def.canteen_id:
+                            if current_alokasi.valid_from == new_start_date:
+                                current_alokasi.canteen_id = cc_def.canteen_id
+                                db.session.add(current_alokasi)
+                            else:
+                                current_alokasi.valid_to = day_before
+                                db.session.add(current_alokasi)
+
+                                newAlokasi = Alokasi(
+                                    employee_id=id, canteen_id=cc_def.canteen_id,
+                                    valid_from=new_start_date, valid_to=original_cc_to
+                                )
+                                db.session.add(newAlokasi)
+                        else:
+                            current_alokasi.valid_to = data.get('valid_to') or current_alokasi.valid_to
+                            db.session.add(current_alokasi)
+                    else:
+                        newAlokasi = Alokasi(
+                            employee_id=id, canteen_id=cc_def.canteen_id, 
+                            valid_from=new_start_date, valid_to=original_cc_to
+                        )
+                        db.session.add(newAlokasi)
 
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diperbarui!"}), 200
@@ -615,7 +625,6 @@ def template():
             "NIK": "32xxxx",
             "Alamat": "Alamat Rumah",
             "Employee Code": "123456",
-            "Use CC": 0,
             "Grade": "1",
             "Sub Company":"PRO/GLB/...",
             "Department": "",
@@ -807,12 +816,13 @@ def upload():
                     db.session.add(OsCostCenter(
                         employee_id=newEmployment.id,
                         cc_id=exist_cc.cost_center,
+                        org_cc_id=exist_cc.id,
                         valid_from=new_start_date,
                         valid_to=new_valid_to
                     ))
 
                     cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id)\
-                                        .filter(canteenDetail.cc_id == exist_cc.cost_center).first()
+                                        .filter(canteenDetail.org_cc_id == exist_cc.id).first()
                     if cc_def:
                         db.session.add(Alokasi(
                             employee_id=newEmployment.id,
@@ -882,7 +892,7 @@ def export():
 
         if department_id:
             query = query.join(OsCostCenter)
-            query = query.filter(OsCostCenter.cc_id == department_id)
+            query = query.filter(OsCostCenter.org_cc_id == department_id)
         
         filtered_employees = query.all()
         
@@ -962,12 +972,12 @@ def get_employee_stats():
     total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
 
     statsCC_raw = db.session.query(
-        OsCostCenter.cc_id, 
+        OsCostCenter.org_cc_id, 
         func.count(OsCostCenter.id).label('total')
     ).filter(
         (OsCostCenter.valid_to >= now) | (OsCostCenter.valid_to == None)
-    ).group_by(OsCostCenter.cc_id).all()
-    stats_cc = {row.cc_id: row.total for row in statsCC_raw}
+    ).group_by(OsCostCenter.org_cc_id).all()
+    stats_cc = {row.org_cc_id: row.total for row in statsCC_raw}
 
     statSub_raw = db.session.query(
         OsEmployment.sub_company_id,
@@ -983,7 +993,7 @@ def get_employee_stats():
     sub_aktif = {}
     
     for cc in cost_centers:
-        cc_aktif[cc.org_name] = stats_cc.get(cc.cost_center, 0)
+        cc_aktif[cc.org_name] = stats_cc.get(cc.id, 0)
 
     for sub in sub_company:
         sub_aktif[sub.sub_company_name] = stats_sub.get(sub.sub_company_id, 0)

@@ -72,7 +72,6 @@ function DataForm({ onClose, onSuccess, initialData: propsData }) {
     const customConfig = { headers: { 'Content-Type': 'multipart/form-data' } };
     const formData = new FormData(formRef.current);
     
-    // Pastikan nilai flag use_cc terkirim sebagai integer 1 atau 0
     formData.set('use_cc', initialData?.use_cc === 1 ? '1' : '0');
 
     if (selectedFile) { 

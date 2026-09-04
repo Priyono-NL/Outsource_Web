@@ -70,7 +70,7 @@ function EmployTab({ initialData }) {
   const ccOptions = [
     { value: "", label: "No Cost Center" },
     ...costCenter.map((item) => ({
-      value: item.cost_center,
+      value: item.id,
       label: item.org_name
     }))
   ];

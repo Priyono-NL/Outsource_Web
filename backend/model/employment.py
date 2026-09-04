@@ -17,10 +17,9 @@ class OsEmployment(db.Model, AuditMixin):
 
     def to_dict(self):
         today = date.today()
-        
         is_emp_active = self.valid_to is None or self.valid_to >= today
 
-        # 2. --- LOGIKA KARTU (OsCard) ---
+        # 1. --- LOGIKA KARTU (OsCard) ---
         card = None
         if self.OsCard:
             if is_emp_active:
@@ -33,7 +32,7 @@ class OsEmployment(db.Model, AuditMixin):
             else:
                 card = self.OsCard[-1]
 
-        # 3. --- LOGIKA TYPE WORKER (OsType) ---
+        # 2. --- LOGIKA TYPE WORKER (OsType) ---
         type_work_data = None
         if self.OsType:
             if is_emp_active:
@@ -46,7 +45,7 @@ class OsEmployment(db.Model, AuditMixin):
             else:
                 type_work_data = self.OsType[-1]
 
-        # 4. --- LOGIKA COST CENTER (OsCC) ---
+        # 3. --- LOGIKA COST CENTER (OsCC) ---
         cc_data = None
         if self.OsCC:
             if is_emp_active:
@@ -59,8 +58,10 @@ class OsEmployment(db.Model, AuditMixin):
             else:
                 cc_data = self.OsCC[-1]
         
+        # Pengamanan relasi cc_master
         cc_master = cc_data.cc_master if (cc_data and hasattr(cc_data, 'cc_master')) else None
 
+        # 4. --- LOGIKA BLACKLIST & FORMAT TANGGAL ---
         blacklist_data = self.person.OsBlist[0] if (self.person and self.person.OsBlist) else None
         card_from = card.valid_from if card else None
         card_to = card.valid_to if card else None
@@ -71,12 +72,14 @@ class OsEmployment(db.Model, AuditMixin):
             'sub_company_id': self.sub_company_id,            
             'person_id': self.person_id,
             "use_cc": getattr(self, 'use_cc', 0),
+            
+            # Format Tanggal
             'valid_from': self.valid_from.strftime('%Y-%m-%d') if hasattr(self.valid_from, 'strftime') else None,
             'valid_to': self.valid_to.strftime('%Y-%m-%d') if hasattr(self.valid_to, 'strftime') else None,
-
             'v_valid_from': self.valid_from.strftime('%d %b %Y') if self.valid_from else None,
             'v_valid_to': self.valid_to.strftime('%d %b %Y') if self.valid_to else None,            
 
+            # Data Personal
             'person_name': self.person.name if self.person else None,
             'gender': self.person.gender if self.person else None,
             'pob': self.person.pob if self.person else None,
@@ -85,28 +88,30 @@ class OsEmployment(db.Model, AuditMixin):
             'resident_id': self.person.resident_id if self.person else None,
             'address': self.person.address if self.person else None,
             'photo': self.person.photo if self.person else None,
-            'v_dob': self.person.dob.strftime('%d %b %Y') if (self.person and self.person.dob) else None,
+            'v_dob': self.person.dob.strftime('%d %b %Y') if (self.person and hasattr(self.person.dob, 'strftime')) else None,
 
+            # Data Pekerjaan
             'grade': self.OsGrade[0].grade if self.OsGrade else None,
             'sub_con_name': self.sub_con.sub_company_name if self.sub_con else None,
             'type_company': self.sub_con.type_company if self.sub_con else None,
+            'type_worker': type_work_data.type_worker if type_work_data else None,
+            'posisi': type_work_data.posisi if type_work_data else None,
 
-            'cc_id': cc_master.id if cc_master else (cc_data.cc_id if cc_data else None),
-            'cost_center': cc_master.cost_center if cc_master else None,
+            # Data Cost Center (Membaca ID Unik untuk Frontend)
+            'cc_id': cc_master.id if cc_master else (cc_data.org_cc_id if cc_data else None),
+            'cost_center': cc_master.cost_center if cc_master else (cc_data.cc_id if cc_data else None),
             'cc_name': cc_master.org_name if cc_master else None,
             'org_id': cc_master.org_id if cc_master else None,
 
+            # Data Kartu
             'card_number': card.card_number if card else None,
             'c_valid_from': card_from.strftime('%Y-%m-%d') if card_from else None,
             'c_valid_to': card_to.strftime('%Y-%m-%d') if card_to else None,
             'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
             'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
             
-            'type_worker': type_work_data.type_worker if type_work_data else None,
-            'posisi': type_work_data.posisi if type_work_data else None,
-
+            # Status & Audit
             "is_blacklist": blacklist_data.to_dict()['status_text'] if blacklist_data else "No in Blacklist",
-
             'created_date': self.created_date.strftime('%d %b %Y') if hasattr(self.created_date, 'strftime') else None,
             'created_by': self.created_by,
             'modified_date': self.modified_date.strftime('%d %b %Y') if hasattr(self.modified_date, 'strftime') else None,

@@ -6,7 +6,6 @@ import { downloadLogFile } from '../utils/logDownloader';
 import api from '../api/api';
 import { useCrudPage } from '../utils/useCrudPage';
 
-// Import Komponen Modular
 import PageHeader from '../components/PageHeader';
 import LoadingButton from '../components/LoadingButton';
 import Datatable from '../components/employment/Datatable';
@@ -31,14 +30,11 @@ const Employment = () => {
 
   // Flag Status Filter Terapan
   const [isFilterApplied, setIsFilterApplied]   = useState(false);
-
-  // STATE BARU: Flag untuk mendeteksi perubahan filter (Dirty Filter)
   const [isFilterDirty, setIsFilterDirty]       = useState(false);
 
   const [subCompanies, setSubCompanies] = useState([]);
   const [departments, setDepartments]   = useState([]);
 
-  // Loading States Per Action
   const [isUploading, setIsUploading]             = useState(false);
   const [isExporting, setIsExporting]             = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
@@ -60,7 +56,6 @@ const Employment = () => {
     load();
   }, []);
 
-  // HELPER BARU: Mengubah state filter & menyalakan status dirty
   const handleFilterChange = (setter, value) => {
     setter(value);
     setIsFilterDirty(true);
@@ -73,8 +68,8 @@ const Employment = () => {
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
     
-    setIsFilterApplied(true); // Aktifkan penanda fetch
-    setIsFilterDirty(false);  // Matikan flag dirty sehingga tabel muncul kembali
+    setIsFilterApplied(true);
+    setIsFilterDirty(false);
     
     setTimeout(() => setIsApplyingFilter(false), 300);
   };
@@ -89,8 +84,8 @@ const Employment = () => {
     setAppliedSubCompany('');
     setAppliedDepartment('');
     
-    setIsFilterApplied(false); // Sembunyikan tabel kembali ke mode instruksi
-    setIsFilterDirty(false);   // Bersihkan juga status dirty
+    setIsFilterApplied(false);
+    setIsFilterDirty(false);
   };
 
   const handleView = (data) => { setViewData(data); setViewForm(true); };
@@ -248,7 +243,7 @@ const Employment = () => {
   ];
   const departmentOptions = [
     { value: '', label: 'Semua Department' },
-    ...departments.map(d => ({ value: d.cost_center, label: d.org_name })),
+    ...departments.map(d => ({ value: d.id, label: d.org_name })),
   ];
 
   return (
@@ -259,7 +254,7 @@ const Employment = () => {
         searchValue={crud.searchInput}
         onSearchChange={(val) => {
           crud.setSearchInput(val);
-          setIsFilterDirty(true); // Search diubah -> filter kotor
+          setIsFilterDirty(true);
         }}
         onSearch={handleApplyFilters}
       >
@@ -297,7 +292,7 @@ const Employment = () => {
           className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExport}
-          disabled={!isFilterApplied || isFilterDirty} // Cegah export jika kotor atau belum pernah di-apply
+          disabled={!isFilterApplied || isFilterDirty}
         >
           Eksport Excel
         </LoadingButton>
@@ -386,7 +381,6 @@ const Employment = () => {
           
         </div>
         
-        {/* LOGIKA CONDITIONAL RENDERING UNTUK DIRTY FILTER */}
         {isFilterDirty ? (
           <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
