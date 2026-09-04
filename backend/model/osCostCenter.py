@@ -5,7 +5,8 @@ class OsCostCenter(db.Model, AuditMixin):
     __tablename__ = 'os_org'
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('os_employment.id'))
-    cc_id = db.Column(db.Integer, db.ForeignKey('org_cost_center.cost_center'))
+    cc_id = db.Column(db.Integer)
+    org_cc_id = db.Column(db.Integer, db.ForeignKey('org_cost_center.id'))
     valid_from = db.Column(db.Date)
     valid_to = db.Column(db.Date)    
 
@@ -16,7 +17,8 @@ class OsCostCenter(db.Model, AuditMixin):
         return {
             "id_oscc": self.id,
             "employee_id": self.employee_id,
-            "cc_id": self.cc_id,            
+            "cc_id": self.cc_id,
+            "org_cc_id": self.org_cc_id,
             'valid_from': self.valid_from.strftime('%Y-%m-%d') if hasattr(self.valid_from, 'strftime') else None,
             'valid_to': self.valid_to.strftime('%Y-%m-%d') if hasattr(self.valid_to, 'strftime') else None,
 

@@ -59,6 +59,8 @@ class OsEmployment(db.Model, AuditMixin):
             else:
                 cc_data = self.OsCC[-1]
         
+        cc_master = cc_data.cc_master if (cc_data and hasattr(cc_data, 'cc_master')) else None
+
         blacklist_data = self.person.OsBlist[0] if (self.person and self.person.OsBlist) else None
         card_from = card.valid_from if card else None
         card_to = card.valid_to if card else None
@@ -88,8 +90,11 @@ class OsEmployment(db.Model, AuditMixin):
             'grade': self.OsGrade[0].grade if self.OsGrade else None,
             'sub_con_name': self.sub_con.sub_company_name if self.sub_con else None,
             'type_company': self.sub_con.type_company if self.sub_con else None,
-            'cc_id': cc_data.cc_id if cc_data else None,
-            'cc_name': cc_data.cc_master.org_name if (cc_data and cc_data.cc_master) else None,
+
+            'cc_id': cc_master.id if cc_master else (cc_data.cc_id if cc_data else None),
+            'cost_center': cc_master.cost_center if cc_master else None,
+            'cc_name': cc_master.org_name if cc_master else None,
+            'org_id': cc_master.org_id if cc_master else None,
 
             'card_number': card.card_number if card else None,
             'c_valid_from': card_from.strftime('%Y-%m-%d') if card_from else None,

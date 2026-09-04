@@ -6,6 +6,7 @@ class canteenDetail(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     canteen_id = db.Column(db.String(50), db.ForeignKey('canteen_master.canteen_id'))
     cc_id = db.Column(db.String(50))
+    org_cc_id = db.Column(db.Integer) 
 
 class canteen(db.Model, AuditMixin):
     __tablename__ = 'canteen_master'
@@ -18,7 +19,7 @@ class canteen(db.Model, AuditMixin):
         return {
             'canteen_id': self.canteen_id,
             'canteen_name': self.canteen_name,
-            'cc_ids': [d.cc_id for d in self.details]
+            'cc_ids': [d.org_cc_id for d in self.details if d.org_cc_id is not None]
         }
     
 AuditMixin.register_audit_events(canteen)

@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.canteen import canteen, canteenDetail
+from model.costCenter import costCenter
 from .auth_bp import login_required
 
 canteen_bp = Blueprint('canteen_bp', __name__)
@@ -35,18 +36,24 @@ def add():
         )
         db.session.add(new_canteen)
         db.session.flush()
-        for cc_id in data.get('cc_ids', []):
-            if not cc_id:
+        
+        for pk_id in data.get('cc_ids', []):
+            if not pk_id:
                 continue
-            newDetail = canteenDetail(
-                canteen_id = new_canteen.canteen_id,
-                cc_id = cc_id
-            )
-            db.session.add(newDetail)
+            
+            master_cc = costCenter.query.get(pk_id)
+            if master_cc:
+                newDetail = canteenDetail(
+                    canteen_id = new_canteen.canteen_id,
+                    cc_id = master_cc.cost_center,
+                    org_cc_id = master_cc.id
+                )
+                db.session.add(newDetail)
+                
         db.session.commit()
         return jsonify({
             "status": "success",
-            "message": f"Data berhasil disimpan!"
+            "message": "Data berhasil disimpan!"
         }), 201     
     except Exception as e:
         db.session.rollback()
@@ -62,15 +69,22 @@ def update(id):
         data = request.json
         canteeens.canteen_id = data.get('canteen_id', canteeens.canteen_id)
         canteeens.canteen_name = data.get('canteen_name', canteeens.canteen_name)
+        
         canteenDetail.query.filter_by(canteen_id=id).delete()
-        for cc_id in data.get('cc_ids', []):
-            if not cc_id:
+        
+        for pk_id in data.get('cc_ids', []):
+            if not pk_id:
                 continue
-            newDetail = canteenDetail(
-                canteen_id = canteeens.canteen_id,
-                cc_id = cc_id
-            )
-            db.session.add(newDetail)
+            
+            master_cc = costCenter.query.get(pk_id)
+            if master_cc:
+                newDetail = canteenDetail(
+                    canteen_id = canteeens.canteen_id,
+                    cc_id = master_cc.cost_center,
+                    org_cc_id = master_cc.id
+                )
+                db.session.add(newDetail)
+                
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
     except Exception as e:
@@ -88,8 +102,3 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
-    
-# @canteen_bp.before_request
-# @login_required
-# def before_request():
-#     pass

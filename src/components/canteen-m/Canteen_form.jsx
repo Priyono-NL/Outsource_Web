@@ -20,11 +20,11 @@ function CanteenForm({ onClose, onSuccess, initialData }) {
     fetchCC();
   }, []);
 
-  const handleCCChange = (cc_id) => {
+  const handleCCChange = (id) => {
     setSelectedCCs((prev) =>
-      prev.includes(cc_id)
-        ? prev.filter((id) => id !== cc_id)
-        : [...prev, cc_id]
+      prev.includes(id)
+        ? prev.filter((item_id) => item_id !== id)
+        : [...prev, id]
     );
   };
 
@@ -40,7 +40,7 @@ function CanteenForm({ onClose, onSuccess, initialData }) {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
-    data.cc_ids = selectedCCs; 
+    data.cc_ids = selectedCCs;
     try {
       const response = initialData 
             ? await api.put(`/canteen/${initialData.canteen_id}`, data) 
@@ -124,23 +124,24 @@ function CanteenForm({ onClose, onSuccess, initialData }) {
                   <div className="row g-2">
                     {costCenter.length > 0 ? (
                       costCenter.map((item) => {
-                        const isSelected = selectedCCs.includes(item.cost_center);
+                        // PERUBAHAN: Pengecekan berdasarkan item.id (Bukan item.cost_center)
+                        const isSelected = selectedCCs.includes(item.id);
                         return (
-                          <div className="col-6" key={item.cost_center}>
+                          <div className="col-6" key={item.id}>
                             {/* KOTAK SELECTABLE CARDS */}
                             <label
                               className={`cc-card p-2 rounded d-flex align-items-center w-100 ${
                                 isSelected ? 'cc-selected' : 'cc-unselected'
                               }`}
-                              title={item.org_name}
+                              title={`${item.org_name}`}
                             >
                               <input
                                 className="form-check-input m-0 flex-shrink-0 shadow-none"
                                 type="checkbox"
                                 checked={isSelected}
-                                onChange={() => handleCCChange(item.cost_center)}
+                                onChange={() => handleCCChange(item.id)} // PERUBAHAN: Passing item.id
                               />
-                              <span className={`ms-2 text-truncate ${isSelected ? 'fw-bold text-primary' : 'text-dark'}`}>
+                              <span className={`ms-2 text-truncate ${isSelected ? 'fw-bold text-primary' : 'text-dark'}`} style={{ fontSize: '0.75rem' }}>
                                 {item.org_name}
                               </span>
                             </label>
@@ -177,7 +178,6 @@ function CanteenForm({ onClose, onSuccess, initialData }) {
           </div>
         </div>
       </div>
-      
     </>
   );
 }

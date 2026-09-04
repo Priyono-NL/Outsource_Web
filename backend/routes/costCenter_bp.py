@@ -5,16 +5,22 @@ from .auth_bp import login_required
 
 costCenter_bp = Blueprint('costCenter_bp', __name__)
 
-@costCenter_bp.route('/costcenter')
+@costCenter_bp.route('/costcenter', methods=['GET'])
 def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
+        
         query = costCenter.query
-        if search:                    
-            query = query.filter(costCenter.org_name.ilike(f"%{search}%"))
+        if search:                  
+            query = query.filter(
+                (costCenter.org_name.ilike(f"%{search}%")) |
+                (costCenter.cost_center.like(f"%{search}%"))
+            )
+            
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
+        
         return jsonify({
             "status": "success",
             "data": [cost.to_dict() for cost in pagination.items],
@@ -44,7 +50,8 @@ def add():
 
         return jsonify({
             "status": "success",
-            "message": f"Data berhasil disimpan!"
+            "message": "Data berhasil disimpan!",
+            "data": new_cc.to_dict()
         }), 201     
     except Exception as e:
         db.session.rollback()
@@ -53,33 +60,39 @@ def add():
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
 
-@costCenter_bp.route('/costcenter/<string:id>', methods=['PUT'])
+@costCenter_bp.route('/costcenter/<int:id>', methods=['PUT'])
 def update(id):
     try:
-        cc = costCenter.query.filter_by(cost_center=id).first()
-        data = request.json
+        cc = costCenter.query.get(id)
+        if not cc:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan!"}), 404
+
+        data = request.json or {}
         cc.company_id = data.get('company_id', cc.company_id)
         cc.org_id = data.get('org_id', cc.org_id)
         cc.org_name = data.get('org_name', cc.org_name)
         cc.cost_center = data.get('cost_center', cc.cost_center)
+        
         db.session.commit()
-        return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
+        return jsonify({
+            "status": "success", 
+            "message": "Data berhasil diupdate!",
+            "data": cc.to_dict()
+        }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@costCenter_bp.route('/costcenter/<string:id>', methods=['DELETE'])
+@costCenter_bp.route('/costcenter/<int:id>', methods=['DELETE'])
 def delete(id):
     try:
-        data = costCenter.query.filter_by(cost_center=id).first()
+        data = costCenter.query.get(id)
+        if not data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan!"}), 404
+
         db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
-    
-# @costCenter_bp.before_request
-# @login_required
-# def before_request():
-#     pass
