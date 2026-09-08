@@ -28,6 +28,8 @@ import PeriodePuasa from '../pages/periode_puasa';
 import ObEmployee from '../pages/ObEmployee';
 
 import Absensi from '../pages/Absensi';
+import AbsensiVendor from '../pages/AbsensiVendor';
+
 import ReportAktif from '../pages/ReportAktif';
 import ReportAbsen from '../pages/ReportAbsen';
 import Report_MPCC from '../pages/Report_MPCC';
@@ -53,7 +55,7 @@ export const routesConfig = [
     ]
   },
 
-  { path: '/employment', label: 'Karyawan Tetap/Kontrak', icon: 'bi-person-badge', element: <ObEmployee />, group: 2 },,
+  { path: '/employment', label: 'Karyawan Tetap/Kontrak', icon: 'bi-person-badge', element: <ObEmployee />, group: 2 },
 
   {
     label: 'Transaksional',
@@ -95,7 +97,9 @@ export const routesConfig = [
       { path: "/terminal", label: "Master Terminal", icon: "bi-terminal", element: <Terminal /> },
       { path: '/periode', label: 'Periode Puasa', icon: 'bi-calendar-check', element: <PeriodePuasa /> },
     ]
-  },
+  }, 
+
+  { path: '/absenVendor', label: 'Absensi Vendor', icon: 'bi-person-badge', element: <AbsensiVendor />, group: 6 },
 ];
 
 // Route khusus admin — tidak ikut permission system (selalu tampil untuk admin+)

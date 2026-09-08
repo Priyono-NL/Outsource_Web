@@ -3,6 +3,7 @@ from io import BytesIO
 from collections import defaultdict
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
+from sqlalchemy.orm import selectinload
 from datetime import datetime
 
 from extensions import db
@@ -67,11 +68,13 @@ def _get_master_dictionaries():
     os_rows = db.session.execute(text(sql_os)).mappings().fetchall()
     os_map = {str(r['emp_id']).strip(): dict(r) for r in os_rows}
 
-    ob_info = ObEmployee.query.filter(ObEmployee.employee_id.is_not(None)).all()
+    ob_info = ObEmployee.query.options(selectinload(ObEmployee.cc_master)) \
+                              .filter(ObEmployee.employee_id.is_not(None)).all()
+    
     ob_map = {}
     for ob in ob_info:
         emp_id_str = str(ob.employee_id).strip()
-        cc_name_resolved = ob.cc_master.org_name if ob.cc_master else str(ob.cost_center)
+        cc_name_resolved = ob.cc_master.org_name if ob.cc_master else str(ob.cost_center)        
         ob_map[emp_id_str] = {
             'emp_id': emp_id_str,
             'display_name': ob.employee_name,

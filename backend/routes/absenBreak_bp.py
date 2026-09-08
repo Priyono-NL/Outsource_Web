@@ -87,22 +87,22 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         {base_cte},
         ClockData AS (
             SELECT 
-                CONVERT(emp_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                DATE(clocking_time) as clock_date,
-                DATE_FORMAT(MIN(CASE WHEN direction = 'OUT' THEN clocking_time END), '%H:%i') as jam_out,
-                DATE_FORMAT(MAX(CASE WHEN direction = 'IN' THEN clocking_time END), '%H:%i') as jam_in,
-                MAX(CASE WHEN direction = 'OUT' THEN node_id END) as node_out,
-                MAX(CASE WHEN direction = 'IN' THEN node_id END) as node_in
-            FROM vw_filter_test
-            WHERE DATE(clocking_time) BETWEEN :start_date AND :end_date
-              AND action_flag = 'Break'
-            GROUP BY emp_id, DATE(clocking_time)
+                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
+                clocking_date as clock_date,
+                MIN(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out,
+                MAX(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in,
+                MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out,
+                MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in
+            FROM VW_TACTIVITIES_STAGING_VALID
+            WHERE clocking_date BETWEEN :start_date AND :end_date
+              AND clocking_type = 'Break'
+            GROUP BY employee_id, clocking_date
         ),
         MakanData AS (
             SELECT 
                 CONVERT(EMPLOYEE_ID USING utf8mb4) COLLATE utf8mb4_general_ci as emp_id, 
                 TANGGAL_MAKAN as tanggal_makan, 
-                DATE_FORMAT(MIN(JAM_MAKAN), '%H:%i') as jam_makan
+                MIN(JAM_MAKAN) as raw_makan
             FROM `db-webapps`.`KANTIN_KARYAWAN_MAKAN_TBL`
             WHERE TANGGAL_MAKAN BETWEEN :start_date AND :end_date
             GROUP BY EMPLOYEE_ID, TANGGAL_MAKAN
@@ -111,18 +111,21 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             k.emp_id, 
             k.display_name, 
             k.card_number,
-            c.clock_date as tanggal_out, 
-            c.jam_out,
-            m.tanggal_makan, 
-            m.jam_makan,
-            c.clock_date as tanggal_in, 
-            c.jam_in,
+
+            IF(c.raw_out IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out, '%d-%b-%Y %H:%i')), '-') as waktu_out,
+            IF(m.raw_makan IS NOT NULL, UPPER(CONCAT(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y'), ' ', DATE_FORMAT(m.raw_makan, '%H:%i'))), '-') as waktu_makan,
+            IF(c.raw_in IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in, '%d-%b-%Y %H:%i')), '-') as waktu_in,
+            
+            DATE_FORMAT(c.raw_out, '%H:%i') as jam_out,
+            DATE_FORMAT(m.raw_makan, '%H:%i') as jam_makan,
+            DATE_FORMAT(c.raw_in, '%H:%i') as jam_in,
+            
             c.node_out,
             c.node_in
         FROM Karyawan k
         LEFT JOIN ClockData c ON k.emp_id = c.emp_id
         LEFT JOIN MakanData m ON k.emp_id = m.emp_id AND c.clock_date = m.tanggal_makan
-        WHERE (c.jam_out IS NOT NULL OR m.jam_makan IS NOT NULL OR c.jam_in IS NOT NULL)
+        WHERE (c.raw_out IS NOT NULL OR m.raw_makan IS NOT NULL OR c.raw_in IS NOT NULL)
         {filter_clause}
     """
     
@@ -131,7 +134,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
 
     def get_break_area(node_id):
         if not node_id: return "-"
-        node_str = str(node_id)
+        node_str = str(node_id).split('-')[-1]
         if node_str in ('161', '162'): return 'Access Dekat Loker 94'
         if node_str in ('166', '167'): return 'Access Dekat Loker Garuda'
         if node_str in ('191', '192'): return 'Access Gerbang Biru'
@@ -145,59 +148,37 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         jam_makan_str = row['jam_makan']
         jam_in_str = row['jam_in']
         
-        tgl_out_str = row['tanggal_out'].strftime('%d-%b-%Y').upper() if row['tanggal_out'] else ""
-        tgl_mak_str = row['tanggal_makan'].strftime('%d-%b-%Y').upper() if row['tanggal_makan'] else ""
-        tgl_in_str = row['tanggal_in'].strftime('%d-%b-%Y').upper() if row['tanggal_in'] else ""
-        
-        waktu_out = f"{tgl_out_str} {jam_out_str}" if tgl_out_str and jam_out_str else "-"
-        waktu_makan = f"{tgl_mak_str} {jam_makan_str}" if tgl_mak_str and jam_makan_str else "-"
-        waktu_in = f"{tgl_in_str} {jam_in_str}" if tgl_in_str and jam_in_str else "-"
-
         start_break_str = min(filter(None, [jam_out_str, jam_makan_str]), default=None)        
         total_mins = 0
         status = "Normal Break"
         
         if not start_break_str and not jam_in_str:
             status = "No Both"
-            total_mins = 0
         elif not start_break_str:
             status = "No Clocking OUT"
-            total_mins = 0
         elif not jam_in_str:
             status = "No Clocking IN"
-            total_mins = 0
         else:
             dt_in = datetime.strptime(jam_in_str, '%H:%M')
             dt_start = datetime.strptime(start_break_str, '%H:%M')
-            
             total_mins = max(0, int((dt_in - dt_start).total_seconds() // 60))
             
-            if total_mins == 0:
-                status = "0 Menit"
-            elif total_mins > 60: 
-                status = ">60"
+            if total_mins == 0: status = "0 Menit"
+            elif total_mins > 60: status = ">60"
 
         if status_filter != 'all_data':
-            if status_filter == 'lengkap':
-                if status != 'Normal Break':
-                    continue
-                    
-            elif status_filter == 'overbreak':
-                if status != '>60':
-                    continue
-                    
-            elif status_filter == 'tidak_lengkap':
-                if status not in ('No Clocking IN', 'No Clocking OUT', 'No Both', '0 Menit'):
-                    continue
+            if status_filter == 'lengkap' and status != 'Normal Break': continue
+            elif status_filter == 'overbreak' and status != '>60': continue
+            elif status_filter == 'tidak_lengkap' and status not in ('No Clocking IN', 'No Clocking OUT', 'No Both', '0 Menit'): continue
 
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
             "card_number": row['card_number'] or '-', 
-            "waktu_out": waktu_out, 
+            "waktu_out": row['waktu_out'],
             "node_out": get_break_area(row['node_out']),
-            "waktu_makan": waktu_makan, 
-            "waktu_in": waktu_in,             
+            "waktu_makan": row['waktu_makan'],
+            "waktu_in": row['waktu_in'],
             "node_in": get_break_area(row['node_in']),
             "total": total_mins, 
             "status": status
@@ -213,20 +194,23 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         {base_cte},
         ClockData AS (
             SELECT 
-                CONVERT(emp_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                DATE(clocking_time) as clock_date,
-                DATE_FORMAT(MIN(CASE WHEN direction = 'IN' THEN clocking_time END), '%H:%i') as time_in,
-                DATE_FORMAT(MAX(CASE WHEN direction = 'OUT' THEN clocking_time END), '%H:%i') as time_out,
-                MAX(CASE WHEN direction = 'IN' THEN node_id END) as node_in,
-                MAX(CASE WHEN direction = 'OUT' THEN node_id END) as node_out
-            FROM vw_filter_test
-            WHERE DATE(clocking_time) BETWEEN :start_date AND :end_date
-              AND action_flag = 'Access'
-            GROUP BY emp_id, DATE(clocking_time)
+                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
+                clocking_date as clock_date,
+                MIN(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in,
+                MAX(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out,
+                MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in,
+                MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out
+            FROM VW_TACTIVITIES_STAGING_VALID
+            WHERE clocking_date BETWEEN :start_date AND :end_date
+              AND clocking_type = 'Access'
+            GROUP BY employee_id, clocking_date -- <- Tetap masukkan clocking_date
         )
         SELECT 
             k.emp_id, k.display_name, k.card_number, k.cc_name,
-            c.clock_date, c.time_in, c.time_out, c.node_in, c.node_out
+            -- Gabung format langsung menjadi "08-SEP-2026 07:15"
+            IF(c.raw_in IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in, '%d-%b-%Y %H:%i')), '-') as waktu_in,
+            IF(c.raw_out IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out, '%d-%b-%Y %H:%i')), '-') as waktu_out,
+            c.node_in, c.node_out
         FROM Karyawan k
         INNER JOIN ClockData c ON k.emp_id = c.emp_id
         WHERE 1=1 {filter_clause}
@@ -237,32 +221,25 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
     
     def get_access_area(node_id):
         if not node_id: return "-"
-        node_str = str(node_id)
+        node_str = str(node_id).split('-')[-1]
         if node_str in ('188', '189'): return 'Access 86'
         if node_str in ('173', '175'): return 'Access 92'
         if node_str in ('111', '112', '113', '114', '115', '215', '219', '116', '117', '118'): return 'Access 94'
         return f"Node {node_str}"
 
     for row in rows:
-        tgl_str = row['clock_date'].strftime('%d-%b-%Y').upper() if row['clock_date'] else ""
-        
-        # Menggabungkan Tanggal dan Jam menjadi satu kolom
-        waktu_in = f"{tgl_str} {row['time_in']}" if tgl_str and row['time_in'] else "-"
-        waktu_out = f"{tgl_str} {row['time_out']}" if tgl_str and row['time_out'] else "-"
-
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
             "cc_name": row['cc_name'] or '-', 
             "card_number": row['card_number'] or '-',
-            "waktu_in": waktu_in, 
+            "waktu_in": row['waktu_in'],
             "node_in": get_access_area(row['node_in']),
-            "waktu_out": waktu_out,             
+            "waktu_out": row['waktu_out'],
             "node_out": get_access_area(row['node_out'])
         })
 
     return report_data
-
 
 # =============================================================================
 # ENDPOINTS

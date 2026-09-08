@@ -123,7 +123,7 @@ const Sidebar = ({ isExpanded }) => {
         </Fragment>
       ))}
 
-      {isAdmin && (
+      {/* {isAdmin && (
         <Fragment key="admin-section">
           <li><div className="sidebar-divider" /></li>
           {adminRoutes
@@ -136,7 +136,7 @@ const Sidebar = ({ isExpanded }) => {
               )
             ))}
         </Fragment>
-      )}
+      )} */}
     </ul>
   );
 };
