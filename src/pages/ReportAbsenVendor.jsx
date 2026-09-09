@@ -1,16 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { saveAs } from 'file-saver';
 import Select from 'react-select';
 
 import api from '../api/api';
-import { Toast, Confirm } from '../utils/sweetalert';
+import { Toast } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
 
 import PageHeader from '../components/PageHeader';
 import LoadingButton from '../components/LoadingButton';
-import AbsensiReportTable from '../components/absensi_all/AbsensiReportTable';
+import AbsenVendorReport from '../components/absensi_all/AbsenVendorReport';
 
-const ReportAbsen = () => {
+const ReportAbsenVendor = () => {
   const getFirstDayOfMonth = () => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -41,14 +41,10 @@ const ReportAbsen = () => {
   const [statusFilter, setStatusFilter] = useState('all_data');
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
 
-  // FILTER BARU: Tipe Karyawan (OS vs Tetap/Kontrak)
-  const [workerType, setWorkerType] = useState('all');
-  const [appliedWorkerType, setAppliedWorkerType] = useState('all');
+  const [jenisFilter, setJenisFilter] = useState('all_data');
+  const [appliedJenisFilter, setAppliedJenisFilter] = useState('all_data');
 
-  // Flag UI untuk menyembunyikan tabel jika filter diubah namun belum di-apply
   const [isFilterDirty, setIsFilterDirty] = useState(false);
-
-  // --- LOADING STATES ---
   const [isExporting, setIsExporting] = useState(false);
   const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
@@ -70,7 +66,7 @@ const ReportAbsen = () => {
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedStatusFilter(statusFilter);
-    setAppliedWorkerType(workerType);     
+    setAppliedJenisFilter(jenisFilter);
     setIsFilterDirty(false);
     crud.handleSearch();
     setTimeout(() => setIsApplyingFilter(false), 300);
@@ -85,12 +81,12 @@ const ReportAbsen = () => {
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
         status_filter: appliedStatusFilter || 'all_data',
-        worker_type: appliedWorkerType || 'all'
+        clocking_type: appliedJenisFilter || 'all_data',
       }).toString();
       
-      const res = await api.get(`/absensi/export?${params}`, { responseType: 'blob' });
+      const res = await api.get(`/absensiVendor/export?${params}`, { responseType: 'blob' });
       
-      const fileName = `Absensi_${appliedWorkerType.toUpperCase()}_Filtered.xlsx`;
+      const fileName = `Report_Vendor_${appliedStartDate}_to_${appliedEndDate}.xlsx`;
       saveAs(res.data, fileName);
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
@@ -99,28 +95,23 @@ const ReportAbsen = () => {
     }
   };
 
-  // --- OPSI DROPDOWN ---
-  const workerTypeOptions = [
-    { value: 'all', label: 'Semua Karyawan (All)' },
-    { value: 'tetap', label: 'Tetap / Kontrak' },
-    { value: 'os', label: 'Outsourcing (OS)' }
-  ];
-
   const subCompanyOptions = [
     { value: '', label: 'Semua Sub Company' },
-    ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+    ...subCompanies.map(sc => ({ value: sc.sub_company_name, label: sc.sub_company_name })),
   ];
 
   const statusOptions = [
-    { value: 'all_data', label: 'Semua Data Absensi' },
-    { value: 'lengkap', label: 'Data Lengkap' },
-    { value: 'anomali', label: 'Semua Pelanggaran (Violation)' },
-    { value: 'no_in', label: 'Clock In Kosong' },
-    { value: 'no_out', label: 'Clock Out Kosong' },
-    { value: 'no_both', label: 'Clock In & Out Kosong' }
+    { value: 'all_data', label: 'Semua Data (Diterima & Reject)' },
+    { value: 'valid', label: 'Data Diterima (Valid)' },
+    { value: 'reject', label: 'Data Ditolak (Reject)' }
   ];
 
-  // Helper untuk membersihkan tabel & merubah filter state
+  const jenisOptions = [
+    { value: 'all_data', label: 'Semua Jenis' },
+    { value: 'Absensi', label: 'Absensi' },
+    { value: 'Break', label: 'Break' }
+  ];
+
   const handleFilterChange = (setter, value) => {
     setter(value);
     setIsFilterDirty(true);
@@ -129,8 +120,8 @@ const ReportAbsen = () => {
   return (
     <div>
       <PageHeader
-        title="Report Absensi Employee"
-        searchPlaceholder="Cari ID Karyawan / Nama ..."
+        title="Report Absensi Vendor"
+        searchPlaceholder="Cari No Kartu / NRP / Nama..."
         searchValue={crud.searchInput}
         onSearchChange={(val) => {
           crud.setSearchInput(val);
@@ -144,7 +135,7 @@ const ReportAbsen = () => {
           className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExport}
-          disabled={isFilterDirty} // Cegah export jika filter belum ditekan
+          disabled={isFilterDirty} 
         >
           Export
         </LoadingButton>        
@@ -153,33 +144,25 @@ const ReportAbsen = () => {
       <div className="app-card">
         <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3">
 
-          {/* Filter Tipe Karyawan */}
-          <div className="filter-group" style={{ minWidth: 180, margin: 0, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Tipe Karyawan</label>
-            <Select 
-              options={workerTypeOptions} 
-              value={workerTypeOptions.find(o => o.value === workerType)} 
-              onChange={o => handleFilterChange(setWorkerType, o?.value || 'all')} 
-              isSearchable={false}
-              menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
-            />
-          </div>
-
-          <div className="filter-group" style={{ minWidth: 220, margin: 0, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
+          <div className="filter-group" style={{ minWidth: 200, margin: 0, flex: 1 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Status Clocking</label>
             <Select 
               options={statusOptions} 
               value={statusOptions.find(o => o.value === statusFilter)} 
               onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
               menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
+              styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
+            />
+          </div>
+
+          <div className="filter-group" style={{ minWidth: 150, margin: 0, flex: 1 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Jenis</label>
+            <Select 
+              options={jenisOptions} 
+              value={jenisOptions.find(o => o.value === jenisFilter)} 
+              onChange={o => handleFilterChange(setJenisFilter, o?.value || 'all_data')} 
+              menuPortalTarget={document.body}
+              styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
             />
           </div>
 
@@ -192,15 +175,11 @@ const ReportAbsen = () => {
               onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
+              styles={{ control: b => ({ ...b, minHeight: 34, fontSize: 13 }) }}
             />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px' }}>
-            
             <div className="filter-group" style={{ margin: 0 }}>
               <label style={{ fontSize: 13, display: 'block', marginBottom: '4px' }}>Dari Tanggal</label>
               <input 
@@ -211,9 +190,7 @@ const ReportAbsen = () => {
                 style={{ fontSize: 13, height: 34, width: '130px' }}
               />
             </div>
-
             <span style={{ paddingBottom: '8px', fontSize: 14, fontWeight: 'bold' }}>-</span>
-
             <div className="filter-group" style={{ margin: 0 }}>
               <label style={{ fontSize: 13, display: 'block', marginBottom: '4px' }}>Sampai Tanggal</label>
               <input 
@@ -225,7 +202,6 @@ const ReportAbsen = () => {
                 style={{ fontSize: 13, height: 34, width: '130px' }}
               />
             </div>
-
           </div>
 
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}>
@@ -252,20 +228,19 @@ const ReportAbsen = () => {
             </span>
           </div>
         ) : (
-          <AbsensiReportTable
-            workerType={appliedWorkerType}
+          <AbsenVendorReport
             refreshTrigger={crud.refreshKey}
             searchTerm={crud.appliedSearch}
             subCompany={appliedSubCompany}
             startDate={appliedStartDate}
             endDate={appliedEndDate}
             statusFilter={appliedStatusFilter}
+            clockingType={appliedJenisFilter} // Lempar prop baru ke tabel
           />
         )}
       </div>
-
     </div>
   );
 };
 
-export default ReportAbsen;
+export default ReportAbsenVendor;

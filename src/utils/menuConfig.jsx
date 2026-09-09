@@ -37,6 +37,7 @@ import Report_Absen from '../pages/Report_Absen';
 import Report_MpEmp from '../pages/Report_MpEmp';
 import Report_Break from '../pages/Report_Break';
 import Report_Access from '../pages/Report_Access';
+import ReportAbsenVendor from '../pages/ReportAbsenVendor';
 
 export const routesConfig = [  
   { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
@@ -99,7 +100,15 @@ export const routesConfig = [
     ]
   }, 
 
-  { path: '/absenVendor', label: 'Absensi Vendor', icon: 'bi-person-badge', element: <AbsensiVendor />, group: 6 },
+  {
+    label: 'Vendor/Kontraktor',
+    icon: 'bi-buildings',
+    group: 6,
+    children: [
+      { path: '/absenVendor', label: 'Absensi Vendor', icon: 'bi-person-bounding-box', element: <AbsensiVendor /> },
+      { path: '/ReportAbsenVendor', label: 'Report Absensi Vendor', icon: 'bi-person-vcard', element: <ReportAbsenVendor /> },
+    ]
+  }  
 ];
 
 // Route khusus admin — tidak ikut permission system (selalu tampil untuk admin+)

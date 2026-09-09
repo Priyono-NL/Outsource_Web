@@ -14,6 +14,7 @@ const AbsensiVendor = () => {
   const [lastScanData, setLastScanData] = useState(null);
   const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
   const [counter, setCounter] = useState({ in: 0, out: 0 });
+  const lastScannedRef = useRef({ card: '', time: 0 });
 
   const inputRef = useRef(null);
   const clearTimerRef = useRef(null);
@@ -44,13 +45,55 @@ const AbsensiVendor = () => {
     return () => document.removeEventListener('click', focusInput);
   }, []);
 
+  const parseCardNumber = (rawInput) => {
+    const N = rawInput.trim();
+    
+    if (N.includes('.')) {
+      return { raw: N, converted: N }; 
+    }
+
+    let convertedFormat = N;
+    try {
+      if (!isNaN(N)) {
+        const hexStr = parseInt(N, 10).toString(16).toLowerCase();
+        
+        if (hexStr.length <= 4) {
+          const part2Dec = parseInt(hexStr, 16).toString().padStart(5, '0');
+          convertedFormat = `00000.${part2Dec}`;
+        } else {
+          const part1Hex = hexStr.substring(0, hexStr.length - 4);
+          const part2Hex = hexStr.substring(hexStr.length - 4);
+
+          const part1Dec = parseInt(part1Hex, 16).toString();
+          const part2Dec = parseInt(part2Hex, 16).toString();
+
+          convertedFormat = `${part1Dec.padStart(5, '0')}.${part2Dec.padStart(5, '0')}`;
+        }
+      }
+    } catch (error) {
+      console.error("Gagal konversi kartu:", error);
+    }
+
+    return { raw: N, converted: convertedFormat };
+  };
+
   const handleScanSubmit = async (e) => {
     e.preventDefault();
-    if (!scanInput.trim()) return;
+    const currentInput = scanInput.trim();
+    if (!currentInput) return;
 
+    const now = Date.now();
+    if (lastScannedRef.current.card === currentInput && (now - lastScannedRef.current.time) < 3000) {
+        setScanInput('');
+        return; 
+    }
+    lastScannedRef.current = { card: currentInput, time: now };
+
+    const cardData = parseCardNumber(currentInput);
     try {
       const response = await api.post('/absensiVendor/tap', {
-        card_no: scanInput.trim(),
+        card_no: cardData.converted,
+        raw_card_no: cardData.raw,
         clocking_type: config.clockingType,
         clocking_mode: parseInt(config.clockingMode)
       });
@@ -187,7 +230,7 @@ const AbsensiVendor = () => {
           {lastScanData ? (
             lastScanData.photo_url ? (
               <img 
-                src={lastScanData.photo_url} 
+                src={`${import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || ''}${lastScanData.photo_url.startsWith('/') ? '' : '/'}${lastScanData.photo_url}`}
                 alt="Profile" 
                 style={{ width: '100%', maxWidth: '300px', borderRadius: '10px', border: '4px solid #f8f9fa', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }} 
               />
