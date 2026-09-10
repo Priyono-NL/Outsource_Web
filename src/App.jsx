@@ -1,38 +1,118 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import Sidebar from './components/Sidebar';
+import { componentRegistry } from './utils/menuConfig';
 import { AuthProvider, useAuth } from './utils/useAuth';
-import { componentRegistry } from './utils/menuConfig'; // Sesuai nama file kamu
+
+const EnvBanner = () => {
+  const isDev = import.meta.env.MODE === 'development';
+  if (!isDev) return null;
+  return (
+    <div 
+      className="w-100 text-dark text-center py-1 fw-bold border-bottom" 
+      style={{ 
+        fontSize: '0.75rem', 
+        letterSpacing: '0.5px',
+        backgroundColor: '#ffe44c',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      }}
+    >
+      <span><i className="bi bi-cpu me-1"></i> You are running Development Server (Local Environment)</span>
+    </div>
+  );
+};
 
 const MainLayout = () => {
-  const { isConfigured, loading } = useAuth();
+  const { user, role, isConfigured, loading, logout } = useAuth();  
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const location = useLocation();
 
-  // 1. Daftarkan rute publik yang bebas diakses tanpa perlu status isConfigured = true
+  if (loading) {
+    return (
+      <div className="loading-screen d-flex flex-column justify-content-center align-items-center vh-100">
+        <div className="spinner-border text-primary mb-3" role="status" style={{ width: '3rem', height: '3rem' }}></div>
+        <p className="fw-bold">Memuat sistem & hak akses...</p>
+      </div>
+    );
+  }
+
   const publicRoutes = ['/auth/callback', '/pending-approval'];
 
-  // 2. Cegah Infinite Loop:
-  // Jika user belum dikonfigurasi DAN saat ini BUKAN berada di rute publik, baru lempar!
   if (!isConfigured && !publicRoutes.includes(location.pathname)) {
     return <Navigate to="/pending-approval" replace />;
   }
+  if (isConfigured && location.pathname === '/pending-approval') {
+    return <Navigate to="/" replace />;
+  }
 
-  // Jika masih loading autentikasi, tampilkan background kosong/spinner
-  // (opsional, karena di useAuth sudah ada spinner)
-  if (loading) return null; 
+  if (publicRoutes.includes(location.pathname)) {
+    return (
+      <Routes>
+        <Route path="/pending-approval" element={componentRegistry['/pending-approval']} />
+        <Route path="/auth/callback" element={componentRegistry['/auth/callback']} />
+      </Routes>
+    );
+  }
 
   return (
-    <div className="d-flex">
-      {/* Jika kamu punya Sidebar/Navbar komponen, render di sini kondisional */}
-      {/* {isConfigured && <Sidebar />} */}
-      
-      <div className="content-wrapper w-100">
-        <Routes>
-          {/* Looping semua komponen dari menuConfig.jsx */}
-          {Object.entries(componentRegistry).map(([path, element]) => (
-            <Route key={path} path={path} element={element} />
-          ))}
-        </Routes>
+    <div id="app-shell">
+
+      <header id="app-topbar">
+        <button
+          className="topbar-toggle"
+          onClick={() => setSidebarExpanded(v => !v)}
+          title="Toggle Sidebar"
+        >
+          <i className={`bi ${sidebarExpanded ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}`} />
+        </button>
+
+        <span className="topbar-brand">Manajemen OS</span>
+
+        <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
+          <div className="topbar-user-name">
+            {user?.name || user?.email || 'User'}
+          </div>
+          <div className="topbar-user-role">
+            {role || 'user'}
+          </div>
+        </div>
+
+        <button className="btn-logout" onClick={logout}>
+          <i className="bi bi-box-arrow-right" style={{ marginRight: 5 }} />
+          Keluar
+        </button>
+      </header>
+
+      <EnvBanner />
+
+      {/* ── Body ── */}
+      <div id="app-body">
+        <nav
+          id="app-sidebar"
+          style={{ width: sidebarExpanded ? 232 : 64 }}
+        >
+          <Sidebar isExpanded={sidebarExpanded} />
+        </nav>
+
+        <main id="app-content">
+          <Routes>
+            {Object.entries(componentRegistry).map(([path, element]) => {
+              if (publicRoutes.includes(path)) return null;
+              
+              return (
+                <Route
+                  key={path}
+                  path={path}
+                  element={element}
+                />
+              );
+            })}
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
       </div>
+
     </div>
   );
 };

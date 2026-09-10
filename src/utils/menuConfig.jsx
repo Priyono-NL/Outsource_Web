@@ -35,28 +35,35 @@ import Report_Break from '../pages/Report_Break';
 import Report_Access from '../pages/Report_Access';
 import ReportAbsenVendor from '../pages/ReportAbsenVendor';
 
-// Import Halaman Baru untuk kebutuhan SSO & Approval
+// Import Halaman Khusus SSO & Approval
 import AuthCallback from '../pages/AuthCallback';
 import PendingApproval from '../pages/PendingApproval';
 
 // ==========================================
 // 2. COMPONENT REGISTRY (PETA ROUTE DINAMIS)
 // ==========================================
-// Object ini mengubah URL path (string) dari database MySQL menjadi Komponen React.
+// Key (sebelah kiri) HARUS sama persis dengan kolom 'path' di tabel hr_app_menus MySQL.
 export const componentRegistry = {
+  // --- Core Pages ---
   '/': <Dashboard />,
+  '/biodata': <Biodata />,
+  '/employment': <ObEmployee />,
+
+  // --- Master OS ---
   '/osemployment': <Employement />,
   '/card': <OsCard />,
   '/oscc': <OsCC />,
   '/grade': <OsGrade />,
   '/type': <OsType />,
   '/blacklist': <Blacklist />,
-  '/biodata': <Biodata />,
-  '/employment': <ObEmployee />,
+
+  // --- Transaksional ---
   '/alokasi': <Alokasi />,
   '/os-medical': <OsMedical />,
   '/os-training': <OsTraining />,
   '/bac-os': <Absensi />,
+
+  // --- Report ---
   '/os-active': <ReportAktif />,
   '/absensi': <ReportAbsen />,
   '/reportHarian': <Report_Absen />,
@@ -64,6 +71,8 @@ export const componentRegistry = {
   '/reportMpEmp': <Report_MpEmp />,
   '/reportBreak': <Report_Break />,
   '/reportAccess': <Report_Access />,
+
+  // --- Master Data ---
   '/costcenter': <CostCenter />,
   '/canteen': <Canteen />,
   '/sub-company': <SubCompany />,
@@ -71,104 +80,16 @@ export const componentRegistry = {
   '/medical-m': <Medical_m />,
   '/terminal': <Terminal />,
   '/periode': <PeriodePuasa />,
+
+  // --- Vendor / Kontraktor ---
   '/absenVendor': <AbsensiVendor />,
   '/ReportAbsenVendor': <ReportAbsenVendor />,
+
+  // --- Administration Pages ---
   '/role-permission': <RolePermission />,
   '/change-login': <ChangeLogin />,
-  
-  // Route Baru SSO
+
+  // --- System & Auth Routes ---
   '/auth/callback': <AuthCallback />,
   '/pending-approval': <PendingApproval />
 };
-
-export const routesConfig = [  
-  { path: '/', label: 'Dashboard', icon: 'bi-speedometer2', element: <Dashboard />, group: 0 },
-
-  {
-    label: 'Master OS',
-    icon: 'bi-person',
-    group: 1,
-    children: [
-      { path: '/osemployment', label: 'Employment OS', icon: 'bi-file-person', element: <Employement /> },      
-      { path: '/card', label: 'Absence Card', icon: 'bi-credit-card', element: <OsCard /> },
-      { path: '/oscc', label: 'Department', icon: 'bi-diagram-3', element: <OsCC /> },
-      { path: '/grade', label: 'Grade', icon: 'bi-bar-chart', element: <OsGrade /> }, 
-      { path: "/type", label: "Type Work", icon: "bi-minecart", element: <OsType /> },      
-      { path: '/blacklist', label: 'Blacklist', icon: 'bi-slash-circle', element: <Blacklist /> },
-    ]
-  },
-
-  { path: '/employment', label: 'Karyawan Tetap/Kontrak', icon: 'bi-person-badge', element: <ObEmployee />, group: 2 },
-
-  {
-    label: 'Transaksional',
-    icon: 'bi-arrow-left-right',
-    group: 3,
-    children: [ 
-      { path: '/alokasi', label: 'Alokasi Kantin', icon: 'bi-grid-3x3-gap', element: <Alokasi /> },
-      { path: '/os-medical', label: 'Medical', icon: 'bi-heart-pulse', element: <OsMedical /> },
-      { path: '/os-training', label: 'Training', icon: 'bi-mortarboard', element: <OsTraining /> },
-      { path: '/bac-os', label: 'BAC OS', icon: 'bi-calendar-plus', element: <Absensi /> },
-    ]
-  },
-
-  {
-    label: 'Report',
-    icon: 'bi-file-earmark-check',
-    group: 3,
-    children: [ 
-      { path: '/os-active', label: 'Data OS Aktif', icon: 'bi-check2-square', element: <ReportAktif /> },
-      { path: '/absensi', label: 'Absensi Report', icon: 'bi-card-checklist', element: <ReportAbsen /> },
-      { path: '/reportHarian', label: 'Summary Harian', icon: 'bi-clipboard-check', element: <Report_Absen /> },
-      { path: '/reportMpCc', label: 'Manpower / CC', icon: 'bi-person-workspace', element: <Report_MPCC /> },
-      { path: '/reportMpEmp', label: 'Working Hours', icon: 'bi-person-fill-gear', element: <Report_MpEmp /> },
-      { path: '/reportBreak', label: 'Break Report', icon: 'bi-bell', element: <Report_Break /> },
-      { path: '/reportAccess', label: 'Access Report', icon: 'bi-arrow-left-right', element: <Report_Access /> },
-    ]
-  },
-
-  {
-    label: 'Master Data',
-    icon: 'bi-database-fill-gear',
-    group: 5,
-    children: [
-      { path: "/costcenter", label: "Master Cost Center", icon: "bi-cash-stack", element: <CostCenter /> },
-      { path: "/canteen", label: "Master Kantin", icon: "bi-cup-hot", element: <Canteen /> },
-      { path: "/sub-company", label: "Master Sub Company", icon: "bi-building", element: <SubCompany /> },
-      { path: "/training-m", label: "Master Training", icon: "bi-book", element: <Training_m /> },
-      { path: "/medical-m", label: "Master Medical", icon: "bi-hospital", element: <Medical_m /> },      
-      { path: "/terminal", label: "Master Terminal", icon: "bi-terminal", element: <Terminal /> },
-      { path: '/periode', label: 'Periode Puasa', icon: 'bi-calendar-check', element: <PeriodePuasa /> },
-    ]
-  }, 
-
-  {
-    label: 'Vendor/Kontraktor',
-    icon: 'bi-buildings',
-    group: 6,
-    children: [
-      { path: '/absenVendor', label: 'Absensi Vendor', icon: 'bi-person-bounding-box', element: <AbsensiVendor /> },
-      { path: '/ReportAbsenVendor', label: 'Report Absensi Vendor', icon: 'bi-person-vcard', element: <ReportAbsenVendor /> },
-    ]
-  }  
-];
-
-// Route khusus admin — tidak ikut permission system (selalu tampil untuk admin+)
-export const adminRoutes = [];
-
-// export const adminRoutes = [
-//   {
-//     path: '/role-permission',
-//     label: 'Hak Akses',
-//     icon: 'bi-shield-lock',
-//     element: <RolePermission />,
-//     roles: ['admin', 'superadmin'],  // admin & superadmin bisa akses
-//   },
-//   {
-//     path: '/change-login',
-//     label: 'Change Login As',
-//     icon: 'bi-person-video3',
-//     element: <ChangeLogin />,
-//     roles: ['superadmin'],
-//   },
-// ];

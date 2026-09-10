@@ -1,12 +1,10 @@
 import React, { Fragment, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { routesConfig, adminRoutes } from '../utils/menuConfig';
-import { usePermission } from '../utils/usePermission';
 import { useAuth } from '../utils/useAuth';
 
 /* ── Reusable nav item (Link Tunggal) ── */
 const NavItem = ({ route, isExpanded }) => {
-  // BENAR: Jika TIDAK ADA path, jangan di-render (mencegah error link kosong)
+  // Jika path kosong/tidak ada, jangan render
   if (!route.path) return null;
 
   return (
@@ -28,7 +26,7 @@ const NavItem = ({ route, isExpanded }) => {
 const NavFolder = ({ route, isExpanded }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Pakai onClickCapture untuk mencegat script bawaan template
+  // Mencegat event bawaan template jika ada
   const handleToggleFolder = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -39,7 +37,6 @@ const NavFolder = ({ route, isExpanded }) => {
   };
 
   return (
-    // UBAH <li> jadi <div> agar tidak dibajak oleh script template
     <div className="sidebar-folder-wrapper" style={{ display: 'block', width: '100%' }}>
       <button 
         type="button"
@@ -83,8 +80,9 @@ const NavFolder = ({ route, isExpanded }) => {
             paddingBottom: isExpanded ? '0' : '5px'
           }}
         >
+          {/* Looping anak menu (Sub-menu) */}
           {route.children.map(child => (
-            <NavItem key={child.path} route={child} isExpanded={isExpanded} />
+            <NavItem key={child.id || child.path} route={child} isExpanded={isExpanded} />
           ))}
         </ul>
       )}
@@ -94,49 +92,34 @@ const NavFolder = ({ route, isExpanded }) => {
 
 /* ── Komponen Utama Sidebar ── */
 const Sidebar = ({ isExpanded }) => {
-  // const { filterRoutes } = usePermission();
-  const { authState } = useAuth();
-
-  const role = authState.user?.role || 'user';
-  const isAdmin = ['admin', 'superadmin'].includes(role);
+  // 1. Ambil data user dari Context SSO
+  const { user } = useAuth();
   
-  // const allowedRoutes = filterRoutes(routesConfig);
-  const allowedRoutes = routesConfig;
+  // 2. Ambil array 'menus' hasil generate backend Python (Sudah difilter & dibentuk hirarki)
+  const dynamicRoutes = user?.menus || []; 
 
-  // Kelompokkan route per group number
-  const groups = [...new Set(allowedRoutes.map(r => r.group))].sort();
+  // 3. Kelompokkan route per group number (menggunakan group dari database)
+  const groups = [...new Set(dynamicRoutes.map(r => r.group))].sort();
 
   return (
     <ul className="sidebar-nav">
       {groups.map((g, gi) => (
         <Fragment key={`group-${g}`}>
+          {/* Divider antar grup */}
           {gi > 0 && <li><div className="sidebar-divider" /></li>}
-          {allowedRoutes
+          
+          {/* Render menu berdasarkan grupnya */}
+          {dynamicRoutes
             .filter(r => r.group === g)
             .map((route, index) => (
-              route.children ? (
-                <NavFolder key={`folder-${index}`} route={route} isExpanded={isExpanded} />
+              route.children && route.children.length > 0 ? (
+                <NavFolder key={`folder-${route.id || index}`} route={route} isExpanded={isExpanded} />
               ) : (
-                <NavItem key={route.path} route={route} isExpanded={isExpanded} />
+                <NavItem key={route.id || route.path} route={route} isExpanded={isExpanded} />
               )
             ))}
         </Fragment>
       ))}
-
-      {/* {isAdmin && (
-        <Fragment key="admin-section">
-          <li><div className="sidebar-divider" /></li>
-          {adminRoutes
-            .filter(r => r.roles.includes(role))
-            .map((route, index) => (
-              route.children ? (
-                <NavFolder key={`admin-folder-${index}`} route={route} isExpanded={isExpanded} />
-              ) : (
-                <NavItem key={route.path} route={route} isExpanded={isExpanded} />
-              )
-            ))}
-        </Fragment>
-      )} */}
     </ul>
   );
 };
