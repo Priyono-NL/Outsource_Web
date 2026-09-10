@@ -5,6 +5,7 @@ from datetime import timedelta
 from extensions import db
 from config import Config
 from routes.auth_bp import auth_bp
+from routes.permission_bp import permission_bp
 from routes.costCenter_bp import costCenter_bp
 from routes.subCompany_bp import subCom_bp
 from routes.training_bp import train_bp
@@ -27,6 +28,7 @@ from routes.periode_bp import periode_bp
 from routes.absenReport_bp import AbsenReport_bp
 from routes.absenBreak_bp import AbsenBreak_bp
 from routes.absenVendor_bp import absenVendor_bp
+from routes.userApproval_bp import userApproval_bp
 
 def create_app():
     app = Flask(__name__)
@@ -61,6 +63,8 @@ def create_app():
 
     db.init_app(app)
     app.register_blueprint(auth_bp, url_prefix='/')
+    app.register_blueprint(permission_bp, url_prefix='/')
+    app.register_blueprint(userApproval_bp, url_prefix='/')
     #master Data
     app.register_blueprint(person_bp, url_prefix='/')
     app.register_blueprint(subCom_bp, url_prefix='/')

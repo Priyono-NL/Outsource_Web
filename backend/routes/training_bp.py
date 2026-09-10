@@ -2,7 +2,6 @@ from flask import Blueprint, request, session, jsonify
 from extensions import db
 from model.training import training_m
 
-
 train_bp = Blueprint('train_bp', __name__)
 
 @train_bp.route('/training')

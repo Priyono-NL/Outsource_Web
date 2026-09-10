@@ -38,6 +38,7 @@ import ReportAbsenVendor from '../pages/ReportAbsenVendor';
 // Import Halaman Khusus SSO & Approval
 import AuthCallback from '../pages/AuthCallback';
 import PendingApproval from '../pages/PendingApproval';
+import UserApproval from '../pages/UserApproval';
 
 // ==========================================
 // 2. COMPONENT REGISTRY (PETA ROUTE DINAMIS)
@@ -91,5 +92,7 @@ export const componentRegistry = {
 
   // --- System & Auth Routes ---
   '/auth/callback': <AuthCallback />,
-  '/pending-approval': <PendingApproval />
+  '/pending-approval': <PendingApproval />,
+  '/user-approval': <UserApproval />,
+  '/role-permission': <RolePermission />,
 };
