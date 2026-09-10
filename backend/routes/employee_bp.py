@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func, and_
 
 from extensions import db
-from .auth_bp import login_required
+
 from model.blacklist import OsBlacklist
 from model.employment import OsEmployment
 from model.person import OsPerson

@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from extensions import db
 from model.person import OsPerson
 from model.blacklist import OsBlacklist
-from .auth_bp import login_required
+
 
 person_bp = Blueprint('person_bp', __name__)
 

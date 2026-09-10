@@ -7,7 +7,7 @@ from extensions import db
 from model.osCostCenter import OsCostCenter
 from model.employment import OsEmployment
 from model.person import OsPerson
-from .auth_bp import login_required
+
 
 osCC_bp = Blueprint('osCC_bp', __name__)
 

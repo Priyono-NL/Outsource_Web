@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.medical import medical
-from .auth_bp import login_required
+
 
 medical_bp = Blueprint('medical_bp', __name__)
 

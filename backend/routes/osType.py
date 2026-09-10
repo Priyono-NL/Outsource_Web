@@ -5,7 +5,7 @@ from extensions import db
 from model.osType import osType
 from model.employment import OsEmployment
 from model.person import OsPerson
-from .auth_bp import login_required
+
 
 osType_bp = Blueprint('osType', __name__)
 

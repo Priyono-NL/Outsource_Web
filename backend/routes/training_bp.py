@@ -1,7 +1,7 @@
 from flask import Blueprint, request, session, jsonify
 from extensions import db
 from model.training import training_m
-from .auth_bp import login_required
+
 
 train_bp = Blueprint('train_bp', __name__)
 

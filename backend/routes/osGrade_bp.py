@@ -7,7 +7,7 @@ from extensions import db
 from model.grade import OsGrade
 from model.employment import OsEmployment
 from model.person import OsPerson
-from .auth_bp import login_required
+
 
 osGrade_bp = Blueprint('osGrade_bp', __name__)
 

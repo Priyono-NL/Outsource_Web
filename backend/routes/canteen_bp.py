@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from model.canteen import canteen, canteenDetail
 from model.costCenter import costCenter
-from .auth_bp import login_required
+
 
 canteen_bp = Blueprint('canteen_bp', __name__)
 

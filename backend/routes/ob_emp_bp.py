@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.ob_emp import ObEmployee
-from .auth_bp import login_required
+
 from sqlalchemy import or_, and_
 
 ob_emp_bp = Blueprint('ob_emp_bp', __name__)

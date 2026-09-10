@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from extensions import db
-from .auth_bp import login_required
+
 from model.alokasi import Alokasi
 from model.employment import OsEmployment
 from model.person import OsPerson

@@ -1,120 +1,78 @@
-import requests as http
-from flask import Blueprint, request, session, jsonify, redirect, current_app
-from functools import wraps
+from flask import Blueprint, request, jsonify
+from sqlalchemy import text
+from extensions import db
 
-auth_bp = Blueprint('auth_bp', __name__)
+auth_bp = Blueprint('auth', __name__)
 
-def _cfg(key):
-    """Ambil config dari Flask app config"""
-    return current_app.config.get(key, '')
-
-# HELPER
-def _verify_sso_token(access_token: str):
-    try:
-        resp = http.post(
-            f"{_cfg('SSO_URL')}/api/verify",
-            json={'access_token': access_token},
-            headers={
-                'X-App-ID':     _cfg('SSO_APP_ID'),
-                'X-App-Secret': _cfg('SSO_APP_SECRET'),
-            },
-            timeout=5
-        )
-        data = resp.json()
-        if resp.ok and data.get('valid'):
-            return data['user']
-    except Exception as e:
-        print(f'[SSO] verify error: {e}')
-    return None
-
-# DECORATOR
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if request.method == 'OPTIONS':
-            return f(*args, **kwargs)
-
-        access_token = session.get('access_token')
-        if not access_token:
-            return jsonify({
-                'isAuthenticated': False,
-                'code': 'NOT_LOGGED_IN',
-                'message': 'Silakan login terlebih dahulu'
-            }), 401
-
-        user = _verify_sso_token(access_token)
-
-        if not user:
-            session.clear()
-            return jsonify({
-                'isAuthenticated': False,
-                'code': 'TOKEN_EXPIRED',
-                'message': 'Sesi habis atau tidak valid, silakan login kembali'
-            }), 401
-
-        request.current_user = user
-        return f(*args, **kwargs)
-    return decorated
-
-def role_required(*roles):
-    def decorator(f):
-        @wraps(f)
-        @login_required
-        def decorated(*args, **kwargs):
-            # request.current_user diisi oleh decorator login_required
-            role = request.current_user.get('role')
-            if role not in roles:
-                return jsonify({
-                    'error': 'Akses ditolak',
-                    'your_role': role,
-                    'required': list(roles)
-                }), 403
-            return f(*args, **kwargs)
-        return decorated
-    return decorator
-
-
-# ROUTES
-@auth_bp.route('/auth/sso-url', methods=['GET'])
-def get_sso_url():
-    url = f"{_cfg('SSO_URL')}/sso/login?app_id={_cfg('SSO_APP_ID')}"
-    return jsonify({'url': url})
-
-@auth_bp.route('/auth/callback', methods=['GET'])
-def sso_callback():
-    access_token = request.args.get('access_token')
-    frontend_url = _cfg('FRONTEND_URL')
-
-    if not access_token:
-        return redirect(f'{frontend_url}/?error=login_failed')
-
-    user = _verify_sso_token(access_token)
-    if not user:
-        return redirect(f'{frontend_url}/?error=invalid_token')
-
-    session['access_token']    = access_token
-    session['user']            = user
-    session['isAuthenticated'] = True
-
-    print(f"[SSO] Login Success: {user.get('username')}")
-    return redirect(f'{frontend_url}/')
-
-@auth_bp.route('/auth/me', methods=['GET'])
-def auth_me():
-    access_token = session.get('access_token')
-    if not access_token:
-        return jsonify({'logged_in': False}), 401
-
-    user = _verify_sso_token(access_token)
+@auth_bp.route('/api/auth/sso-sync', methods=['POST'])
+def sso_sync():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'success': False, 'message': 'Token missing'}), 401
     
-    if not user:
-        session.clear()
-        return jsonify({'logged_in': False}), 401
+    data = request.json
+    sso_user_id = data.get('sso_user_id')
+    email = data.get('email')
+    nama = data.get('nama')
+    department = data.get('department')
+    role_sso = data.get('role_sso')
 
-    session['user'] = user
-    return jsonify({'logged_in': True, 'user': user})
+    try:
+        # 1. UPSERT ke tabel hr_users
+        upsert_query = text("""
+            INSERT INTO hr_users (sso_user_id, email, nama, department, role_sso, status)
+            VALUES (:sso_id, :email, :nama, :dept, :role_sso, 'pending')
+            ON DUPLICATE KEY UPDATE 
+                email = VALUES(email),
+                nama = VALUES(nama),
+                department = VALUES(department),
+                role_sso = VALUES(role_sso);
+        """)
+        
+        db.session.execute(upsert_query, {
+            'sso_id': sso_user_id,
+            'email': email,
+            'nama': nama,
+            'dept': department,
+            'role_sso': role_sso
+        })
+        db.session.commit()
 
-@auth_bp.route('/auth/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return jsonify({'success': True})
+        # 2. Cek Role & Status di tabel hr_users & hr_roles
+        check_query = text("""
+            SELECT u.id, u.sso_user_id, u.nama, u.email, u.status, u.local_role_id, r.role_name AS local_role
+            FROM hr_users u
+            LEFT JOIN hr_roles r ON u.local_role_id = r.id
+            WHERE u.sso_user_id = :sso_id
+        """)
+        
+        user_result = db.session.execute(check_query, {'sso_id': sso_user_id}).mappings().fetchone()
+
+        if not user_result or user_result['status'] == 'pending' or not user_result['local_role_id']:
+            return jsonify({
+                'success': True,
+                'is_configured': False,
+                'message': 'Akun Anda belum dikonfigurasi oleh Admin.'
+            })
+
+        # 3. Filter Data lewat hr_user_subcompany_access
+        subco_query = text("SELECT sub_company_id FROM hr_user_subcompany_access WHERE user_id = :user_id")
+        subco_result = db.session.execute(subco_query, {'user_id': user_result['id']}).mappings().fetchall()
+        allowed_subcompanies = [row['sub_company_id'] for row in subco_result]
+
+        return jsonify({
+            'success': True,
+            'is_configured': True,
+            'user': {
+                'id': user_result['id'],
+                'sso_id': user_result['sso_user_id'],
+                'name': user_result['nama'],
+                'email': user_result['email'],
+                'role_app': user_result['local_role'],
+                'allowed_subcompanies': allowed_subcompanies
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500

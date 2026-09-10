@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 from extensions import db
 from model.terminal import terminal
-from .auth_bp import login_required
+
 from sqlalchemy import or_
 
 SHEET_MIRROR_CSV_URL = "https://docs.google.com/spreadsheets/d/1Fcf6yzxMp5hNm1-YhzO0rwNfk2cL1tmevnJcFM3JDhg/export?format=csv&gid=0"

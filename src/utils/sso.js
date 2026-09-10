@@ -1,3 +1,5 @@
+// src/utils/sso.js
+
 export const getCookieDomain = () => {
   return window.location.hostname.includes('ceresnl.com')
     ? '.ceresnl.com'

@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.subCompany import SubCompany
-from .auth_bp import login_required
 
 subCom_bp = Blueprint('subCom_bp', __name__)
 

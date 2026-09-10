@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.costCenter import costCenter
-from .auth_bp import login_required
 
 costCenter_bp = Blueprint('costCenter_bp', __name__)
 

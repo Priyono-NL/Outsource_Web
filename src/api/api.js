@@ -1,4 +1,6 @@
+// src/api/api.js
 import axios from 'axios';
+import { getCookie } from '../utils/sso';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL,
@@ -7,34 +9,31 @@ const api = axios.create({
     'X-Tunnel-Skip-Anti-Phishing-Page': 'true',
     'Content-Type': 'application/json',
   },
-}); 
+});
 
-// -----------------------------------------------------------
-// Interceptor response: tangani 401 otomatis
-// Jika session habis, redirect ke SSO login
-// -----------------------------------------------------------
-// api.interceptors.response.use(
-//   (response) => response,
-//   async (error) => {
-//     const status = error.response?.status;
-//     const code   = error.response?.data?.code;
-//     const url    = error.config?.url;
+api.interceptors.request.use(
+  (config) => {
+    // 1. Cek token penyamaran (Impersonate)
+    const impersonateToken = localStorage.getItem('app_token');
+    
+    // 2. Coba ambil token SSO dari Cookie
+    let ssoToken = getCookie('sso_token');
 
-//     // Hindari infinite loop pada endpoint auth itu sendiri
-//     const isAuthEndpoint = url?.includes('/auth/');
+    // 3. PERBAIKAN: Jika cookie kosong (karena pakai IP Address), ambil dari backup
+    if (!ssoToken) {
+      ssoToken = localStorage.getItem('sso_token_backup');
+    }
 
-//     if (status === 401 && !isAuthEndpoint) {
-//       try {
-//         const res = await axios.get(`${BACKEND_URL}/auth/sso-url`, { withCredentials: true });
-//         window.location.href = res.data.url;
-//       } catch {
-//         window.location.reload();
-//       }
-//       return Promise.reject(error);
-//     }
+    // 4. Pilih token mana yang akan dipakai
+    const activeToken = impersonateToken || ssoToken;
 
-//     return Promise.reject(error);
-//   }
-// );
+    if (activeToken) {
+      config.headers.Authorization = `Bearer ${activeToken}`;
+    }
+
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 export default api;

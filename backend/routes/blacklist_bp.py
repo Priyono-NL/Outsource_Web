@@ -2,7 +2,6 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from extensions import db
-from .auth_bp import login_required
 from model.blacklist import OsBlacklist
 from model.person import OsPerson
 
