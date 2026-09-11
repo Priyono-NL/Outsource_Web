@@ -13,24 +13,20 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    // 1. Cek token penyamaran (Impersonate)
-    const impersonateToken = localStorage.getItem('app_token');
-    
-    // 2. Coba ambil token SSO dari Cookie
+    const impersonateToken = localStorage.getItem('app_token');     
     let ssoToken = getCookie('sso_token');
-
-    // 3. PERBAIKAN: Jika cookie kosong (karena pakai IP Address), ambil dari backup
-    if (!ssoToken) {
-      ssoToken = localStorage.getItem('sso_token_backup');
-    }
-
-    // 4. Pilih token mana yang akan dipakai
+    if (!ssoToken) ssoToken = localStorage.getItem('sso_token_backup');
     const activeToken = impersonateToken || ssoToken;
-
     if (activeToken) {
       config.headers.Authorization = `Bearer ${activeToken}`;
+      try {
+        const payloadBase64 = activeToken.split('.')[1];
+        const payload = JSON.parse(atob(payloadBase64));
+        config.headers['X-User-Email'] = payload.email;
+      } catch (error) {
+        console.error("Gagal men-decode token JWT di Interceptor:", error);
+      }
     }
-
     return config;
   },
   (error) => Promise.reject(error)

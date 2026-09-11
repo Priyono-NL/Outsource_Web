@@ -52,14 +52,16 @@ def index():
 def add():
     try:
         data = request.json if request.is_json else request.form
-
         previous_day = None
+        new_from_date = None
+
         if data.get('valid_from'):
             try:
                 new_from_dt = datetime.strptime(data.get('valid_from'), '%Y-%m-%d')
-                previous_day = (new_from_dt - timedelta(days=1)).date()
+                new_from_date = new_from_dt.date()
+                previous_day = new_from_date - timedelta(days=1)
             except ValueError:
-                print("Format tanggal salah")
+                return jsonify({"status": "error", "message": "Format tanggal valid_from salah"}), 400
 
         if previous_day:
             old_records = OsCard.query.filter(
@@ -67,7 +69,10 @@ def add():
                     OsCard.card_number == data.get('card_number'),
                     OsCard.employee_id == data.get('employee_id')
                 ),
-                OsCard.valid_to == None
+                or_(
+                    OsCard.valid_to == None,
+                    OsCard.valid_to >= new_from_date
+                )
             ).all()
             for record in old_records:
                 record.valid_to = previous_day
@@ -148,66 +153,3 @@ def export():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
-@osCard_bp.route('/oscard/template', methods=['GET'])
-def template():
-    try:
-        example_data = [{
-            "ID Employee": "12345",
-            "Card Number": "12345.12345",
-            "Valid From": "2026-03-20",
-            "Valid To": "SEHAT",
-        }]
-        df = pd.DataFrame(example_data)
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Template_Import')
-        output.seek(0)
-        return send_file(
-            output, 
-            as_attachment=True, 
-            download_name="Template_Import_Medical.xlsx"
-        )
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@osCard_bp.route('/oscard/upload', methods=['POST'])
-def upload():
-    file = request.files.get('file')
-    if not file:
-        return jsonify({'message': 'Tidak ada file'}), 400
-    try:
-        df = pd.read_excel(file)
-        all_employees = OsEmployment.query.with_entities(OsEmployment.employee_id).all()
-        valid_employee_ids = {str(e.employee_id) for e in all_employees}
-        errors = []
-        to_save = []
-        for index, row in df.iterrows():
-            e_id = str(row['ID Employee']).strip()
-            m_name = str(row['Medical Name']).lower().strip()
-            if e_id not in valid_employee_ids:
-                errors.append(f"Baris {index+2}: ID Employee '{e_id}' tidak terdaftar di sistem.")
-                continue            
-            new_medical = OsCard(
-                employee_id=int(e_id),
-                card_number=row['Card Number'],
-                valid_from=pd.to_datetime(row['Valid From']),
-                valid_to=pd.to_datetime(row['Valid To']),
-            )
-            to_save.append(new_medical)
-        if errors:
-            return jsonify({
-                "status": "error", 
-                "message": "Import gagal karena beberapa data tidak valid.",
-                "errors": errors
-            }), 400
-        db.session.add_all(to_save)
-        db.session.commit()
-        return jsonify({"status": "success", "message": f"Berhasil mengimport {len(to_save)} data."})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500    
-    
-# @osCard_bp.before_request
-# @login_required
-# def before_request():
-#     pass

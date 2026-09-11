@@ -1,5 +1,4 @@
 from flask import Flask, request, Response
-from flask_cors import CORS
 from datetime import timedelta
 
 from extensions import db
@@ -32,47 +31,48 @@ from routes.userApproval_bp import userApproval_bp
 
 def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config)
-    CORS(app, 
-        supports_credentials=True, 
-        origins=Config.CORS_ORIGINS, 
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    
+    app.config.from_object(Config)    
+    ALLOWED_ORIGINS = Config.CORS_ORIGINS
+    if isinstance(ALLOWED_ORIGINS, str):
+        ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGINS.split(',')]
+    ALLOWED_HEADERS = "Content-Type, Authorization, X-Requested-With, X-User-Email, X-Tunnel-Skip-Anti-Phishing-Page"
+
     @app.before_request
     def handle_preflight():
         if request.method == "OPTIONS":
             res = Response()
-            res.headers['Access-Control-Allow-Origin'] = "https://w6wz4p4z-3000.asse.devtunnels.ms"
+            origin = request.headers.get('Origin')            
+            if origin in ALLOWED_ORIGINS:
+                res.headers['Access-Control-Allow-Origin'] = origin            
             res.headers['Access-Control-Allow-Methods'] = "GET, POST, PUT, DELETE, OPTIONS"
-            res.headers['Access-Control-Allow-Headers'] = "Content-Type, Authorization, X-Tunnel-Skip-Anti-Phishing-Page"
+            res.headers['Access-Control-Allow-Headers'] = ALLOWED_HEADERS
             res.headers['Access-Control-Allow-Credentials'] = "true"
             return res
 
     @app.after_request
     def after_request(response):
-        # Gunakan get origin dengan aman
-        origin = request.headers.get('Origin')
-        allowed_origins = Config.CORS_ORIGINS
-        if origin in allowed_origins or origin == "https://w6wz4p4z-3000.asse.devtunnels.ms":
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Tunnel-Skip-Anti-Phishing-Page'
-            response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
+        origin = request.headers.get('Origin')        
+        if origin in ALLOWED_ORIGINS:
+            response.headers['Access-Control-Allow-Origin'] = origin            
+        response.headers['Access-Control-Allow-Headers'] = ALLOWED_HEADERS
+        response.headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
         return response
 
     db.init_app(app)
+    
+    # Registrasi Blueprint
     app.register_blueprint(auth_bp, url_prefix='/')
     app.register_blueprint(permission_bp, url_prefix='/')
     app.register_blueprint(userApproval_bp, url_prefix='/')
-    #master Data
+    
+    # Master Data
     app.register_blueprint(person_bp, url_prefix='/')
     app.register_blueprint(subCom_bp, url_prefix='/')
     app.register_blueprint(train_bp, url_prefix='/')
     app.register_blueprint(medical_bp, url_prefix='/')
     app.register_blueprint(canteen_bp, url_prefix='/')
     app.register_blueprint(costCenter_bp, url_prefix='/')
-    #transaksi
     app.register_blueprint(employee_bp, url_prefix='/')
     app.register_blueprint(alokasi_bp, url_prefix='/')
     app.register_blueprint(osMedical_bp, url_prefix='/')
@@ -81,16 +81,15 @@ def create_app():
     app.register_blueprint(osCC_bp, url_prefix='/')
     app.register_blueprint(osGrade_bp, url_prefix='/')
     app.register_blueprint(blacklist_bp, url_prefix='/')
-    app.register_blueprint(osType_bp, url_prefix='/')
-    
+    app.register_blueprint(osType_bp, url_prefix='/')    
     app.register_blueprint(terminal_bp, url_prefix='/')
     app.register_blueprint(ob_emp_bp, url_prefix='/')
-    app.register_blueprint(periode_bp, url_prefix='/')
-    
+    app.register_blueprint(periode_bp, url_prefix='/')    
     app.register_blueprint(AbsenOs_bp, url_prefix='/')
     app.register_blueprint(AbsenReport_bp, url_prefix='/')
     app.register_blueprint(AbsenBreak_bp, url_prefix='/')
     app.register_blueprint(absenVendor_bp, url_prefix='/')
+    
     return app
 
 if __name__ == '__main__':
