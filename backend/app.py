@@ -27,7 +27,7 @@ from routes.periode_bp import periode_bp
 from routes.absenReport_bp import AbsenReport_bp
 from routes.absenBreak_bp import AbsenBreak_bp
 from routes.absenVendor_bp import absenVendor_bp
-from routes.userApproval_bp import userApproval_bp
+from routes.userManagement_bp import userManagement_bp
 
 def create_app():
     app = Flask(__name__)
@@ -64,7 +64,7 @@ def create_app():
     # Registrasi Blueprint
     app.register_blueprint(auth_bp, url_prefix='/')
     app.register_blueprint(permission_bp, url_prefix='/')
-    app.register_blueprint(userApproval_bp, url_prefix='/')
+    app.register_blueprint(userManagement_bp, url_prefix='/')
     
     # Master Data
     app.register_blueprint(person_bp, url_prefix='/')

@@ -36,19 +36,11 @@ const MainLayout = () => {
     );
   }
 
-  const publicRoutes = ['/auth/callback', '/pending-approval'];
-
-  if (!isConfigured && !publicRoutes.includes(location.pathname)) {
-    return <Navigate to="/pending-approval" replace />;
-  }
-  if (isConfigured && location.pathname === '/pending-approval') {
-    return <Navigate to="/" replace />;
-  }
+  const publicRoutes = ['/auth/callback'];
 
   if (publicRoutes.includes(location.pathname)) {
     return (
-      <Routes>
-        <Route path="/pending-approval" element={componentRegistry['/pending-approval']} />
+      <Routes>        
         <Route path="/auth/callback" element={componentRegistry['/auth/callback']} />
       </Routes>
     );

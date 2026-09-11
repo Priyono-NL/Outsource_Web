@@ -10,7 +10,7 @@ def sso_sync():
     data = request.json or {}
     raw_sso_id = data.get('sso_user_id')
     raw_email = data.get('email')
-
+    
     sso_user_id = str(raw_sso_id).strip() if raw_sso_id else (str(raw_email).strip() if raw_email else None)
     email = str(raw_email).strip() if raw_email else None
     nama = data.get('nama', '').strip()
@@ -23,14 +23,11 @@ def sso_sync():
     try:
         matched_role = None
         if role_sso:
-            matched_role = Role.query.filter(Role.role_name.ilike(role_sso)).first()
-
-        # 1. Cari User di Database
+            matched_role = Role.query.filter(Role.role_name.ilike(role_sso)).first()            
         user = User.query.filter((User.sso_user_id == sso_user_id) | (User.email == email)).first()
 
         if not user:
             try:
-                # Coba Insert User Baru
                 user = User(
                     sso_user_id=sso_user_id,
                     email=email,
@@ -38,48 +35,30 @@ def sso_sync():
                     department=department,
                     role_sso=role_sso,
                     local_role_id=matched_role.id if matched_role else None,
-                    status='active' if matched_role else 'pending'
+                    status='active'
                 )
                 db.session.add(user)
                 db.session.commit()
             except IntegrityError:
-                # JIKA BENTROK (Race Condition request ganda), ROLLBACK DAN AMBIL DATA TERAKHIR
                 db.session.rollback()
                 user = User.query.filter((User.sso_user_id == sso_user_id) | (User.email == email)).first()
                 if user:
                     user.nama = nama
                     user.department = department
                     user.role_sso = role_sso
-                    if matched_role and not user.local_role_id:
+                    if matched_role:
                         user.local_role_id = matched_role.id
-                        user.status = 'active'
+                    user.status = 'active'
                     db.session.commit()
         else:
-            # Update User Eksisting
             user.nama = nama
             user.department = department
             user.role_sso = role_sso
-            if matched_role and not user.local_role_id:
+            if matched_role:
                 user.local_role_id = matched_role.id
-                user.status = 'active'
+            user.status = 'active'
             db.session.commit()
 
-        # 2. Cek Status Pending
-        if not user.local_role_id or user.status == 'pending':
-            return jsonify({
-                'success': True,
-                'is_configured': False,
-                'user': {
-                    'id': user.id,
-                    'nama': user.nama,
-                    'email': user.email,
-                    'sso_user_id': user.sso_user_id,
-                    'status': 'pending'
-                },
-                'message': 'User terdaftar namun menunggu persetujuan role'
-            })
-
-        # 3. Ambil Master Menu & Hak Akses
         role_obj = Role.query.get(user.local_role_id)
         role_name = role_obj.role_name if role_obj else 'user'
         is_superadmin = (role_name.lower() == 'superadmin')
@@ -115,7 +94,6 @@ def sso_sync():
                     if m.path:
                         crud_permissions[m.path] = {'can_create': can_c, 'can_edit': can_e, 'can_delete': can_d}
 
-        # Susun Hirarki Tree Menu
         menus_dict = {m['id']: {**m, 'children': []} for m in menu_items_raw}
         nested_menus = []
         for m_id, m_item in menus_dict.items():
@@ -129,7 +107,6 @@ def sso_sync():
 
         return jsonify({
             'success': True,
-            'is_configured': True,
             'user': {
                 'id': user.id,
                 'nama': user.nama,

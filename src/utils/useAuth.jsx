@@ -10,7 +10,6 @@ export const AuthProvider = ({ children }) => {
   const [role, setRole] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isConfigured, setIsConfigured] = useState(true);
 
   const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'CRSHR';
 
@@ -74,14 +73,8 @@ export const AuthProvider = ({ children }) => {
         const res = response.data;
         if (res.success) {
           setIsAuthenticated(true);
-          if (res.is_configured === false) {
-            setIsConfigured(false);
-            setUser(res.user);
-          } else {
-            setIsConfigured(true);
-            setUser(res.user);
-            setRole(res.user.role_app);
-          }
+          setUser(res.user);
+          setRole(res.user.role_app);
         }
       } catch (error) {
         console.error('SSO Validation Error:', error);
@@ -151,7 +144,7 @@ export const AuthProvider = ({ children }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ user, role, isAuthenticated, isConfigured, logout }}>
+    <AuthContext.Provider value={{ user, role, isAuthenticated, logout }}>
       {children}
     </AuthContext.Provider>
   );
