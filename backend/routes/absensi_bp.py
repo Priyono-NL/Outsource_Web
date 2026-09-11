@@ -111,7 +111,11 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
     active_ids = []    
     if worker_type in ('all', 'os'):
         os_query = db.session.query(cast(VwMasterOsActive.employee_code, String)).filter(VwMasterOsActive.employee_code.is_not(None))
-        if sub_company_id:
+        if sub_company_id == 'TYPE_OS':
+            os_query = os_query.filter(VwMasterOsActive.type_company == 'OS')
+        elif sub_company_id == 'TYPE_VENDOR':
+            os_query = os_query.filter(VwMasterOsActive.type_company == 'Vendor')
+        elif sub_company_id:
             os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
         if search:
             os_query = os_query.filter(or_(

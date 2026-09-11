@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from datetime import datetime
 
 from extensions import db
+from model.subCompany import SubCompany
 from model.ob_emp import ObEmployee
 
 AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
@@ -232,8 +233,8 @@ def _get_aggregated_daily_shift(search_date):
 
     return report_data, totals_os, totals_ob, grand_total, default_shifts
 
-def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
-    """ Laporan 3: MP Per Employee (Rentang Tanggal) """
+def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, search_text=''):
+    """ Laporan 3: MP Per Employee (Rentang Tanggal) - KHUSUS OS """
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
     
@@ -247,32 +248,39 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
         FROM (
             SELECT 
                 ta.employee_id, ta.clocking_date, MIN(ta.clock_in) AS true_clock_in, MAX(ta.clock_out) AS true_clock_out,
-                
-                -- BUNGKUS DENGAN CAST UNTUK MERESET COLLATION DI MEMORI
                 MAX(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc,
                 MAX(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id
-                
             FROM `db-webapps`.TBL_ATTENDANCE ta
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
             LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
             LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-            
-            -- BUNGKUS JUGA PADA SAAT JOIN UNTUK KEAMANAN EKSTRA
             LEFT JOIN org_cost_center occ ON occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)
             
             WHERE ta.clocking_date BETWEEN :start_date AND :end_date
-              AND ta.employee_id IS NOT NULL AND ta.card_id != '00000.00000'
+              AND ta.employee_id IS NOT NULL 
+              AND ta.card_id != '00000.00000'
+              AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8 -- KUNCI: HANYA KARYAWAN OS
             GROUP BY ta.employee_id, ta.clocking_date
         ) daily
         GROUP BY daily.employee_id
     """
     
     att_rows = db.session.execute(text(sql_attendance), {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
-    os_map, ob_map = _get_master_dictionaries()
+    os_map, _ = _get_master_dictionaries() # Kita hanya butuh os_map karena sudah di-filter di SQL
     
+    # 2. TWEAK: Logika Filter Sub Company Dinamis (OS / Vendor / Spesifik)
+    allowed_sub_companies = None
+    if sub_company_id == 'TYPE_OS':
+        sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS').all()
+        allowed_sub_companies = [str(r[0]).strip() for r in sc_rows]
+    elif sub_company_id == 'TYPE_VENDOR':
+        sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'Vendor').all()
+        allowed_sub_companies = [str(r[0]).strip() for r in sc_rows]
+    elif sub_company_id:
+        allowed_sub_companies = [sub_company_id]
+        
     report_data = []
-    debug_os = 0
 
     for row in att_rows:
         emp_id = str(row['employee_id']).strip()
@@ -281,30 +289,30 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
             continue
             
         info = os_map[emp_id]
-        use_cc_flag = info.get('use_cc', 0)
         
-        try:
-            use_cc_flag = int(use_cc_flag)
-        except:
-            use_cc_flag = 0
-            
+        # Filter Pencarian (Search Bar)
+        if search_text:
+            s_lower = search_text.lower()
+            if s_lower not in emp_id.lower() and s_lower not in (info['display_name'] or '').lower():
+                continue
+
+        # Filter Sub Company
+        db_sub_com = _clean_cc(info.get('sub_company_id'))
+        if allowed_sub_companies is not None and db_sub_com not in allowed_sub_companies:
+            continue
+
+        # Filter Department (Cost Center)
+        use_cc_flag = int(info.get('use_cc', 0) or 0)
         master_cc_id = _clean_cc(info.get('cost_center_id'))
         terminal_cc_id = _clean_cc(row.get('terminal_cc_id'))
         
-        if use_cc_flag == 1:
-            final_cc_id = master_cc_id
-        else:
-            final_cc_id = terminal_cc_id if terminal_cc_id else master_cc_id
-
-        db_sub_com = _clean_cc(info.get('sub_company_id'))
-        if sub_company_id and db_sub_com != sub_company_id:
-            continue
+        final_cc_id = master_cc_id if use_cc_flag == 1 else (terminal_cc_id if terminal_cc_id else master_cc_id)
             
         if department_id and final_cc_id != department_id:
             continue
 
+        # Data Valid -> Masukkan ke Report
         final_cc_name = _resolve_cc(row['terminal_cc'], info['cc_name'], use_cc_flag)
-
         valid_from = info.get('valid_from')
         valid_to = info.get('valid_to')
 
@@ -317,7 +325,6 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id):
             "join_date": valid_from.strftime('%d-%b-%Y').upper() if hasattr(valid_from, 'strftime') else (valid_from if valid_from else '-'),
             "termination_date": valid_to.strftime('%d-%b-%Y').upper() if hasattr(valid_to, 'strftime') else (valid_to if valid_to else '-')
         }) 
-        debug_os += 1
 
     return report_data
 
@@ -432,7 +439,8 @@ def reportMpEmployee():
         report_data = _get_mp_employee_data(
             start_date, end_date, 
             request.args.get('sub_company', '').strip(), 
-            request.args.get('department', '').strip()
+            request.args.get('department', '').strip(),
+            request.args.get('search', '').strip() # TANGKAP SEARCH
         )
 
         total_item = len(report_data)
@@ -456,8 +464,10 @@ def exportMpEmployee():
         report_data = _get_mp_employee_data(
             start_date, end_date, 
             request.args.get('sub_company', '').strip(), 
-            request.args.get('department', '').strip()
+            request.args.get('department', '').strip(),
+            request.args.get('search', '').strip() # TANGKAP SEARCH
         )
+        
         if not report_data:
             return jsonify({"status": "error", "message": "Data absensi tidak ditemukan"}), 400
 

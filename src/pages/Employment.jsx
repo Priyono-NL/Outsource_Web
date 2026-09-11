@@ -239,6 +239,8 @@ const Employment = () => {
 
   const subCompanyOptions = [
     { value: '', label: 'Semua Sub Company' },
+    { value: 'TYPE_OS', label: 'Outsource' },
+    { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
     ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
   ];
   const departmentOptions = [

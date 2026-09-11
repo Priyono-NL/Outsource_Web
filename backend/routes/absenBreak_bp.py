@@ -5,6 +5,7 @@ from sqlalchemy import text
 from datetime import datetime, date
 
 from extensions import db
+from model.subCompany import SubCompany
 
 AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 
@@ -21,8 +22,18 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     params = {'start_date': start_date, 'end_date': end_date}
     
     if sub_company_id:
-        filters.append("k.sub_company_id = :sub_company_id")
-        params['sub_company_id'] = sub_company_id
+        if sub_company_id in ('TYPE_OS', 'TYPE_VENDOR'):
+            target_type = 'OS' if sub_company_id == 'TYPE_OS' else 'Vendor'
+            sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == target_type).all()
+            sc_list = [str(r[0]).strip() for r in sc_rows if r[0]]            
+            if sc_list:
+                in_clause = ", ".join([f"'{sc}'" for sc in sc_list])
+                filters.append(f"k.sub_company_id IN ({in_clause})")
+            else:
+                filters.append("1 = 0") 
+        else:
+            filters.append("k.sub_company_id = :sub_company_id")
+            params['sub_company_id'] = sub_company_id
         
     if department_id:
         filters.append("k.cost_center = :department_id")
@@ -112,6 +123,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             k.display_name, 
             k.card_number,
 
+            COALESCE(c.clock_date, m.tanggal_makan) AS ref_date,
+
             IF(c.raw_out IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out, '%d-%b-%Y %H:%i')), '-') as waktu_out,
             IF(m.raw_makan IS NOT NULL, UPPER(CONCAT(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y'), ' ', DATE_FORMAT(m.raw_makan, '%H:%i'))), '-') as waktu_makan,
             IF(c.raw_in IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in, '%d-%b-%Y %H:%i')), '-') as waktu_in,
@@ -143,7 +156,13 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if node_str in ('114', '115', '215', '216'): return 'Access Bike'
         return f"Node {node_str}"
 
+    seen_records = set()
     for row in rows:
+        unique_key = f"{row['emp_id']}_{row['ref_date']}"        
+        if unique_key in seen_records:
+            continue
+        seen_records.add(unique_key)
+        
         jam_out_str = row['jam_out']
         jam_makan_str = row['jam_makan']
         jam_in_str = row['jam_in']
@@ -207,7 +226,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         )
         SELECT 
             k.emp_id, k.display_name, k.card_number, k.cc_name,
-            -- Gabung format langsung menjadi "08-SEP-2026 07:15"
+            c.clock_date,
             IF(c.raw_in IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in, '%d-%b-%Y %H:%i')), '-') as waktu_in,
             IF(c.raw_out IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out, '%d-%b-%Y %H:%i')), '-') as waktu_out,
             c.node_in, c.node_out
@@ -218,7 +237,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
     
     rows = db.session.execute(text(sql_query), params).mappings().fetchall()
     report_data = []
-    
+    seen_records = set()
     def get_access_area(node_id):
         if not node_id: return "-"
         node_str = str(node_id).split('-')[-1]
@@ -228,6 +247,11 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         return f"Node {node_str}"
 
     for row in rows:
+        unique_key = f"{row['emp_id']}_{row['clock_date']}"        
+        if unique_key in seen_records:
+            continue
+        seen_records.add(unique_key)
+
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',

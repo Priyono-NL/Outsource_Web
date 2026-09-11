@@ -85,7 +85,13 @@ def index():
                 now = datetime.now()
                 query = query.filter(OsEmployment.valid_to < now)
 
-        if sub_company_id:
+        if sub_company_id == 'TYPE_OS':
+            subquery_os = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS')
+            query = query.filter(OsEmployment.sub_company_id.in_(subquery_os))            
+        elif sub_company_id == 'TYPE_VENDOR':
+            subquery_vendor = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'Vendor')
+            query = query.filter(OsEmployment.sub_company_id.in_(subquery_vendor))            
+        elif sub_company_id:
             query = query.filter(OsEmployment.sub_company_id == sub_company_id)
 
         if department_id:
@@ -630,8 +636,8 @@ def template():
             "Department": "",
             "Type Worker": "DAILYWAGE / PIECERATE",
             "Posisi": "",
-            "Valid From": "2026-03-10",
-            "Valid To": "2026-03-11",
+            "Join Date": "2026-03-10",
+            "Termination Date": "2026-03-11",
             "Card Number": "12345.12345",
             "Card Valid From": "2026-03-10",
             "Card Valid To": "2026-03-11"
@@ -663,7 +669,7 @@ def upload():
                 return None
             return val
 
-        required_columns = ['Nama', 'NIK', 'Employee Code', 'Sub Company', 'Department', 'Valid From']
+        required_columns = ['Nama', 'NIK', 'Employee Code', 'Sub Company', 'Department', 'Join Date']
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
             return jsonify({"message": f"Format Excel salah. Kolom berikut tidak ditemukan: {', '.join(missing_cols)}"}), 400
@@ -684,9 +690,9 @@ def upload():
                     if not nama_input or not nik_input or not emp_code_input:
                         raise ValueError("Nama, NIK, dan Employee ID tidak boleh kosong.")
 
-                    raw_start_date = clean(row.get('Valid From'))
+                    raw_start_date = clean(row.get('Join Date'))
                     if not raw_start_date:
-                        raise ValueError("Tanggal 'Valid From' tidak boleh kosong.")
+                        raise ValueError("Tanggal 'Join Date' tidak boleh kosong.")
                     
                     if isinstance(raw_start_date, str):
                         new_start_date = datetime.strptime(raw_start_date.strip(), '%Y-%m-%d').date()
@@ -694,7 +700,7 @@ def upload():
                         new_start_date = raw_start_date.date() if hasattr(raw_start_date, 'date') else raw_start_date
                     
                     adjusted_valid_to = new_start_date - timedelta(days=1)
-                    new_valid_to = clean(row.get('Valid To'))
+                    new_valid_to = clean(row.get('Termination Date'))
 
                     # Person Check
                     target_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
@@ -887,7 +893,13 @@ def export():
         elif status == 'inactive':
             query = query.filter(OsEmployment.valid_to < now)
 
-        if sub_company_id:
+        if sub_company_id == 'TYPE_OS':
+            subquery_os = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS')
+            query = query.filter(OsEmployment.sub_company_id.in_(subquery_os))
+        elif sub_company_id == 'TYPE_VENDOR':
+            subquery_vendor = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'Vendor')
+            query = query.filter(OsEmployment.sub_company_id.in_(subquery_vendor))
+        elif sub_company_id:
             query = query.filter(OsEmployment.sub_company_id == sub_company_id)
 
         if department_id:
@@ -913,8 +925,8 @@ def export():
                 "Grade": d['grade'],
                 "Type Worker": d['type_worker'],
                 "Posisi": d['posisi'],
-                "Valid From": d['v_valid_from'],
-                "Valid To": d['valid_to'],
+                "Join Date": d['v_valid_from'],
+                "Termination Date": d['valid_to'],
                 "Card Number": d['card_number'],
                 "Card Valid From": d['card_number_from'],
                 "Card Valid To": d['card_number_to']
