@@ -70,7 +70,7 @@ const MainLayout = () => {
 
         <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
           <div className="topbar-user-name">
-            {user?.name || user?.email || 'User'}
+            {user?.nama || user?.email || 'User'}
           </div>
           <div className="topbar-user-role">
             {role || 'user'}

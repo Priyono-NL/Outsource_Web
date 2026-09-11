@@ -20,7 +20,11 @@ export const getCookie = (name) => {
 
 export const removeCookie = (name) => {
   const domain = getCookieDomain();
-  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;domain=${domain};path=/`;
+  const hostname = window.location.hostname;
+  const pastDate = 'Thu, 01 Jan 1970 00:00:00 GMT';
+  document.cookie = `${name}=;expires=${pastDate};domain=${domain};path=/`;
+  if (domain !== hostname) document.cookie = `${name}=;expires=${pastDate};domain=${hostname};path=/`;
+  document.cookie = `${name}=;expires=${pastDate};path=/`;
 };
 
 export const redirectToSSOLogin = () => {

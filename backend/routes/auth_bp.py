@@ -1,124 +1,143 @@
 from flask import Blueprint, request, jsonify
-from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from extensions import db
+from model.hr_models import User, Role, AppMenu, RoleMenuPermission, UserSubcompanyAccess
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/api/auth/sso-sync', methods=['POST'])
 def sso_sync():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header:
-        return jsonify({'success': False, 'message': 'Token missing'}), 401
-    
-    data = request.json
-    sso_user_id = data.get('sso_user_id')
-    email = data.get('email')
-    nama = data.get('nama')
+    data = request.json or {}
+    raw_sso_id = data.get('sso_user_id')
+    raw_email = data.get('email')
+
+    sso_user_id = str(raw_sso_id).strip() if raw_sso_id else (str(raw_email).strip() if raw_email else None)
+    email = str(raw_email).strip() if raw_email else None
+    nama = data.get('nama', '').strip()
     department = data.get('department')
-    role_sso = data.get('role_sso')
+    role_sso = data.get('role_sso', '').strip()
+
+    if not sso_user_id:
+        return jsonify({'success': False, 'message': 'ID Pengguna / SSO User ID wajib ada'}), 400
 
     try:
-        # 1. UPSERT ke tabel hr_users
-        upsert_query = text("""
-            INSERT INTO hr_users (sso_user_id, email, nama, department, role_sso, status)
-            VALUES (:sso_id, :email, :nama, :dept, :role_sso, 'pending')
-            ON DUPLICATE KEY UPDATE 
-                email = VALUES(email),
-                nama = VALUES(nama),
-                department = VALUES(department),
-                role_sso = VALUES(role_sso);
-        """)
-        
-        db.session.execute(upsert_query, {
-            'sso_id': sso_user_id,
-            'email': email,
-            'nama': nama,
-            'dept': department,
-            'role_sso': role_sso
-        })
-        db.session.commit()
+        matched_role = None
+        if role_sso:
+            matched_role = Role.query.filter(Role.role_name.ilike(role_sso)).first()
 
-        # 2. Cek Role & Status di tabel hr_users & hr_roles
-        check_query = text("""
-            SELECT u.id, u.sso_user_id, u.nama, u.email, u.status, u.local_role_id, r.role_name AS local_role
-            FROM hr_users u
-            LEFT JOIN hr_roles r ON u.local_role_id = r.id
-            WHERE u.sso_user_id = :sso_id
-        """)
-        
-        user_result = db.session.execute(check_query, {'sso_id': sso_user_id}).mappings().fetchone()
+        # 1. Cari User di Database
+        user = User.query.filter((User.sso_user_id == sso_user_id) | (User.email == email)).first()
 
-        if not user_result or user_result['status'] == 'pending' or not user_result['local_role_id']:
+        if not user:
+            try:
+                # Coba Insert User Baru
+                user = User(
+                    sso_user_id=sso_user_id,
+                    email=email,
+                    nama=nama,
+                    department=department,
+                    role_sso=role_sso,
+                    local_role_id=matched_role.id if matched_role else None,
+                    status='active' if matched_role else 'pending'
+                )
+                db.session.add(user)
+                db.session.commit()
+            except IntegrityError:
+                # JIKA BENTROK (Race Condition request ganda), ROLLBACK DAN AMBIL DATA TERAKHIR
+                db.session.rollback()
+                user = User.query.filter((User.sso_user_id == sso_user_id) | (User.email == email)).first()
+                if user:
+                    user.nama = nama
+                    user.department = department
+                    user.role_sso = role_sso
+                    if matched_role and not user.local_role_id:
+                        user.local_role_id = matched_role.id
+                        user.status = 'active'
+                    db.session.commit()
+        else:
+            # Update User Eksisting
+            user.nama = nama
+            user.department = department
+            user.role_sso = role_sso
+            if matched_role and not user.local_role_id:
+                user.local_role_id = matched_role.id
+                user.status = 'active'
+            db.session.commit()
+
+        # 2. Cek Status Pending
+        if not user.local_role_id or user.status == 'pending':
             return jsonify({
                 'success': True,
                 'is_configured': False,
-                'message': 'Akun Anda belum dikonfigurasi oleh Admin.'
+                'user': {
+                    'id': user.id,
+                    'nama': user.nama,
+                    'email': user.email,
+                    'sso_user_id': user.sso_user_id,
+                    'status': 'pending'
+                },
+                'message': 'User terdaftar namun menunggu persetujuan role'
             })
 
-        # 3. Filter Data lewat hr_user_subcompany_access
-        subco_query = text("SELECT sub_company_id FROM hr_user_subcompany_access WHERE user_id = :user_id")
-        subco_result = db.session.execute(subco_query, {'user_id': user_result['id']}).mappings().fetchall()
-        allowed_subcompanies = [row['sub_company_id'] for row in subco_result]
+        # 3. Ambil Master Menu & Hak Akses
+        role_obj = Role.query.get(user.local_role_id)
+        role_name = role_obj.role_name if role_obj else 'user'
+        is_superadmin = (role_name.lower() == 'superadmin')
 
-        # 4. Cek super admin
-        is_super_admin = user_result['local_role'] == 'super_admin'
-        if is_super_admin:
-            menu_query = text("""
-                SELECT 
-                    id, title AS label, path, icon, parent_id, group_no AS 'group',
-                    1 AS can_view, 1 AS can_create, 1 AS can_edit, 1 AS can_delete
-                FROM hr_app_menus
-                ORDER BY group_no ASC, order_no ASC
-            """)
-            menu_rows = db.session.execute(menu_query).mappings().fetchall()
-        else:
-            menu_query = text("""
-                SELECT 
-                    m.id, m.title AS label, m.path, m.icon, m.parent_id, m.group_no AS 'group',
-                    rm.can_view, rm.can_create, rm.can_edit, rm.can_delete
-                FROM hr_role_menu_permissions rm
-                JOIN hr_app_menus m ON rm.menu_id = m.id
-                WHERE rm.role_id = :role_id AND rm.can_view = 1
-                ORDER BY m.group_no ASC, m.order_no ASC
-            """)
-            menu_rows = db.session.execute(menu_query, {'role_id': user_result['local_role_id']}).mappings().fetchall()
-
-        # 5. Konversi ke bentuk hirarki/bersarang (Parent -> Children)
-        menus_dict = {}
-        nested_menus = []
         crud_permissions = {}
+        menu_items_raw = []
 
-        for row in menu_rows:
-            menu_item = dict(row)            
-            if menu_item['path']:
-                crud_permissions[menu_item['path']] = {
-                    'can_create': bool(menu_item['can_create']),
-                    'can_edit': bool(menu_item['can_edit']),
-                    'can_delete': bool(menu_item['can_delete'])
-                }
-            if not menu_item['path']: 
-                menu_item['children'] = []            
-            menus_dict[menu_item['id']] = menu_item
+        if is_superadmin:
+            all_menus = AppMenu.query.order_by(AppMenu.group_no.asc(), AppMenu.order_no.asc()).all()
+            for m in all_menus:
+                menu_items_raw.append({
+                    'id': m.id, 'title': m.title, 'path': m.path, 'icon': m.icon, 'parent_id': m.parent_id,
+                    'can_create': True, 'can_edit': True, 'can_delete': True
+                })
+                if m.path:
+                    crud_permissions[m.path] = {'can_create': True, 'can_edit': True, 'can_delete': True}
+        else:
+            perms = RoleMenuPermission.query.filter_by(role_id=user.local_role_id, can_view=True).all()
+            perm_dict = {p.menu_id: p for p in perms}
 
-        # Susun relasi Folder dan Sub-menu
-        for menu_id, menu_item in menus_dict.items():
-            parent_id = menu_item.get('parent_id')
+            if perm_dict:
+                allowed_menus = AppMenu.query.filter(AppMenu.id.in_(list(perm_dict.keys()))).order_by(AppMenu.group_no.asc(), AppMenu.order_no.asc()).all()
+                for m in allowed_menus:
+                    p = perm_dict.get(m.id)
+                    can_c = p.can_create if p else False
+                    can_e = p.can_edit if p else False
+                    can_d = p.can_delete if p else False
+
+                    menu_items_raw.append({
+                        'id': m.id, 'title': m.title, 'path': m.path, 'icon': m.icon, 'parent_id': m.parent_id,
+                        'can_create': can_c, 'can_edit': can_e, 'can_delete': can_d
+                    })
+                    if m.path:
+                        crud_permissions[m.path] = {'can_create': can_c, 'can_edit': can_e, 'can_delete': can_d}
+
+        # Susun Hirarki Tree Menu
+        menus_dict = {m['id']: {**m, 'children': []} for m in menu_items_raw}
+        nested_menus = []
+        for m_id, m_item in menus_dict.items():
+            parent_id = m_item.get('parent_id')
             if parent_id and parent_id in menus_dict:
-                menus_dict[parent_id]['children'].append(menu_item)
+                menus_dict[parent_id]['children'].append(m_item)
             else:
-                nested_menus.append(menu_item)
+                nested_menus.append(m_item)
 
-        # 6. Return data ke React
+        subco_access = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+
         return jsonify({
             'success': True,
             'is_configured': True,
             'user': {
-                'id': user_result['id'],
-                'name': user_result['nama'],
-                'role_app': user_result['local_role'],
-                'allowed_subcompanies': allowed_subcompanies,
+                'id': user.id,
+                'nama': user.nama,
+                'email': user.email,
+                'role_app': role_name,
+                'allowed_subcompanies': [s.sub_company_id for s in subco_access],
                 'menus': nested_menus,
-                'permissions': crud_permissions 
+                'permissions': crud_permissions
             }
         })
 

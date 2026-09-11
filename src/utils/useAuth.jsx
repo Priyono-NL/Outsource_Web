@@ -1,6 +1,6 @@
 // src/utils/useAuth.jsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import api from '../api/api'; // Menggunakan Axios Client yang sudah kamu buat
+import api from '../api/api';
 import { getCookie, removeCookie, redirectToSSOLogin, redirectToSSOLogout } from './sso';
 
 const AuthContext = createContext(null);
@@ -12,134 +12,131 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isConfigured, setIsConfigured] = useState(true);
 
-  const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'OUTSOURCE_WEB';
+  const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'CRSHR';
 
   useEffect(() => {
-    let isMounted = true; // Cleanup flag untuk mencegah memory leak / state update pada unmounted component
-
-    // 1. TANGKAP TOKEN DARI URL (Wajib untuk testing beda domain/IP)
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('token');
-
-    let token = getCookie('sso_token'); // Coba baca dari cookie dulu
-
-    // 2. Jika ada token di URL, itu yang kita pakai & simpan ke LocalStorage
-    if (tokenFromUrl) {
-      token = tokenFromUrl;
-      localStorage.setItem('sso_token_backup', token); // Simpan manual untuk IP address
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
-    // 3. Fallback: Jika di cookie tidak ada, ambil dari backup LocalStorage
-    if (!token) {
-      token = localStorage.getItem('sso_token_backup');
-    }
-
-    // 4. Jika benar-benar tidak ada token, baru lempar ke SSO
-    if (!token) {
-      redirectToSSOLogin();
+    if (sessionStorage.getItem('is_logging_out') === 'true') {
+      sessionStorage.removeItem('is_logging_out');
+      setLoading(false);
       return;
     }
 
-    try {
-      // Dekode payload JWT
-      const payloadBase64 = token.split('.')[1];
-      const payload = JSON.parse(atob(payloadBase64));
+    let isMounted = true;
 
-      // Cek Expiration Time
-      const currentTime = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < currentTime) {
-        throw new Error('Token SSO Expired');
-      }
+    const verifyAndSyncSSO = async () => {
+      try {
+        // 1. Ambil token dari URL, Cookie, atau Backup LocalStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenFromUrl = urlParams.get('token');
+        let token = getCookie('sso_token');
 
-      // Validasi Hak Akses Modul Spesifik
-      if (payload.module_access && payload.module_access[MODULE_CODE] === false) {
-        throw new Error(`Unauthorized: User tidak memiliki akses modul ${MODULE_CODE}`);
-      }
+        if (tokenFromUrl) {
+          token = tokenFromUrl;
+          localStorage.setItem('sso_token_backup', token);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
 
-      const ssoRole = payload.module_roles?.[MODULE_CODE] || payload.role || 'viewer';
+        if (!token) {
+          token = localStorage.getItem('sso_token_backup');
+        }
 
-      // 3. Sinkronkan dengan Backend (Python/PHP) Menggunakan AXIOS
-      api.post('/api/auth/sso-sync', {
-        sso_user_id: payload.user_id,
-        email: payload.email,
-        nama: payload.name,
-        department: payload.department,
-        role_sso: ssoRole
-      })
-      .then((response) => {
+        if (!token) {
+          redirectToSSOLogin();
+          return;
+        }
+
+        // 2. Dekode & Validasi Token
+        const payloadBase64 = token.split('.')[1];
+        const payload = JSON.parse(atob(payloadBase64));
+
+        const currentTime = Math.floor(Date.now() / 1000);
+        if (payload.exp && payload.exp < currentTime) {
+          throw new Error('Token SSO Expired');
+        }
+
+        if (payload.module_access && payload.module_access[MODULE_CODE] === false) {
+          throw new Error(`Unauthorized: User tidak memiliki akses modul ${MODULE_CODE}`);
+        }
+
+        const ssoRole = payload.module_roles?.[MODULE_CODE] || payload.role || 'viewer';
+
+        // 3. Tembak API Backend dengan Async/Await
+        const response = await api.post('/api/auth/sso-sync', {
+          sso_user_id: payload.user_id || payload.sub || payload.email,
+          email: payload.email,
+          nama: payload.name || payload.nama,
+          department: payload.department,
+          role_sso: ssoRole
+        });
+
         if (!isMounted) return;
 
         const res = response.data;
         if (res.success) {
+          setIsAuthenticated(true);
           if (res.is_configured === false) {
             setIsConfigured(false);
+            setUser(res.user);
           } else {
             setIsConfigured(true);
             setUser(res.user);
-            setRole(res.user.role_app); // Role Lokal dari MySQL
-            setIsAuthenticated(true);
+            setRole(res.user.role_app);
           }
         }
-      })
-      .catch((err) => {
-        console.error('Gagal verifikasi ke backend lokal via Axios:', err);
+      } catch (error) {
+        console.error('SSO Validation Error:', error);
+        removeCookie('sso_token');
+        localStorage.removeItem('sso_token_backup');
+        
         if (isMounted) {
-          removeCookie('sso_token');
           redirectToSSOLogin();
         }
-      })
-      .finally(() => {
+      } finally {
+        // PASTI DIEKSEKUSI: Matikan loading apapun yang terjadi
         if (isMounted) {
-          setLoading(false); // Memastikan loading dimatikan setelah request selesai
+          setLoading(false);
         }
-      });
+      }
+    };
 
-    } catch (error) {
-      console.error('SSO Validation Error:', error);
-      removeCookie('sso_token');
-      redirectToSSOLogin();
-    }
+    verifyAndSyncSSO();
 
     return () => {
-      isMounted = false; // Cleanup
+      isMounted = false;
     };
   }, []);
 
-  // 4. Polling Cookie untuk Single Sign-Out Sync (Setiap 3 detik)
+  // Polling Cookie untuk Single Sign-Out Sync
   useEffect(() => {
     if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
-      // 1. Coba baca dari Cookie
-      let token = getCookie('sso_token');
-      
-      // 2. Jika di Cookie kosong (karena pakai IP Address), cari di backup LocalStorage
-      if (!token) {
-        token = localStorage.getItem('sso_token_backup');
-      }
+      let token = getCookie('sso_token') || localStorage.getItem('sso_token_backup');
 
-      // 3. Jika kedua tempat tersebut BENAR-BENAR KOSONG, baru lempar balik ke SSO
       if (!token) {
         console.log("Sesi terhapus, mengembalikan ke SSO...");
         setIsAuthenticated(false);
         setUser(null);
         redirectToSSOLogin();
       }
-    }, 3000); // Mengecek setiap 3 detik
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
   const logout = () => {
+    setIsAuthenticated(false);
+    setUser(null);
     removeCookie('sso_token');
     removeCookie('sso_user');
-    localStorage.removeItem('sso_token_backup');
     localStorage.clear();
-    sessionStorage.clear();
-    redirectToSSOLogout();
+    sessionStorage.clear();    
+    sessionStorage.setItem('is_logging_out', 'true'); 
+    setTimeout(() => {
+      redirectToSSOLogout();
+    }, 100);
   };
-
+  
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center vh-100 bg-light">

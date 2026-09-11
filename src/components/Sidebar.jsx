@@ -4,6 +4,9 @@ import { useAuth } from '../utils/useAuth';
 
 /* ── Reusable nav item (Link Tunggal) ── */
 const NavItem = ({ route, isExpanded }) => {
+  // Ambil label dari title, label, atau name (fallback safe)
+  const menuTitle = route.title || route.label || route.name;
+
   // Jika path kosong/tidak ada, jangan render
   if (!route.path) return null;
 
@@ -12,11 +15,11 @@ const NavItem = ({ route, isExpanded }) => {
       <NavLink
         to={route.path}
         end={route.path === '/'}
-        title={isExpanded ? undefined : route.label}
+        title={isExpanded ? undefined : menuTitle}
         className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
       >
-        <i className={`bi ${route.icon} sidebar-icon`} />
-        {isExpanded && <span className="sidebar-label">{route.label}</span>}
+        <i className={`bi ${route.icon || 'bi-circle'} sidebar-icon`} />
+        {isExpanded && <span className="sidebar-label">{menuTitle}</span>}
       </NavLink>
     </li>
   );
@@ -25,6 +28,7 @@ const NavItem = ({ route, isExpanded }) => {
 /* ── Komponen Folder (Dropdown) ── */
 const NavFolder = ({ route, isExpanded }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const menuTitle = route.title || route.label || route.name;
 
   // Mencegat event bawaan template jika ada
   const handleToggleFolder = (e) => {
@@ -54,10 +58,10 @@ const NavFolder = ({ route, isExpanded }) => {
           textAlign: 'left'
         }}
       >
-        <i className={`bi ${route.icon} sidebar-icon`} style={{ marginRight: isExpanded ? '10px' : '0' }} />
+        <i className={`bi ${route.icon || 'bi-folder'} sidebar-icon`} style={{ marginRight: isExpanded ? '10px' : '0' }} />
         {isExpanded && (
           <>
-            <span className="sidebar-label">{route.label}</span>
+            <span className="sidebar-label">{menuTitle}</span>
             <i className={`bi bi-chevron-${isOpen ? 'down' : 'right'} ms-auto`} />
           </>
         )}
@@ -95,11 +99,11 @@ const Sidebar = ({ isExpanded }) => {
   // 1. Ambil data user dari Context SSO
   const { user } = useAuth();
   
-  // 2. Ambil array 'menus' hasil generate backend Python (Sudah difilter & dibentuk hirarki)
+  // 2. Ambil array 'menus' hasil generate backend Python
   const dynamicRoutes = user?.menus || []; 
 
-  // 3. Kelompokkan route per group number (menggunakan group dari database)
-  const groups = [...new Set(dynamicRoutes.map(r => r.group))].sort();
+  // 3. Kelompokkan route per group_no / group (dengan fallback nilai default 1)
+  const groups = [...new Set(dynamicRoutes.map(r => r.group_no ?? r.group ?? 1))].sort();
 
   return (
     <ul className="sidebar-nav">
@@ -110,7 +114,7 @@ const Sidebar = ({ isExpanded }) => {
           
           {/* Render menu berdasarkan grupnya */}
           {dynamicRoutes
-            .filter(r => r.group === g)
+            .filter(r => (r.group_no ?? r.group ?? 1) === g)
             .map((route, index) => (
               route.children && route.children.length > 0 ? (
                 <NavFolder key={`folder-${route.id || index}`} route={route} isExpanded={isExpanded} />

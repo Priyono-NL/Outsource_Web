@@ -14,10 +14,13 @@ class UserSubcompanyAccess(db.Model):
 class User(db.Model):
     __tablename__ = 'hr_users'
     id = db.Column(db.Integer, primary_key=True)
-    nama = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(100), nullable=False)
-    department = db.Column(db.String(100), nullable=False)        
+    sso_user_id = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(100), nullable=True)
+    nama = db.Column(db.String(150), nullable=True)
+    department = db.Column(db.String(100), nullable=True)
+    role_sso = db.Column(db.String(50), nullable=True)
     local_role_id = db.Column(db.Integer, db.ForeignKey('hr_roles.id'), nullable=True)
+    status = db.Column(db.String(20), default='pending')
 
 class AppMenu(db.Model):
     __tablename__ = 'hr_app_menus'
