@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 function AsetTab({ initialData }) {
   const [isNoLimit, setIsNoLimit] = useState(false);
+  const [autoConvert, setAutoConvert] = useState(true); 
   const [formData, setFormData] = useState({
     card_number: '',
     c_valid_from: '',
@@ -16,8 +17,50 @@ function AsetTab({ initialData }) {
         c_valid_to: initialData.c_valid_to || ''
       });
       setIsNoLimit(!initialData.c_valid_to);
+      if (initialData.card_number) {
+        const hasDot = String(initialData.card_number).includes('.');
+        setAutoConvert(hasDot);
+      }
     }
   }, [initialData]);
+
+  // Logika Konversi Wiegand
+  const parseCardNumber = (rawInput) => {
+    const N = String(rawInput).trim();
+    if (!N) return '';
+    if (N.includes('.')) return N; 
+
+    try {
+      if (!isNaN(N)) {
+        const hexStr = parseInt(N, 10).toString(16).toLowerCase();
+        
+        if (hexStr.length <= 4) {
+          const part2Dec = parseInt(hexStr, 16).toString().padStart(5, '0');
+          return `00000.${part2Dec}`;
+        } else {
+          const part1Hex = hexStr.substring(0, hexStr.length - 4);
+          const part2Hex = hexStr.substring(hexStr.length - 4);
+
+          const part1Dec = parseInt(part1Hex, 16).toString();
+          const part2Dec = parseInt(part2Hex, 16).toString();
+
+          return `${part1Dec.padStart(5, '0')}.${part2Dec.padStart(5, '0')}`;
+        }
+      }
+    } catch (error) {
+      console.error("Gagal konversi kartu:", error);
+    }
+    return N; 
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && e.target.name === 'card_number') {
+      e.preventDefault(); 
+      const rawValue = e.target.value;
+      const finalCardValue = autoConvert ? parseCardNumber(rawValue) : String(rawValue).trim();
+      setFormData(prev => ({ ...prev, card_number: finalCardValue }));
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -27,22 +70,45 @@ function AsetTab({ initialData }) {
   return (
     <div className="animate__animated animate__fadeIn">
       <div className="row g-2">
-        
         <div className="col-md-12 mb-1">
-          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
-            Absence Card Number (Nomor Kartu)<span className="text-danger">*</span>
-          </label>
+          <div className="d-flex justify-content-between align-items-end mb-1">
+            <label className="form-label mb-0" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
+              Absence Card Number<span className="text-danger">*</span>
+            </label>
+            
+            {/* TOGGLE SWITCH BOOTSTRAP */}
+            <div className="form-check form-switch m-0 p-0 d-flex align-items-center">
+              <label 
+                className="form-check-label me-5 text-muted" 
+                htmlFor="toggleConvertCard" 
+                style={{ fontSize: '0.7rem', cursor: 'pointer' }}
+              >
+                {autoConvert ? "Format XXXXX.XXXXX (Wiegand)" : "Format Asli (XXXXXXXXXX)"}
+              </label>
+              <input 
+                className="form-check-input ms-1 mt-0" 
+                type="checkbox" 
+                id="toggleConvertCard"
+                checked={autoConvert}
+                onChange={(e) => setAutoConvert(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+            </div>
+          </div>
+
           <div className="input-group input-group-sm">
-            <span className="input-group-text bg-light text-muted border-end-0">
+            <span className={`input-group-text border-end-0 ${autoConvert ? 'bg-primary text-white' : 'bg-warning text-dark'}`}>
               <i className="bi bi-credit-card-2-front" style={{ fontSize: '0.8rem' }}></i>
             </span>
             <input 
               type="text" 
               name="card_number" 
-              className="form-control form-control-sm border-start-0" 
-              placeholder="Scan atau ketik nomor kartu..." 
+              className="form-control form-control-sm border-start-0 fw-bold" 
+              placeholder="Scan/ Ketik Nomor kartu..." 
               value={formData.card_number}
               onChange={handleInputChange}
+              onKeyDown={handleKeyDown} 
+              autoComplete="off"        
               required
             />
           </div>
@@ -95,11 +161,10 @@ function AsetTab({ initialData }) {
 
       </div>
 
-      {/* Info Box Tipis untuk estetika */}
       <div className="mt-4 p-2 rounded border bg-light d-flex align-items-center">
         <i className="bi bi-info-circle-fill me-2 text-primary" style={{ fontSize: '0.9rem' }}></i>
         <span className="text-muted" style={{ fontSize: '0.7rem', lineHeight: '1.2' }}>
-          Pastikan nomor kartu sesuai dengan fisik kartu absensi yang dipegang karyawan.
+          Pastikan kursor berada di kotak Nomor Kartu, lalu Tap fisik kartu pada alat.
         </span>
       </div>
     </div>
