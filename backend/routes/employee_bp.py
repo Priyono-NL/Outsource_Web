@@ -4,7 +4,9 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func, and_
+
 from extensions import db
+
 from model.blacklist import OsBlacklist
 from model.employment import OsEmployment
 from model.person import OsPerson
@@ -47,6 +49,7 @@ def get_allowed_subcompanies():
     access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
     return [a.sub_company_id for a in access_records]
 
+
 @employee_bp.route('/employee')
 def index():
     try:
@@ -67,7 +70,7 @@ def index():
             query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
             if sub_company_id and sub_company_id not in allowed_subcos and sub_company_id not in ['TYPE_OS', 'TYPE_VENDOR']:
                 return jsonify({"status": "error", "message": "Akses ditolak"}), 403
-        
+
         if search:
             query = query.join(OsPerson).outerjoin(OsCard)    
             query = query.filter(
@@ -121,9 +124,8 @@ def index():
         }), 200
         
     except Exception as e:
-        import traceback
-        traceback.print_exc()    
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @employee_bp.route('/employee/search-autocomplete', methods=['GET'])
 def search_autocomplete():
@@ -136,13 +138,9 @@ def search_autocomplete():
         base_query = db.session.query(OsEmployment, OsPerson)\
             .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
 
-        # =================================================================
-        # BENTENG KEAMANAN: FILTER BERDASARKAN HAK AKSES USER (SSO)
-        # =================================================================
         allowed_subcos = get_allowed_subcompanies()
         if allowed_subcos:
             base_query = base_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
-        # =================================================================
 
         results = base_query.filter(
             or_(
@@ -153,10 +151,7 @@ def search_autocomplete():
         
         data_result = []
         for emp, person in results:
-            is_active = False
-            if emp.valid_from and emp.valid_from <= today:
-                if emp.valid_to is None or emp.valid_to >= today:
-                    is_active = True
+            is_active = bool(emp.valid_from and emp.valid_from <= today and (emp.valid_to is None or emp.valid_to >= today))
             
             data_result.append({
                 "emp_pk_id": emp.id,
@@ -185,7 +180,6 @@ def search_all():
         base_os_query = db.session.query(OsEmployment, OsPerson)\
             .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
 
-        # Pembatasan Hak Akses Subcompany
         allowed_subcos = get_allowed_subcompanies()
         if allowed_subcos:
             base_os_query = base_os_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
@@ -198,10 +192,7 @@ def search_all():
         ).all()
 
         for emp, person in results_os:
-            is_active = False
-            if emp.valid_from and emp.valid_from <= today:
-                if emp.valid_to is None or emp.valid_to >= today:
-                    is_active = True
+            is_active = bool(emp.valid_from and emp.valid_from <= today and (emp.valid_to is None or emp.valid_to >= today))
 
             data_result.append({
                 "source": "OS",
@@ -213,7 +204,6 @@ def search_all():
                 "status_text": "Aktif" if is_active else "Non-Aktif"
             })
 
-        # Data OB / SAP hanya dicari jika user punya akses global / tanpa pembatasan
         if not allowed_subcos:
             results_ob = ObEmployee.query.filter(
                 or_(
@@ -237,6 +227,7 @@ def search_all():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
 def search_employee(emp_id):
     try:
@@ -254,6 +245,7 @@ def search_employee(emp_id):
         return jsonify({"status": "error", "message": "Employee ID tidak ditemukan atau akses ditolak"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():
@@ -280,7 +272,6 @@ def add():
             if duplicate_card:
                 raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh record lain.")
         
-        # --- Update/Insert Person ---
         person_id = data.get('person_id')
         if not person_id or person_id == "" or person_id == "undefined":
             target_person = OsPerson(
@@ -301,7 +292,6 @@ def add():
             target_person.religion = data.get('religion', target_person.religion)
             target_person.resident_id = data.get('resident_id', target_person.resident_id)
 
-        # --- Format Penamaan Foto: employeeCode_YYYYMMDD.ext ---
         if 'photo' in request.files:
             file = request.files['photo']
             if file.filename != '':
@@ -316,11 +306,10 @@ def add():
         db.session.flush()
         person_id = target_person.person_id        
 
-        # Validasi Keaktifan NRP
         check_nrp_owner = OsEmployment.query.filter(
             OsEmployment.employee_code == employee_code_input,
             (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
-        ).first()       
+        ).first()        
         if check_nrp_owner and check_nrp_owner.person_id != person_id:
             raise Exception(f"NRP / ID Karyawan '{employee_code_input}' sudah terdaftar milik orang lain.")
 
@@ -370,7 +359,6 @@ def add():
             
         db.session.flush()
 
-        # Insert Employment Baru dengan use_cc
         newEmployment = OsEmployment(
             employee_code = employee_code_input,
             sub_company_id = data.get('sub_company_id'),
@@ -382,7 +370,6 @@ def add():
         db.session.add(newEmployment)
         db.session.flush()
 
-        # Card
         newCard = OsCard(
             employee_id = newEmployment.id,
             card_number = data.get('card_number'),
@@ -391,16 +378,14 @@ def add():
         )
         db.session.add(newCard)
 
-        # Grade        
         newGrade = OsGrade(
             employee_id = newEmployment.id,
             grade = data.get('grade'),
             valid_from = data.get('valid_from'),
             valid_to = data.get('valid_to')
-        )       
+        )        
         db.session.add(newGrade)
 
-        # Type Work
         newType = osType(
             employee_id = newEmployment.id,
             type_worker = data.get('type_worker'),
@@ -410,21 +395,19 @@ def add():
         )
         db.session.add(newType)
 
-        # Cost Center
         selected_cc_id = data.get('cc_id')
         if selected_cc_id:
             master_cc = costCenter.query.get(selected_cc_id)
             if master_cc:
                 newCC = OsCostCenter(
                     employee_id = newEmployment.id,
-                    cc_id = master_cc.cost_center, # Simpan kode (1000)
-                    org_cc_id = master_cc.id,      # Simpan ID unik (1)
+                    cc_id = master_cc.cost_center,
+                    org_cc_id = master_cc.id,
                     valid_from = data.get('valid_from'),
                     valid_to = data.get('valid_to')
-                )       
+                )        
                 db.session.add(newCC)
 
-                # Canteen Allocation
                 cc_def = canteen.query.join(canteenDetail, canteen.canteen_id == canteenDetail.canteen_id)\
                                       .filter(canteenDetail.org_cc_id == master_cc.id).first()
                 if cc_def:
@@ -442,6 +425,7 @@ def add():
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Terjadi kesalahan pada server: " + str(e)}), 500
+
 
 @employee_bp.route('/employee/<int:id>', methods=['PUT'])
 def edit(id):
@@ -476,7 +460,6 @@ def edit(id):
             if duplicate_card:
                 raise Exception(f"Kartu nomor {card_number_input} sudah aktif digunakan oleh karyawan lain.")
 
-        # --- UPDATE MASTER PERSON & PENAMAAN FOTO BARU ---
         target_person = OsPerson.query.get(target_emp.person_id)
         if target_person:
             target_person.name = data.get('nama', target_person.name)
@@ -499,7 +482,6 @@ def edit(id):
             
             db.session.add(target_person)
 
-        # --- UPDATE MASTER EMPLOYMENT & FLAG USE_CC ---
         target_emp.employee_code = employee_code_input
         target_emp.sub_company_id = data.get('sub_company_id')
         target_emp.use_cc = use_cc_input
@@ -507,7 +489,6 @@ def edit(id):
         target_emp.valid_to = data.get('valid_to') or None
         db.session.add(target_emp)
 
-        # --- UPDATE KARTU ---
         c_valid_from = data.get('c_valid_from') or None
         c_valid_to = data.get('c_valid_to') or None
         valid_to_ref = data.get('valid_to') or None
@@ -530,7 +511,6 @@ def edit(id):
             )
             db.session.add(newCard)
 
-        # --- UPDATE GRADE ---
         target_grade = OsGrade.query.filter_by(employee_id=id).first()
         if target_grade:
             target_grade.grade = data.get('grade')
@@ -538,7 +518,6 @@ def edit(id):
             target_grade.valid_to = data.get('valid_to') or None
             db.session.add(target_grade)
 
-        # --- LOGIKA HISTORI TYPE WORKER ---
         new_type_worker = data.get('type_worker')
         new_posisi = data.get('posisi')
         if (new_type_worker or new_posisi) and new_start_date:
@@ -573,7 +552,6 @@ def edit(id):
                 )
                 db.session.add(new_type_rec)
 
-        # --- LOGIKA HISTORI COST CENTER & ALOKASI ---
         new_cc_id = data.get('cc_id')
         if new_cc_id and new_start_date:
             master_cc = costCenter.query.get(new_cc_id)
@@ -655,6 +633,7 @@ def edit(id):
         db.session.rollback()
         return jsonify({"status": "error", "message": "Terjadi kesalahan pada server: " + str(e)}), 500
 
+
 @employee_bp.route('/employee/template', methods=['GET'])
 def template():
     try:
@@ -690,6 +669,7 @@ def template():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @employee_bp.route('/employee/upload', methods=['POST'])
 def upload():
@@ -738,7 +718,6 @@ def upload():
                     adjusted_valid_to = new_start_date - timedelta(days=1)
                     new_valid_to = clean(row.get('Termination Date'))
 
-                    # Person Check
                     target_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
                     if not target_person:
                         target_person = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()
@@ -771,7 +750,6 @@ def upload():
                         db.session.flush()
                         person_id = newPerson.person_id
 
-                    # SubCompany & CC Check
                     subCom_name = str(row['Sub Company']).strip() if clean(row.get('Sub Company')) else ""
                     exist_subCom = SubCompany.query.filter(SubCompany.sub_company_name.ilike(subCom_name)).first()
                     if not exist_subCom:
@@ -782,7 +760,6 @@ def upload():
                     if not exist_cc:
                         raise ValueError(f"Department/CC '{cc_name}' tidak ditemukan.")
 
-                    # SCD Delimit Logic
                     existing_active_emp = OsEmployment.query.filter(
                         OsEmployment.employee_code == emp_code_input,
                         (OsEmployment.valid_to >= new_start_date) | (OsEmployment.valid_to == None)
@@ -810,7 +787,6 @@ def upload():
                                     
                     db.session.flush()
 
-                    # Insert Record Baru
                     newEmployment = OsEmployment(
                         employee_code=emp_code_input,
                         sub_company_id=exist_subCom.sub_company_id,
@@ -822,7 +798,6 @@ def upload():
                     db.session.add(newEmployment)
                     db.session.flush()
 
-                    # Card
                     card_num = clean(row.get('Card Number'))
                     if card_num and str(card_num).lower() != 'none':
                         db.session.add(OsCard(
@@ -832,7 +807,6 @@ def upload():
                             valid_to=clean(row.get('Card Valid To'))
                         ))
 
-                    # Grade
                     grade_val = clean(row.get('Grade'))
                     if grade_val:
                         db.session.add(OsGrade(
@@ -842,7 +816,6 @@ def upload():
                             valid_to=new_valid_to
                         ))
                     
-                    # Type Work
                     type_val = clean(row.get('Type Worker'))
                     posisi_val = clean(row.get('Posisi'))
                     if type_val or posisi_val:
@@ -854,7 +827,6 @@ def upload():
                             valid_to=new_valid_to
                         ))
 
-                    # Cost Center
                     db.session.add(OsCostCenter(
                         employee_id=newEmployment.id,
                         cc_id=exist_cc.cost_center,
@@ -902,6 +874,7 @@ def upload():
         db.session.rollback()
         return jsonify({"message": f"Terjadi kesalahan fatal: {str(e)}"}), 500
 
+
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():
     try:
@@ -913,7 +886,6 @@ def export():
         query = OsEmployment.query
         now = datetime.now()
 
-        # Filter Keamanan SSO untuk Export
         allowed_subcos = get_allowed_subcompanies()
         if allowed_subcos:
             query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
@@ -987,6 +959,7 @@ def export():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @employee_bp.route('/employee/deactivate/<int:pk_id>', methods=['PUT'])
 def deactivate_employee(pk_id):
     try:
@@ -1016,46 +989,65 @@ def deactivate_employee(pk_id):
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @employee_bp.route("/employee/stats", methods=['GET'])
 def get_employee_stats():
-    now = datetime.now()
-    
-    total_active = OsEmployment.query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
-    total_inactive = OsEmployment.query.filter(OsEmployment.valid_to <= now).count()
+    try:
+        now = datetime.now()
+        allowed_subcos = get_allowed_subcompanies()
 
-    statsCC_raw = db.session.query(
-        OsCostCenter.org_cc_id, 
-        func.count(OsCostCenter.id).label('total')
-    ).filter(
-        (OsCostCenter.valid_to >= now) | (OsCostCenter.valid_to == None)
-    ).group_by(OsCostCenter.org_cc_id).all()
-    stats_cc = {row.org_cc_id: row.total for row in statsCC_raw}
+        # 1. Base Query Employment (Terfilter Hak Akses SSO)
+        base_emp = OsEmployment.query
+        if allowed_subcos:
+            base_emp = base_emp.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
 
-    statSub_raw = db.session.query(
-        OsEmployment.sub_company_id,
-        func.count(OsEmployment.id).label('total')
-    ).filter(
-        (OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)
-    ).group_by(OsEmployment.sub_company_id).all()
-    stats_sub = {row.sub_company_id: row.total for row in statSub_raw}
+        # Total Aktif & Tidak Aktif
+        total_active = base_emp.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
+        total_inactive = base_emp.filter(OsEmployment.valid_to < now).count()
 
-    cost_centers = costCenter.query.all()
-    sub_company = SubCompany.query.filter(SubCompany.type_company == 'OS')
-    cc_aktif = {}
-    sub_aktif = {}
-    
-    for cc in cost_centers:
-        cc_aktif[cc.org_name] = stats_cc.get(cc.id, 0)
+        # 2. Total per Cost Center (Di-JOIN langsung ke OsEmployment agar filter Subcompany presisi)
+        cc_query = db.session.query(
+            OsCostCenter.org_cc_id, 
+            func.count(OsCostCenter.id).label('total')
+        ).join(OsEmployment, OsCostCenter.employee_id == OsEmployment.id)\
+         .filter((OsCostCenter.valid_to >= now) | (OsCostCenter.valid_to == None))
+        
+        if allowed_subcos:
+            cc_query = cc_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+            
+        stats_cc = {row.org_cc_id: row.total for row in cc_query.group_by(OsCostCenter.org_cc_id).all()}
 
-    for sub in sub_company:
-        sub_aktif[sub.sub_company_name] = stats_sub.get(sub.sub_company_id, 0)
+        # 3. Total per Subcompany
+        sub_query = db.session.query(
+            OsEmployment.sub_company_id,
+            func.count(OsEmployment.id).label('total')
+        ).filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
+        
+        if allowed_subcos:
+            sub_query = sub_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+            
+        stats_sub = {row.sub_company_id: row.total for row in sub_query.group_by(OsEmployment.sub_company_id).all()}
 
-    return jsonify({
-        "status": "success",
-        "data": {
-            "all_total_active": total_active,
-            "all_total_inactive": total_inactive,
-            "active_per_cost_center": cc_aktif,
-            "active_per_subCom": sub_aktif
-        }
-    }), 200
+        # Map Ke Nama Master (Satu kali query massal tanpa loop individual query)
+        all_cc = costCenter.query.all()
+        
+        sub_query_master = SubCompany.query.filter(SubCompany.type_company == 'OS')
+        if allowed_subcos:
+            sub_query_master = sub_query_master.filter(SubCompany.sub_company_id.in_(allowed_subcos))
+        all_sub = sub_query_master.all()
+
+        cc_aktif = {cc.org_name: stats_cc.get(cc.id, 0) for cc in all_cc if stats_cc.get(cc.id, 0) > 0}
+        sub_aktif = {sub.sub_company_name: stats_sub.get(sub.sub_company_id, 0) for sub in all_sub}
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "all_total_active": total_active,
+                "all_total_inactive": total_inactive,
+                "active_per_cost_center": cc_aktif,
+                "active_per_subCom": sub_aktif
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
