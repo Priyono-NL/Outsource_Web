@@ -92,5 +92,4 @@ export const componentRegistry = {
   // --- System & Auth Routes ---
   '/auth/callback': <AuthCallback />,
   '/user-access': <UserManagement />,
-  '/role-permission': <RolePermission />,
 };

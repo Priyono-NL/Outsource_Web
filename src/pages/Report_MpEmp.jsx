@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
-import { saveAs } from 'file-saver'; 
 
 import api from '../api/api';
 import { Toast } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
+import { saveAs } from 'file-saver'; 
+import { useAuth } from '../utils/useAuth';
 
 import PageHeader from '../components/PageHeader';
 import MpEmp_Table from '../components/absensi_all/MpEmp_Table';
@@ -21,6 +22,8 @@ const Report_MpEmp = () => {
 
   const crud = useCrudPage();
   const todayStr = getTodayString();
+  const { user } = useAuth();
+  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
 
   const [subCompanies, setSubCompanies] = useState([]);
   const [subCompanyInput, setSubCompanyInput] = useState('');
@@ -49,10 +52,14 @@ const Report_MpEmp = () => {
         ]);
         setSubCompanies(resSub.data.data);
         setDepartments(resDept.data.data);
+        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
+          setSubCompanyInput(resSub.data.data[0].sub_company_id);
+          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        }
       } catch { /* silent */ }
     };
-    load();
-  }, []);
+    if (user) load();
+  }, [user]);
 
   // Helper untuk mengubah state sekaligus menyalakan flag Dirty Filter
   const handleFilterChange = (setter, value) => {
@@ -102,30 +109,14 @@ const Report_MpEmp = () => {
     }
   };
 
-  // --- STYLING MODULAR: CSS-in-JS untuk Select Kompak ---
-  const compactSelectStyle = {
-    control: (base) => ({ 
-      ...base, 
-      minHeight: 30, 
-      fontSize: 12,
-      boxShadow: 'none'
-    }),
-    valueContainer: (base) => ({ ...base, padding: '0px 8px' }),
-    dropdownIndicator: (base) => ({ ...base, padding: 4 }),
-    clearIndicator: (base) => ({ ...base, padding: 4 }),
-    option: (base) => ({ ...base, fontSize: 12 }),
-    menuPortal: (base) => ({ ...base, zIndex: 9999 })
-  };
-
-  const subCompanyOptions = [
-    { value: '', label: 'Semua Sub Company' },
-    { value: 'TYPE_OS', label: 'Outsource' },
-    { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
-    ...subCompanies.map(sc => ({ 
-      value: sc.sub_company_id, 
-      label: sc.sub_company_name 
-    })),
-  ];
+  const subCompanyOptions = isRestricted
+    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+    : [
+        { value: '', label: 'Semua Sub Company' },
+        { value: 'TYPE_OS', label: 'Outsource' },
+        { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
+        ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+      ];
 
   const departmentOptions = [
     { value: '', label: 'Semua Department' },
@@ -150,7 +141,6 @@ const Report_MpEmp = () => {
               isClearable 
               isSearchable
               menuPortalTarget={document.body}
-              styles={compactSelectStyle}
             />
           </div>
 
@@ -163,7 +153,6 @@ const Report_MpEmp = () => {
               onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
               isClearable isSearchable
               menuPortalTarget={document.body}
-              styles={compactSelectStyle}
             />
           </div>
 

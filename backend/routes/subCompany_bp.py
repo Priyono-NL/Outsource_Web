@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from model.subCompany import SubCompany
+from model.hr_models import User, UserSubcompanyAccess
 
 subCom_bp = Blueprint('subCom_bp', __name__)
 
@@ -11,6 +12,16 @@ def index():
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
         query = SubCompany.query
+
+        user_email = request.headers.get('X-User-Email')
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                if allowed_access:
+                    query = query.filter(SubCompany.sub_company_id.in_(allowed_access))
+        
         if search:                    
             query = query.filter(SubCompany.sub_company_name.ilike(f"%{search}%"))
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)

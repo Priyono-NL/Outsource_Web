@@ -5,6 +5,7 @@ import Select from 'react-select';
 import { downloadLogFile } from '../utils/logDownloader';
 import api from '../api/api';
 import { useCrudPage } from '../utils/useCrudPage';
+import { useAuth } from '../utils/useAuth';
 
 import PageHeader from '../components/PageHeader';
 import LoadingButton from '../components/LoadingButton';
@@ -14,6 +15,9 @@ import ViewDetails from '../components/employment/ViewDetails';
 
 const Employment = () => {
   const crud = useCrudPage();
+  const { user } = useAuth();
+  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+
   const [viewForm, setViewForm]       = useState(false);
   const [viewData, setViewData]       = useState(null);
   const [editData, setEditData]       = useState(null);
@@ -51,10 +55,14 @@ const Employment = () => {
         ]);
         setSubCompanies(resSub.data.data);
         setDepartments(resDept.data.data);
+        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
+          setSubCompanyInput(resSub.data.data[0].sub_company_id);
+          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        }
       } catch { /* silent */ }
     };
-    load();
-  }, []);
+    if (user) load();
+  }, [user]);
 
   const handleFilterChange = (setter, value) => {
     setter(value);
@@ -237,12 +245,15 @@ const Employment = () => {
     }
   };
 
-  const subCompanyOptions = [
-    { value: '', label: 'Semua Sub Company' },
-    { value: 'TYPE_OS', label: 'Outsource' },
-    { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
-    ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
-  ];
+  const subCompanyOptions = isRestricted
+    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+    : [
+        { value: '', label: 'Semua Sub Company' },
+        { value: 'TYPE_OS', label: 'Outsource' },
+        { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
+        ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+      ];
+      
   const departmentOptions = [
     { value: '', label: 'Semua Department' },
     ...departments.map(d => ({ value: d.id, label: d.org_name })),

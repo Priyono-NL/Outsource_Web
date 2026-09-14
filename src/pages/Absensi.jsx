@@ -5,6 +5,7 @@ import Select from 'react-select';
 import api from '../api/api';
 import { Toast, Confirm } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
+import { useAuth } from '../utils/useAuth';
 
 import PageHeader from '../components/PageHeader';
 import LoadingButton from '../components/LoadingButton';
@@ -28,6 +29,9 @@ const Absensi = () => {
   };
 
   const crud = useCrudPage();
+  const { user } = useAuth();
+  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  
   const [editData, setEditData] = useState(null);
 
   const [subCompanies, setSubCompanies] = useState([]);
@@ -60,10 +64,14 @@ const Absensi = () => {
           api.get('/subcom?page=1&pageSize=200'),
         ]);
         setSubCompanies(resSub.data.data || []);
+        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
+          setSubCompanyInput(resSub.data.data[0].sub_company_id);
+          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        }
       } catch { /* silent */ }
     };
-    load();
-  }, []);
+    if (user) load();
+  }, [user]);
 
   // HELPER BARU: Mengubah state filter & menyalakan status dirty
   const handleFilterChange = (setter, value) => {
@@ -157,13 +165,14 @@ const Absensi = () => {
     }
   };
 
-  const subCompanyOptions = [
-    { value: '', label: 'Semua Sub Company' },
-    { value: 'TYPE_OS', label: 'Outsource' },
-    { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
-    ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
-  ];
-
+  const subCompanyOptions = isRestricted
+    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+    : [
+        { value: '', label: 'Semua Sub Company' },
+        { value: 'TYPE_OS', label: 'Outsource' },
+        { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
+        ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+      ];
   const statusOptions = [
     { value: 'all_data', label: 'Semua Data Absensi' },
     { value: 'lengkap', label: 'Data Lengkap' },

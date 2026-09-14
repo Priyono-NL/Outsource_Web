@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver';
 import api from '../api/api';
 import { Toast } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
+import { useAuth } from '../utils/useAuth';
 
 import PageHeader from '../components/PageHeader';
 import AccessReport_Table from '../components/absensi_all/AccessReport_Table';
@@ -21,6 +22,8 @@ const Report_Access = () => {
 
   const crud = useCrudPage();
   const todayStr = getTodayString();
+  const { user } = useAuth();
+  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
 
   const [subCompanies, setSubCompanies] = useState([]);
   const [subCompanyInput, setSubCompanyInput] = useState('');
@@ -48,10 +51,14 @@ const Report_Access = () => {
         ]);
         setSubCompanies(resSub.data.data);
         setDepartments(resDept.data.data);
+        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
+          setSubCompanyInput(resSub.data.data[0].sub_company_id);
+          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        }
       } catch { /* silent */ }
     };
-    load();
-  }, []);
+    if (user) load();
+  }, [user]);
 
   // Update State yang diaplikasikan saat tombol "Terapkan" ditekan
   const handleApplyFilters = () => {
@@ -95,15 +102,14 @@ const Report_Access = () => {
     }
   };
 
-  const subCompanyOptions = [
-    { value: '', label: 'Semua Sub Company' },
-    { value: 'TYPE_OS', label: 'Outsource' },
-    { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
-    ...subCompanies.map(sc => ({ 
-      value: sc.sub_company_id, 
-      label: sc.sub_company_name 
-    })),
-  ];
+  const subCompanyOptions = isRestricted
+    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+    : [
+        { value: '', label: 'Semua Sub Company' },
+        { value: 'TYPE_OS', label: 'Outsource' },
+        { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
+        ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+      ];
 
   const departmentOptions = [
     { value: '', label: 'Semua Department' },
