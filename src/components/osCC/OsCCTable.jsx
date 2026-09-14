@@ -3,7 +3,7 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => { 
+const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm, subCompanyFilter }) => { 
        
     const [OsCC, setOsCC] = useState([]);   
     const [error, setError] = useState(null);
@@ -13,7 +13,7 @@ const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/oscc?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
+            const response = await api.get(`/oscc?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}&subcompany=${subCompanyFilter}`);
             const result = await response.data;
             if (result.status === 'success') { 
                 setOsCC(result.data);
@@ -50,11 +50,11 @@ const OsCCTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, filterTerm]);
+    }, [searchTerm, filterTerm, subCompanyFilter]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
+    }, [currentPage, refreshTrigger, searchTerm, filterTerm, subCompanyFilter]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        

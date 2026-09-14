@@ -125,9 +125,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.clear();
     sessionStorage.clear();    
     sessionStorage.setItem('is_logging_out', 'true'); 
-    setTimeout(() => {
-      redirectToSSOLogout();
-    }, 100);
+    redirectToSSOLogout();
   };
   
   if (loading) {

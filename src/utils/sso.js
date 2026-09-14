@@ -34,7 +34,6 @@ export const redirectToSSOLogin = () => {
 };
 
 export const redirectToSSOLogout = () => {
-  const currentUrl = window.location.origin + window.location.pathname;
   const ssoUrl = import.meta.env.VITE_SSO_URL || 'https://account.ceresnl.com';
-  window.location.href = `${ssoUrl}/logout?redirect_url=${encodeURIComponent(currentUrl)}`;
+  window.location.href = `${ssoUrl}/logout`;
 };

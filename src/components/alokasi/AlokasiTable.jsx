@@ -3,7 +3,8 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => { 
+// 1. Tangkap props subCompanyFilter
+const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm, subCompanyFilter }) => { 
        
     const [alokasi, setAlokasi] = useState([]);   
     const [error, setError] = useState(null);
@@ -13,8 +14,10 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
-            const result = await response.data;
+            // 2. Sisipkan parameter &subcompany= ke dalam endpoint URL
+            const response = await api.get(`/alokasi?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}&subcompany=${subCompanyFilter || ''}`);
+            const result = response.data; // Hapus await, Axios otomatis mem-parse JSON
+            
             if (result.status === 'success') { 
                 setAlokasi(result.data);
                 setTotalPages(result.total_page);
@@ -48,13 +51,16 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
         });
     };
 
+    // 3. Reset halaman ke 1 jika filter berubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, filterTerm]);
+    }, [searchTerm, filterTerm, subCompanyFilter]);
 
+    // 4. Trigger pemanggilan data jika subCompanyFilter berubah
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, refreshTrigger, searchTerm, filterTerm, subCompanyFilter]);
 
     return (<>
         {error && <div className="alert alert-danger">{error}</div>}        
@@ -79,7 +85,7 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
                         <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
                         <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
                         <td>
-                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
+                            <button className="btn-app btn-ghost-app btn-sm-app me-1" onClick={() => onEditClick(emp)}>
                                 <i className="bi bi-pencil-square"></i>
                             </button>
                             <button className="btn-app btn-danger-app btn-sm-app"
@@ -100,4 +106,5 @@ const AlokasiTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =
         </div>        
     </>)
 };
+
 export default AlokasiTable;

@@ -7,6 +7,8 @@ from model.alokasi import Alokasi
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.ob_emp import ObEmployee
+# 1. Import Model Hak Akses SSO
+from model.hr_models import User, UserSubcompanyAccess
 
 alokasi_bp = Blueprint('alokasi_bp', __name__)
 
@@ -16,43 +18,83 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 100, type=int)
         search = request.args.get('search', '', type=str)
-        filter = request.args.get('filter', '', type=str)
+        filter_status = request.args.get('filter', '', type=str)
+        req_subco = request.args.get('subcompany', '', type=str) # Tangkap parameter dari React
+        
         query = Alokasi.query
         now = datetime.now()
+
+        # =================================================================
+        # 2. LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO SECURITY CHECK)
+        # =================================================================
+        user_email = request.headers.get('X-User-Email')
+        allowed_access = []
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                
+                # Cegah bypass manual via URL / API tool
+                if allowed_access and req_subco and req_subco not in allowed_access:
+                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+
+        # Tentukan batasan subcompany (apakah dari DB user atau pilihan dropdown UI)
+        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
+        subco_emp_ids = None
+        
+        if subco_filter_active:
+            subco_matches = db.session.query(OsEmployment.id).filter(
+                OsEmployment.sub_company_id.in_(subco_filter_active)
+            ).all()
+            subco_emp_ids = [str(row.id) for row in subco_matches]
+        # =================================================================
 
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
 
-            os_matches = db.session.query(OsEmployment.id).join(
+            # 1. Cari di OsEmployment dengan filter Subcompany
+            os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(search_term),
                     OsPerson.name.ilike(search_term)
                 )
-            ).all()
+            )
             
+            if subco_filter_active:
+                os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+                
+            os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
 
-            ob_matches = db.session.query(ObEmployee.employee_id).filter(
-                or_(
-                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
-                    ObEmployee.employee_name.ilike(search_term)
-                )
-            ).all()
-            
-            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+            # 2. Cari di ObEmployee (hanya jika tidak terhambat filter subcompany spesifik)
+            if not req_subco:
+                ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                    or_(
+                        ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                        ObEmployee.employee_name.ilike(search_term)
+                    )
+                ).all()
+                matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
 
             if matched_employee_ids:
                 query = query.filter(Alokasi.employee_id.in_(matched_employee_ids))
             else:
                 query = query.filter(False)
+        else:
+            # Jika tidak ada kata kunci pencarian, terapkan batasan ID karyawan dari Subcompany
+            if subco_emp_ids is not None:
+                query = query.filter(Alokasi.employee_id.in_(subco_emp_ids))
 
-        if filter == 'active':
+        # Filter Berdasarkan Status Aktif / Inaktif
+        if filter_status == 'active':
             query = query.filter((Alokasi.valid_to >= now) | (Alokasi.valid_to == None))
-        elif filter == 'inactive':
+        elif filter_status == 'inactive':
             query = query.filter(Alokasi.valid_to < now)
+
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
@@ -176,6 +218,9 @@ def submit_bulk():
 def update(id):
     try:
         alokasi = Alokasi.query.filter_by(id=id).first()
+        if not alokasi:
+            return jsonify({"status": "error", "message": "Data alokasi tidak ditemukan"}), 404
+
         data = request.json
         alokasi.employee_id = data.get('employee_id', alokasi.employee_id)
         alokasi.canteen_id = data.get('canteen_id', alokasi.canteen_id)
@@ -188,19 +233,17 @@ def update(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
-    
+
 @alokasi_bp.route('/alokasi/<string:id>', methods=['DELETE'])
 def delete(id):
     try:
         data = Alokasi.query.filter_by(id=id).first()
+        if not data:
+            return jsonify({"status": "error", "message": "Data alokasi tidak ditemukan"}), 404
+
         db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
-    
-# @alokasi_bp.before_request
-# @login_required
-# def before_request():
-#     pass

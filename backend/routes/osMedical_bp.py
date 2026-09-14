@@ -4,7 +4,6 @@ from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
 from datetime import datetime
 from openpyxl.worksheet.datavalidation import DataValidation
-from openpyxl.styles import Font, PatternFill, Alignment
 
 from extensions import db
 from model.medical import medical
@@ -12,6 +11,8 @@ from model.osMedical import osMedical
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.ob_emp import ObEmployee
+# 1. Import Model Hak Akses SSO
+from model.hr_models import User, UserSubcompanyAccess
 
 osMedical_bp = Blueprint('osMedical_bp', __name__)
 
@@ -21,34 +22,74 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
+        req_subco = request.args.get('subcompany', '', type=str) # Tangkap parameter dari React
+        
         query = osMedical.query
+
+        # =================================================================
+        # 2. LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO SECURITY CHECK)
+        # =================================================================
+        user_email = request.headers.get('X-User-Email')
+        allowed_access = []
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                
+                # Cegah bypass manual dari URL/Postman
+                if allowed_access and req_subco and req_subco not in allowed_access:
+                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+
+        # Tentukan batasan subcompany (apakah dari DB user atau pilihan dropdown)
+        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
+        subco_emp_ids = None
+        
+        if subco_filter_active:
+            subco_matches = db.session.query(OsEmployment.id).filter(
+                OsEmployment.sub_company_id.in_(subco_filter_active)
+            ).all()
+            subco_emp_ids = [str(row.id) for row in subco_matches]
+        # =================================================================
 
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
 
-            os_matches = db.session.query(OsEmployment.id).join(
+            # 1. Cari di OsEmployment dengan filter Subcompany
+            os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(search_term),
                     OsPerson.name.ilike(search_term)
                 )
-            ).all()
+            )
+            
+            if subco_filter_active:
+                os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+                
+            os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
 
-            ob_matches = db.session.query(ObEmployee.employee_id).filter(
-                or_(
-                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
-                    ObEmployee.employee_name.ilike(search_term)
-                )
-            ).all()
-            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+            # 2. Cari di ObEmployee (hanya jika tidak terhambat filter subcompany spesifik)
+            if not req_subco:
+                ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                    or_(
+                        ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                        ObEmployee.employee_name.ilike(search_term)
+                    )
+                ).all()
+                matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
 
             if matched_employee_ids:
                 query = query.filter(osMedical.employee_id.in_(matched_employee_ids))
             else:
-                query = query.filter(False) # Tidak ada yang cocok, kembalikan kosong
+                query = query.filter(False)
+        else:
+            # Jika tidak ada pencarian kata kunci, terapkan filter ID karyawan berdasarkan subcompany
+            if subco_emp_ids is not None:
+                query = query.filter(osMedical.employee_id.in_(subco_emp_ids))
 
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
@@ -79,7 +120,7 @@ def add():
         db.session.commit()
         return jsonify({
             "status": "success",
-            "message": f"Data berhasil disimpan!"
+            "message": "Data berhasil disimpan!"
         }), 201     
     except Exception as e:
         db.session.rollback()
@@ -92,6 +133,9 @@ def add():
 def update(id):
     try:
         osMedical_data = osMedical.query.filter_by(id=id).first()
+        if not osMedical_data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
+
         data = request.json
         osMedical_data.employee_id = data.get('employee_id', osMedical_data.employee_id)
         osMedical_data.medical_id = data.get('medical_id', osMedical_data.medical_id)
@@ -108,6 +152,9 @@ def update(id):
 def delete(id):
     try:
         data = osMedical.query.filter_by(id=id).first()
+        if not data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
+
         db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
@@ -119,53 +166,76 @@ def delete(id):
 def export():
     try:
         search = request.args.get('search', '', type=str)
+        req_subco = request.args.get('subcompany', '', type=str)
+        
         query = osMedical.query
+
+        # 3. FILTER AKSES HAK SUBCOMPANY SAAT EXPORT
+        user_email = request.headers.get('X-User-Email')
+        allowed_access = []
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                if allowed_access and req_subco and req_subco not in allowed_access:
+                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+
+        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
 
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
 
-            # 1. Cari di OsEmployment (Data OS)
-            os_matches = db.session.query(OsEmployment.id).join(
+            os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(search_term),
                     OsPerson.name.ilike(search_term)
                 )
-            ).all()
+            )
+            if subco_filter_active:
+                os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+                
+            os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
 
-            # 2. Cari di ObEmployee (Data OB)
-            ob_matches = db.session.query(ObEmployee.employee_id).filter(
-                or_(
-                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
-                    ObEmployee.employee_name.ilike(search_term)
-                )
-            ).all()
-            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+            if not req_subco:
+                ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                    or_(
+                        ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                        ObEmployee.employee_name.ilike(search_term)
+                    )
+                ).all()
+                matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
 
-            # 3. Filter berdasarkan ID yang ditemukan
             if matched_employee_ids:
                 query = query.filter(osMedical.employee_id.in_(matched_employee_ids))
             else:
-                query = query.filter(False) # Tidak ada yang cocok, kembalikan kosong
+                query = query.filter(False)
+        elif subco_filter_active:
+            subco_matches = db.session.query(OsEmployment.id).filter(
+                OsEmployment.sub_company_id.in_(subco_filter_active)
+            ).all()
+            subco_emp_ids = [str(row.id) for row in subco_matches]
+            query = query.filter(osMedical.employee_id.in_(subco_emp_ids))
 
         master = query.all()
         data = []
         for m in master:
             d = m.to_dict()
             data.append({
-                "ID Karyawan": d['employee_code'],
-                "Nama Karyawan": d['employee_name'],
-                "Jenis Medical": d['medical_name'],
-                "Tanggal": d['v_medical_date'],
-                "Hasil": d['medical_result'],
-                "Catatan": d['medical_notes']
+                "ID Karyawan": d.get('employee_code', ''),
+                "Nama Karyawan": d.get('employee_name', ''),
+                "Jenis Medical": d.get('medical_name', ''),
+                "Tanggal": d.get('v_medical_date', ''),
+                "Hasil": d.get('medical_result', ''),
+                "Catatan": d.get('medical_notes', '')
             })
 
         if not data:
-            return jsonify({'status': 'error', 'message': 'tidak ada data'})
+            return jsonify({'status': 'error', 'message': 'tidak ada data untuk diexport'})
             
         df = pd.DataFrame(data)
         output = BytesIO()
@@ -184,20 +254,16 @@ def export():
 @osMedical_bp.route('/osmedical/template', methods=['GET'])
 def template():
     try:
-        # 1. Ambil semua list Jenis Medical dari Database Master
         all_medicals = medical.query.all()
         medical_names = [m.medical_name for m in all_medicals]
         
-        # Buat string pilihan dropdown untuk openpyxl, contoh: '"MCU, Fit to Work, PCR"'
         if medical_names:
             medical_list_str = f'"{",".join(medical_names)}"'
         else:
-            medical_list_str = '"Medical Check Up, Fit to Work"' # Fallback jika master kosong
+            medical_list_str = '"Medical Check Up, Fit to Work"'
 
-        # Pilihan dropdown standar untuk Hasil Medical
         result_list_str = '"SEHAT, TIDAK SEHAT, BEROBAT, PERLU EVALUASI"'
 
-        # 2. Buat DataFrame Template
         example_data = [{
             "ID Employee": "12345",
             "Medical Name": medical_names[0] if medical_names else "Medical Check Up",
@@ -211,20 +277,14 @@ def template():
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import')
             
-            # Akses workbook dan sheet openpyxl untuk menambahkan Dropdown
-            workbook = writer.book
             worksheet = writer.sheets['Template_Import']
 
-            # Set Lebar Kolom agar Rapi
-            worksheet.column_dimensions['A'].width = 18 # ID Employee
-            worksheet.column_dimensions['B'].width = 28 # Medical Name
-            worksheet.column_dimensions['C'].width = 15 # Date
-            worksheet.column_dimensions['D'].width = 20 # Result
-            worksheet.column_dimensions['E'].width = 30 # Notes
+            worksheet.column_dimensions['A'].width = 18 
+            worksheet.column_dimensions['B'].width = 28 
+            worksheet.column_dimensions['C'].width = 15 
+            worksheet.column_dimensions['D'].width = 20 
+            worksheet.column_dimensions['E'].width = 30 
 
-            # ==========================================
-            # 3. BUAT DROPDOWN UNTUK MEDICAL NAME (Kolom B)
-            # ==========================================
             dv_medical = DataValidation(
                 type="list", 
                 formula1=medical_list_str, 
@@ -233,13 +293,9 @@ def template():
             dv_medical.error = 'Silakan pilih Jenis Medical dari daftar dropdown yang tersedia!'
             dv_medical.errorTitle = 'Pilihan Tidak Valid'
             
-            # Pasang Dropdown untuk 500 baris pertama di Kolom B (Medical Name)
             worksheet.add_data_validation(dv_medical)
             dv_medical.add("B2:B500")
 
-            # ==========================================
-            # 4. BUAT DROPDOWN UNTUK RESULT (Kolom D)
-            # ==========================================
             dv_result = DataValidation(
                 type="list", 
                 formula1=result_list_str, 
@@ -248,7 +304,6 @@ def template():
             dv_result.error = 'Silakan pilih Status Hasil dari daftar dropdown!'
             dv_result.errorTitle = 'Pilihan Tidak Valid'
             
-            # Pasang Dropdown untuk 500 baris pertama di Kolom D (Result)
             worksheet.add_data_validation(dv_result)
             dv_result.add("D2:D500")
 
@@ -285,7 +340,6 @@ def upload():
             line_number = index + 2
             try:
                 with db.session.begin_nested():
-                    # cek nrp exist
                     e_code_raw = clean(row.get('ID Employee'))
                     if not e_code_raw:
                         raise ValueError("ID Employee (Employee Code) tidak boleh kosong.")
@@ -293,7 +347,6 @@ def upload():
 
                     target_emp_id = None
 
-                    # 1. CEK KE OS EMPLOYMENT PERTAMA
                     exist_emp_os = OsEmployment.query.filter(
                         OsEmployment.employee_code == e_code,
                         OsEmployment.valid_from <= today,
@@ -303,7 +356,6 @@ def upload():
                     if exist_emp_os:
                         target_emp_id = exist_emp_os.id
                     else:
-                        # 2. CEK KE OB EMPLOYEE JIKA TIDAK ADA DI OS
                         exist_emp_ob = ObEmployee.query.filter(
                             ObEmployee.employee_id == e_code
                         ).first()
@@ -311,14 +363,12 @@ def upload():
                         if exist_emp_ob:
                             target_emp_id = exist_emp_ob.employee_id
 
-                    # JIKA KEDUANYA TIDAK DITEMUKAN
                     if not target_emp_id:
                         raise ValueError(
                             f"Employee Code '{e_code}' tidak terdaftar di OS maupun SAP "
                             f"(atau status kerjanya sudah tidak aktif)."
                         )
 
-                    # cek medical exist in db
                     m_name_raw = clean(row.get('Medical Name'))
                     if not m_name_raw:
                         raise ValueError("Medical Name tidak boleh kosong.")
@@ -327,12 +377,10 @@ def upload():
                     if not exist_medical:
                         raise ValueError(f"Jenis Medical '{m_name}' tidak ditemukan di master data.")
                     
-                    # cek tanggal
                     raw_date = row.get('Date')
                     if pd.isna(raw_date):
                         raise ValueError("Tanggal (Date) tidak boleh kosong.")                    
                     
-                    # Insert Data
                     new_medical = osMedical(
                         employee_id=target_emp_id,
                         medical_id=exist_medical.medical_id,

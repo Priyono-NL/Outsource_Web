@@ -12,6 +12,8 @@ from model.osTraining import osTraining
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.ob_emp import ObEmployee
+# 1. Import Model Hak Akses User & Subcompany
+from model.hr_models import User, UserSubcompanyAccess
 
 osTraining_bp = Blueprint('osTraining_bp', __name__)
 
@@ -21,34 +23,57 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
+        req_subco = request.args.get('subcompany', '', type=str)        
         query = osTraining.query
+
+        user_email = request.headers.get('X-User-Email')
+        allowed_access = []
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                if allowed_access and req_subco and req_subco not in allowed_access:
+                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
+        subco_emp_ids = None
+        
+        if subco_filter_active:
+            subco_matches = db.session.query(OsEmployment.id).filter(
+                OsEmployment.sub_company_id.in_(subco_filter_active)
+            ).all()
+            subco_emp_ids = [str(row.id) for row in subco_matches]
 
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
-
-            os_matches = db.session.query(OsEmployment.id).join(
+            os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(search_term),
                     OsPerson.name.ilike(search_term)
                 )
-            ).all()
+            )
+            if subco_filter_active:
+                os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+            os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
-
-            ob_matches = db.session.query(ObEmployee.employee_id).filter(
-                or_(
-                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
-                    ObEmployee.employee_name.ilike(search_term)
-                )
-            ).all()
-            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
-
+            if not req_subco:
+                ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                    or_(
+                        ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                        ObEmployee.employee_name.ilike(search_term)
+                    )
+                ).all()
+                matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
             if matched_employee_ids:
                 query = query.filter(osTraining.employee_id.in_(matched_employee_ids))
             else:
                 query = query.filter(False)
+        else:
+            if subco_emp_ids is not None:
+                query = query.filter(osTraining.employee_id.in_(subco_emp_ids))
 
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
@@ -63,7 +88,7 @@ def index():
             "status": "error",
             "message": str(e)
         }), 500
-    
+
 @osTraining_bp.route('/ostraining/submit', methods=['POST'])
 def add():
     try:
@@ -81,7 +106,7 @@ def add():
 
         return jsonify({
             "status": "success",
-            "message": f"Data berhasil disimpan!"
+            "message": "Data berhasil disimpan!"
         }), 201     
     except Exception as e:
         db.session.rollback()
@@ -94,6 +119,8 @@ def add():
 def update(id):
     try:
         osTraining_data = osTraining.query.filter_by(id=id).first()
+        if not osTraining_data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
         data = request.json
         osTraining_data.employee_id = data.get('employee_id', osTraining_data.employee_id)
         osTraining_data.training_id = data.get('training_id', osTraining_data.training_id)
@@ -111,6 +138,8 @@ def update(id):
 def delete(id):
     try:
         data = osTraining.query.filter_by(id=id).first()
+        if not data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
         db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
@@ -122,56 +151,78 @@ def delete(id):
 def export():
     try:
         search = request.args.get('search', '', type=str)
+        req_subco = request.args.get('subcompany', '', type=str)
         query = osTraining.query
+
+        user_email = request.headers.get('X-User-Email')
+        allowed_access = []
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                if allowed_access and req_subco and req_subco not in allowed_access:
+                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+
+        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
         
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
-
-            os_matches = db.session.query(OsEmployment.id).join(
+            os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(search_term),
                     OsPerson.name.ilike(search_term)
                 )
-            ).all()
+            )
+            if subco_filter_active:
+                os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+                
+            os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
-
-            ob_matches = db.session.query(ObEmployee.employee_id).filter(
-                or_(
-                    ObEmployee.employee_id.cast(db.String).ilike(search_term),
-                    ObEmployee.employee_name.ilike(search_term)
-                )
-            ).all()
-            matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
+            if not req_subco:
+                ob_matches = db.session.query(ObEmployee.employee_id).filter(
+                    or_(
+                        ObEmployee.employee_id.cast(db.String).ilike(search_term),
+                        ObEmployee.employee_name.ilike(search_term)
+                    )
+                ).all()
+                matched_employee_ids.extend([str(row.employee_id) for row in ob_matches])
 
             if matched_employee_ids:
                 query = query.filter(osTraining.employee_id.in_(matched_employee_ids))
             else:
-                query = query.filter(False) # Tidak ada yang cocok, kembalikan kosong
+                query = query.filter(False)
+        elif subco_filter_active:
+            subco_matches = db.session.query(OsEmployment.id).filter(
+                OsEmployment.sub_company_id.in_(subco_filter_active)
+            ).all()
+            subco_emp_ids = [str(row.id) for row in subco_matches]
+            query = query.filter(osTraining.employee_id.in_(subco_emp_ids))
 
         master = query.all()
         data = []
         for m in master:
             d = m.to_dict()
             data.append({
-                "ID Employee": d['employee_code'],
-                "Name Employee": d['employee_name'],
-                "Training Name": d['training_name'],
-                "Date From": d['v_training_date_from'],
-                "Date To": d['v_training_date_to'],
-                "Result": d['status_result'],
-                "Score": d['training_score']
+                "ID Employee": d.get('employee_code', ''),
+                "Name Employee": d.get('employee_name', ''),
+                "Training Name": d.get('training_name', ''),
+                "Date From": d.get('v_training_date_from', ''),
+                "Date To": d.get('v_training_date_to', ''),
+                "Result": d.get('status_result', ''),
+                "Score": d.get('training_score', '')
             })
             
         if not data:
-            return jsonify({'status': 'error', 'message': 'tidak ada data'})
+            return jsonify({'status': 'error', 'message': 'tidak ada data untuk diexport'})
             
         df = pd.DataFrame(data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data OS Medical')        
+            df.to_excel(writer, index=False, sheet_name='Data OS Training')        
         output.seek(0)
         return send_file(
             output, 
@@ -185,22 +236,14 @@ def export():
 @osTraining_bp.route('/ostraining/template', methods=['GET'])
 def template():
     try:
-        # 1. Ambil semua Master Training dari Database
         all_trainings = training_m.query.all()
         training_names = [t.training_name for t in all_trainings]
-        
-        # Format string list pilihan dropdown openpyxl
         if training_names:
-            # Escape tanda petik ganda jika ada pada nama training
             clean_names = [name.replace('"', '""') for name in training_names]
             training_list_str = f'"{",".join(clean_names)}"'
         else:
-            training_list_str = '"Basic Safety Training, Leadership Training"' # Fallback jika master kosong
-
-        # Pilihan dropdown untuk Result (Sesuai dengan pembacaan fungsi upload Anda)
+            training_list_str = '"Basic Safety Training, Leadership Training"'
         result_list_str = '"Lulus, Tidak Lulus"'
-
-        # 2. Contoh data untuk baris pertama template
         example_data = [{
             "ID Employee": "12345",
             "Training Name": training_names[0] if training_names else "Basic Safety Training",
@@ -214,20 +257,14 @@ def template():
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import_Training')
-            
             worksheet = writer.sheets['Template_Import_Training']
+            worksheet.column_dimensions['A'].width = 18 
+            worksheet.column_dimensions['B'].width = 32 
+            worksheet.column_dimensions['C'].width = 16 
+            worksheet.column_dimensions['D'].width = 16 
+            worksheet.column_dimensions['E'].width = 18 
+            worksheet.column_dimensions['F'].width = 14 
 
-            # Set Lebar Kolom agar rapi dan mudah dibaca
-            worksheet.column_dimensions['A'].width = 18 # ID Employee
-            worksheet.column_dimensions['B'].width = 32 # Training Name
-            worksheet.column_dimensions['C'].width = 16 # Date From
-            worksheet.column_dimensions['D'].width = 16 # Date To
-            worksheet.column_dimensions['E'].width = 18 # Result
-            worksheet.column_dimensions['F'].width = 14 # Score
-
-            # ==========================================
-            # 3. DROPDOWN TRAINING NAME (Kolom B)
-            # ==========================================
             dv_training = DataValidation(
                 type="list", 
                 formula1=training_list_str, 
@@ -235,14 +272,8 @@ def template():
             )
             dv_training.error = 'Silakan pilih Jenis Training dari daftar dropdown yang tersedia!'
             dv_training.errorTitle = 'Pilihan Tidak Valid'
-            
-            # Pasang Dropdown untuk baris B2 hingga B500
             worksheet.add_data_validation(dv_training)
             dv_training.add("B2:B500")
-
-            # ==========================================
-            # 4. DROPDOWN RESULT (Kolom E)
-            # ==========================================
             dv_result = DataValidation(
                 type="list", 
                 formula1=result_list_str, 
@@ -250,8 +281,6 @@ def template():
             )
             dv_result.error = 'Pilihan harus Lulus atau Tidak Lulus!'
             dv_result.errorTitle = 'Pilihan Tidak Valid'
-            
-            # Pasang Dropdown untuk baris E2 hingga E500
             worksheet.add_data_validation(dv_result)
             dv_result.add("E2:E500")
 
@@ -288,7 +317,6 @@ def upload():
             line_number = index + 2
             try:
                 with db.session.begin_nested():
-                    # --- Ambil & Validasi Employee Code (NRP) ---
                     e_code_raw = clean(row.get('ID Employee'))
                     if not e_code_raw:
                         raise ValueError("ID Employee (Employee Code) tidak boleh kosong.")
@@ -296,7 +324,6 @@ def upload():
 
                     target_emp_id = None
 
-                    # 1. CEK KE OS EMPLOYMENT PERTAMA
                     exist_emp_os = OsEmployment.query.filter(
                         OsEmployment.employee_code == e_code,
                         OsEmployment.valid_from <= today,
@@ -306,7 +333,6 @@ def upload():
                     if exist_emp_os:
                         target_emp_id = exist_emp_os.id
                     else:
-                        # 2. CEK KE OB EMPLOYEE JIKA TIDAK ADA DI OS
                         exist_emp_ob = ObEmployee.query.filter(
                             ObEmployee.employee_id == e_code
                         ).first()
@@ -314,13 +340,12 @@ def upload():
                         if exist_emp_ob:
                             target_emp_id = exist_emp_ob.employee_id
 
-                    # JIKA KEDUANYA TIDAK DITEMUKAN
                     if not target_emp_id:
                         raise ValueError(
                             f"Employee Code '{e_code}' tidak terdaftar di OS maupun SAP "
                             f"(atau status kerjanya sudah tidak aktif)."
                         )
-                    # --- Ambil & Validasi Master Training ---
+                        
                     t_name_raw = clean(row.get('Training Name'))
                     if not t_name_raw:
                         raise ValueError("Training Name tidak boleh kosong.")
@@ -330,7 +355,6 @@ def upload():
                     if not exist_training:
                         raise ValueError(f"Jenis Training '{t_name}' tidak ditemukan di master data.")
 
-                    # --- Parsing Status Kelulusan (Result) ---
                     raw_result = clean(row.get('Result'))
                     if not raw_result:
                         raise ValueError("Kolom Result tidak boleh kosong.")
@@ -343,7 +367,6 @@ def upload():
                     else:
                         raise ValueError("Kolom Result harus berisi 'Lulus' atau 'Tidak Lulus'.")
 
-                    # --- Parsing Tanggal & Skor ---
                     raw_date_from = clean(row.get('Date From'))
                     raw_date_to = clean(row.get('Date To'))
                     raw_score = clean(row.get('Score'))
@@ -351,7 +374,6 @@ def upload():
                     if not raw_date_from or not raw_date_to:
                         raise ValueError("Tanggal 'Date From' dan 'Date To' tidak boleh kosong.")
 
-                    # --- Insert Data Baru ---
                     new_training = osTraining(
                         employee_id=target_emp_id,
                         training_id=exist_training.training_id,

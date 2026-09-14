@@ -4,9 +4,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func, and_
-
 from extensions import db
-
 from model.blacklist import OsBlacklist
 from model.employment import OsEmployment
 from model.person import OsPerson
@@ -19,6 +17,7 @@ from model.osCostCenter import OsCostCenter
 from model.grade import OsGrade
 from model.alokasi import Alokasi
 from model.ob_emp import ObEmployee
+from model.hr_models import User, UserSubcompanyAccess
 
 employee_bp = Blueprint('employee_bp', __name__)
 
@@ -37,6 +36,17 @@ def parse_use_cc(val):
         return 1
     return 0
 
+# Helper internal untuk mengambil daftar subcompany_id yang diizinkan untuk user aktif
+def get_allowed_subcompanies():
+    user_email = request.headers.get('X-User-Email')
+    if not user_email:
+        return []
+    user = User.query.filter_by(email=user_email).first()
+    if not user:
+        return []
+    access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+    return [a.sub_company_id for a in access_records]
+
 @employee_bp.route('/employee')
 def index():
     try:
@@ -47,14 +57,19 @@ def index():
         status = request.args.get('status', 'all', type=str)
         sub_company_id = request.args.get('sub_company', '', type=str)
         department_id = request.args.get('department', '', type=str)
-        
-        # Parameter baru untuk filter per tanggal
         target_date_str = request.args.get('target_date', '', type=str)
 
         query = OsEmployment.query
+
+        # --- LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO) ---
+        allowed_subcos = get_allowed_subcompanies()
+        if allowed_subcos:
+            query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+            if sub_company_id and sub_company_id not in allowed_subcos and sub_company_id not in ['TYPE_OS', 'TYPE_VENDOR']:
+                return jsonify({"status": "error", "message": "Akses ditolak"}), 403
         
         if search:
-            query = query.join(OsPerson).join(OsCard)    
+            query = query.join(OsPerson).outerjoin(OsCard)    
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
@@ -66,7 +81,6 @@ def index():
         # LOGIKA FILTER AKTIF PER TANGGAL TERTENTU
         if status == 'active':
             if target_date_str:
-                # Jika ada target tanggal, cek apakah valid_from <= target_date DAN valid_to >= target_date (atau None)
                 query = query.filter(
                     and_(
                         or_(OsEmployment.valid_from <= target_date_str, OsEmployment.valid_from == None),
@@ -74,7 +88,6 @@ def index():
                     )
                 )
             else:
-                # Jika tidak ada filter tanggal, gunakan waktu saat ini (Now)
                 now = datetime.now()
                 query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
                 
@@ -112,35 +125,31 @@ def index():
         traceback.print_exc()    
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
-def search_employee(emp_id):
-    try:
-        result = db.session.query(OsPerson.name, OsEmployment.id) \
-            .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
-            .filter(OsEmployment.employee_code == emp_id) \
-            .first()
-        if result:
-            return jsonify({"status": "success", "full_name": result.name, "emp_pk_id": result.id}), 200
-        return jsonify({"status": "error", "message": "Employee ID tidak Ada"}), 404
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-    
 @employee_bp.route('/employee/search-autocomplete', methods=['GET'])
 def search_autocomplete():
     try:
-        query_str = request.args.get('q', '')
+        query_str = request.args.get('q', '').strip()
         if len(query_str) < 3:
             return jsonify({"status": "success", "data": []})
         
         today = datetime.now().date()
-        results = db.session.query(OsEmployment, OsPerson)\
-            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)\
-            .filter(
-                or_(
-                    OsPerson.name.ilike(f"%{query_str}%"),
-                    OsEmployment.employee_code.cast(db.String).ilike(f"%{query_str}%")
-                )
-            ).limit(20).all()
+        base_query = db.session.query(OsEmployment, OsPerson)\
+            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
+
+        # =================================================================
+        # BENTENG KEAMANAN: FILTER BERDASARKAN HAK AKSES USER (SSO)
+        # =================================================================
+        allowed_subcos = get_allowed_subcompanies()
+        if allowed_subcos:
+            base_query = base_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+        # =================================================================
+
+        results = base_query.filter(
+            or_(
+                OsPerson.name.ilike(f"%{query_str}%"),
+                OsEmployment.employee_code.cast(db.String).ilike(f"%{query_str}%")
+            )
+        ).limit(20).all()
         
         data_result = []
         for emp, person in results:
@@ -163,6 +172,7 @@ def search_autocomplete():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @employee_bp.route('/employee/search-all', methods=['GET'])
 def search_all():
     try:
@@ -172,14 +182,20 @@ def search_all():
         today = datetime.now().date()
         data_result = []
 
-        results_os = db.session.query(OsEmployment, OsPerson)\
-            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)\
-            .filter(
-                or_(
-                    OsPerson.name.ilike(f"%{query_str}%"),
-                    OsEmployment.employee_code.cast(db.String).ilike(f"%{query_str}%")
-                )
-            ).all()
+        base_os_query = db.session.query(OsEmployment, OsPerson)\
+            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
+
+        # Pembatasan Hak Akses Subcompany
+        allowed_subcos = get_allowed_subcompanies()
+        if allowed_subcos:
+            base_os_query = base_os_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+
+        results_os = base_os_query.filter(
+            or_(
+                OsPerson.name.ilike(f"%{query_str}%"),
+                OsEmployment.employee_code.cast(db.String).ilike(f"%{query_str}%")
+            )
+        ).all()
 
         for emp, person in results_os:
             is_active = False
@@ -197,25 +213,45 @@ def search_all():
                 "status_text": "Aktif" if is_active else "Non-Aktif"
             })
 
-        results_ob = ObEmployee.query.filter(
-            or_(
-                ObEmployee.employee_name.ilike(f"%{query_str}%"),
-                ObEmployee.employee_id.cast(db.String).ilike(f"%{query_str}%")
-            )
-        ).all()
+        # Data OB / SAP hanya dicari jika user punya akses global / tanpa pembatasan
+        if not allowed_subcos:
+            results_ob = ObEmployee.query.filter(
+                or_(
+                    ObEmployee.employee_name.ilike(f"%{query_str}%"),
+                    ObEmployee.employee_id.cast(db.String).ilike(f"%{query_str}%")
+                )
+            ).all()
 
-        for ob in results_ob:
-            data_result.append({
-                "source": "OB",
-                "emp_pk_id": ob.employee_id,
-                "employee_code": ob.employee_id,
-                "name": ob.employee_name,
-                "use_cc": 0,
-                "is_active": True,
-                "status_text": "Aktif"
-            })
+            for ob in results_ob:
+                data_result.append({
+                    "source": "OB",
+                    "emp_pk_id": ob.employee_id,
+                    "employee_code": ob.employee_id,
+                    "name": ob.employee_name,
+                    "use_cc": 0,
+                    "is_active": True,
+                    "status_text": "Aktif"
+                })
             
         return jsonify({"status": "success", "data": data_result}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
+def search_employee(emp_id):
+    try:
+        query = db.session.query(OsPerson.name, OsEmployment.id) \
+            .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
+            .filter(OsEmployment.employee_code == emp_id)
+        
+        allowed_subcos = get_allowed_subcompanies()
+        if allowed_subcos:
+            query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+
+        result = query.first()
+        if result:
+            return jsonify({"status": "success", "full_name": result.name, "emp_pk_id": result.id}), 200
+        return jsonify({"status": "error", "message": "Employee ID tidak ditemukan atau akses ditolak"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -877,9 +913,13 @@ def export():
         query = OsEmployment.query
         now = datetime.now()
 
+        # Filter Keamanan SSO untuk Export
+        allowed_subcos = get_allowed_subcompanies()
+        if allowed_subcos:
+            query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+
         if search:
-            query = query.join(OsPerson)
-            query = query.join(OsCard)    
+            query = query.join(OsPerson).outerjoin(OsCard)    
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
@@ -912,24 +952,24 @@ def export():
         for m in filtered_employees:
             d = m.to_dict()
             data.append({
-                "Name": d['person_name'],
-                "Gender": d['gender'],
-                "Religion": d['religion'],
-                "Place of Birth": d['pob'],
-                "Date of Birth": d['v_dob'],                
-                "Resident ID": d['resident_id'],
-                "Address": d['address'],
-                "Employee ID": d['employee_code'],
-                "Sub Company": d['sub_con_name'],
-                "Department": d['cc_name'],
-                "Grade": d['grade'],
-                "Type Worker": d['type_worker'],
-                "Posisi": d['posisi'],
-                "Join Date": d['v_valid_from'],
-                "Termination Date": d['valid_to'],
-                "Card Number": d['card_number'],
-                "Card Valid From": d['card_number_from'],
-                "Card Valid To": d['card_number_to']
+                "Name": d.get('person_name', ''),
+                "Gender": d.get('gender', ''),
+                "Religion": d.get('religion', ''),
+                "Place of Birth": d.get('pob', ''),
+                "Date of Birth": d.get('v_dob', ''),                
+                "Resident ID": d.get('resident_id', ''),
+                "Address": d.get('address', ''),
+                "Employee ID": d.get('employee_code', ''),
+                "Sub Company": d.get('sub_con_name', ''),
+                "Department": d.get('cc_name', ''),
+                "Grade": d.get('grade', ''),
+                "Type Worker": d.get('type_worker', ''),
+                "Posisi": d.get('posisi', ''),
+                "Join Date": d.get('v_valid_from', ''),
+                "Termination Date": d.get('valid_to', ''),
+                "Card Number": d.get('card_number', ''),
+                "Card Valid From": d.get('card_number_from', ''),
+                "Card Valid To": d.get('card_number_to', '')
             })
         if not data:
             return jsonify({'status': 'error', 'message': 'tidak ada data'})

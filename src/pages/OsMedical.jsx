@@ -1,21 +1,75 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { saveAs } from 'file-saver';
+import Select from 'react-select'; // 1. Import Select
 import { Toast, Confirm } from '../utils/sweetalert';
 import { downloadLogFile } from '../utils/logDownloader';
 import api from '../api/api';
 import { useCrudPage } from '../utils/useCrudPage';
+import { useAuth } from '../utils/useAuth'; // 2. Import useAuth
+
 import PageHeader from '../components/PageHeader';
 import OsMedicForm from '../components/osMedical/OsMedicForm';
 import OsMedicTable from '../components/osMedical/OsMedicTable';
 
 const OsMedical = () => {
   const crud = useCrudPage();
+  const { user } = useAuth();
+  
+  // Cek apakah user dibatasi oleh hak akses SSO
+  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // --- STATE FILTER SUB COMPANY ---
+  const [subCompanies, setSubCompanies] = useState([]); 
+  const [subCompanyInput, setSubCompanyInput] = useState('');
+  const [appliedSubCompany, setAppliedSubCompany] = useState('');
+
+  // Fetch Master Subcompany saat komponen dimuat
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [resSub] = await Promise.all([
+          api.get('/subcom?page=1&pageSize=200'),
+        ]);
+        
+        setSubCompanies(resSub.data.data || []);
+        
+        // Auto-select Sub Company jika user dibatasi aksesnya
+        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
+          setSubCompanyInput(resSub.data.data[0].sub_company_id);
+          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        }
+      } catch { /* silent */ }
+    };
+    if (user) load();
+  }, [user]);
+
+  // Handler update state filter
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setAppliedSubCompany(value); 
+  };
+
+  // Dinamisasi opsi dropdown
+  const subCompanyOptions = isRestricted
+    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+    : [
+        { value: '', label: 'Semua Sub Company' },
+        { value: 'TYPE_OS', label: 'Outsource' },
+        { value: 'TYPE_VENDOR', label: 'Vendor/Kontraktor' },
+        ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
+      ];
+
   const handleExport = async () => {
     try {
-      const params = new URLSearchParams({ search: crud.appliedSearch || '' }).toString();
+      // 3. Tambahkan filter subcompany ke parameter Export!
+      const params = new URLSearchParams({ 
+        search: crud.appliedSearch || '',
+        subcompany: appliedSubCompany || '' 
+      }).toString();
+      
       const res = await api.get(`/osmedical/export?${params}`, { responseType: 'blob' });
       saveAs(res.data, 'Data_OS_medical.xlsx');
     } catch {
@@ -33,6 +87,7 @@ const OsMedical = () => {
   };
 
   const handleImport = async (e) => {
+    // ... (Kode handleImport tidak ada yang diubah, tetap sama seperti aslinya)
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
@@ -160,7 +215,33 @@ const OsMedical = () => {
       {crud.showForm && <OsMedicForm onClose={crud.handleClose} onSuccess={crud.handleRefresh} initialData={crud.editingData} />}
 
       <div className="app-card">
-        <OsMedicTable refreshTrigger={crud.refreshKey} onEditClick={crud.handleEdit} searchTerm={crud.appliedSearch} />
+        {/* 4. Tampilkan Bar Filter Dropdown */}
+        <div className="filter-bar d-flex gap-3 mb-3">
+          <div className="filter-group m-0" style={{ minWidth: 220 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
+            <Select
+              options={subCompanyOptions}
+              placeholder="Cari..."
+              value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
+              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
+              isClearable={!isRestricted}
+              isSearchable
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
+            />
+          </div>
+        </div>
+
+        {/* 5. Lempar subCompanyFilter ke komponen Tabel */}
+        <OsMedicTable 
+          refreshTrigger={crud.refreshKey} 
+          onEditClick={crud.handleEdit} 
+          searchTerm={crud.appliedSearch}
+          subCompanyFilter={appliedSubCompany} 
+        />
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import Sidebar from './components/Sidebar';
 import { componentRegistry } from './utils/menuConfig';
 import { AuthProvider, useAuth } from './utils/useAuth';
+import AbsensiVendor from './pages/AbsensiVendor';
 
 const EnvBanner = () => {
   const isDev = import.meta.env.MODE === 'development';
@@ -23,7 +24,7 @@ const EnvBanner = () => {
 };
 
 const MainLayout = () => {
-  const { user, role, isConfigured, loading, logout } = useAuth();  
+  const { user, role, loading, logout } = useAuth();  
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const location = useLocation();
 
@@ -37,7 +38,6 @@ const MainLayout = () => {
   }
 
   const publicRoutes = ['/auth/callback'];
-
   if (publicRoutes.includes(location.pathname)) {
     return (
       <Routes>        
@@ -46,19 +46,28 @@ const MainLayout = () => {
     );
   }
 
+  const handleBackToSSO = () => {
+    const ssoPortalUrl = import.meta.env.VITE_SSO_URL;
+    window.location.href = ssoPortalUrl;
+  };
+
   return (
     <div id="app-shell">
 
       <header id="app-topbar">
-        <button
-          className="topbar-toggle"
-          onClick={() => setSidebarExpanded(v => !v)}
-          title="Toggle Sidebar"
-        >
-          <i className={`bi ${sidebarExpanded ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}`} />
-        </button>
+        {role !== 'vendor_app' && (
+          <button
+            className="topbar-toggle"
+            onClick={() => setSidebarExpanded(v => !v)}
+            title="Toggle Sidebar"
+          >
+            <i className={`bi ${sidebarExpanded ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}`} />
+          </button>
+        )}
 
-        <span className="topbar-brand">Manajemen OS</span>
+        <span className="topbar-brand" style={{ marginLeft: role === 'vendor_app' ? '15px' : '0' }}>
+          Manajemen OS
+        </span>
 
         <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
           <div className="topbar-user-name">
@@ -69,39 +78,68 @@ const MainLayout = () => {
           </div>
         </div>
 
-        <button className="btn-logout" onClick={logout}>
-          <i className="bi bi-box-arrow-right" style={{ marginRight: 5 }} />
-          Keluar
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            
+            {/* Tombol Kembali ke Portal SSO */}
+            {role !== 'vendor_app' && (
+            <button 
+              className="btn btn-sm btn-outline-secondary d-flex align-items-center shadow-sm" 
+              onClick={handleBackToSSO}
+              style={{ fontWeight: '500', borderRadius: '6px' }}
+              title="Kembali ke Menu Utama SSO"
+            >
+              <i className="bi bi-grid-3x3-gap-fill" style={{ marginRight: '6px' }} />
+              Portal SSO
+            </button> )}
+
+            {/* Tombol Logout Existing */}
+            <button 
+              className="btn-logout shadow-sm" 
+              onClick={logout}
+              style={{ borderRadius: '6px' }}
+            >
+              <i className="bi bi-box-arrow-right" style={{ marginRight: '5px' }} />
+              Keluar
+            </button>
+
+          </div>
       </header>
 
       <EnvBanner />
 
-      {/* ── Body ── */}
-      <div id="app-body">
-        <nav
-          id="app-sidebar"
-          style={{ width: sidebarExpanded ? 232 : 64 }}
-        >
-          <Sidebar isExpanded={sidebarExpanded} />
-        </nav>
-
-        <main id="app-content">
-          <Routes>
-            {Object.entries(componentRegistry).map(([path, element]) => {
-              if (publicRoutes.includes(path)) return null;
+      <div id="app-body">        
+        {role !== 'vendor_app' && (
+          <nav
+            id="app-sidebar"
+            style={{ width: sidebarExpanded ? 232 : 64 }}
+          >
+            <Sidebar isExpanded={sidebarExpanded} />
+          </nav>
+        )}
+        <main id="app-content">          
+          {role === 'vendor_app' ? (
+            <Routes>
+              <Route path="/absenVendor" element={<AbsensiVendor />} />
+              <Route path="*" element={<Navigate to="/absenVendor" replace />} />
+            </Routes>
+          ) : (
+            <Routes>
+              {Object.entries(componentRegistry).map(([path, element]) => {
+                if (publicRoutes.includes(path)) return null;
+                
+                return (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={element}
+                  />
+                );
+              })}
               
-              return (
-                <Route
-                  key={path}
-                  path={path}
-                  element={element}
-                />
-              );
-            })}
-            
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          )}
+
         </main>
       </div>
 

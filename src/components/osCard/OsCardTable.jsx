@@ -1,10 +1,9 @@
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) => { 
-       
+const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm, subCompanyFilter }) => { 
     const [card, setCard] = useState([]);   
     const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
@@ -13,8 +12,8 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =>
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/oscard?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}`);
-            const result = await response.data;
+            const response = await api.get(`/oscard?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&filter=${filterTerm}&subcompany=${subCompanyFilter}`);
+            const result = response.data;            
             if (result.status === 'success') { 
                 setCard(result.data);
                 setTotalPages(result.total_page);
@@ -50,54 +49,58 @@ const OsCardTable = ({ refreshTrigger, onEditClick, searchTerm, filterTerm }) =>
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, filterTerm]);
+    }, [searchTerm, filterTerm, subCompanyFilter]);
 
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm, filterTerm]);
+    }, [currentPage, refreshTrigger, searchTerm, filterTerm, subCompanyFilter]);
 
-    return (<>
-        {error && <div className="alert alert-danger">{error}</div>}        
-        <div className="table-responsive">
-            <table className="app-table">
-            <thead>
-                <tr>
-                    <th>Employee ID</th>
-                    <th>Employee Name</th>
-                    <th>Absence Card Number</th>
-                    <th>Valid From</th>
-                    <th>Valid To</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>{                  
-                card.map((emp, index) => (
-                    <tr key={`row-${index+1}`} >
-                        <td>{emp.employee_code}</td>
-                        <td>{emp.employee_name}</td>
-                        <td>{emp.card_number}</td>
-                        <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
-                        <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
-                        <td>
-                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
-                                <i className="bi bi-pencil-square"></i>
-                            </button>
-                            <button className="btn-app btn-danger-app btn-sm-app"
-                                onClick={() => handleDelete(emp.card_id, emp.employee_name)}
-                            >
-                                <i className="bi bi-trash"></i>
-                            </button>
-                        </td>
+    return (
+        <>
+            {error && <div className="alert alert-danger">{error}</div>}        
+            <div className="table-responsive">
+                <table className="app-table">
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>Employee Name</th>
+                        <th>Absence Card Number</th>
+                        <th>Valid From</th>
+                        <th>Valid To</th>
+                        <th>Action</th>
                     </tr>
-                ))}
-            </tbody>
-            </table>
-            <PageNav 
-                currentPage={currentPage} 
-                totalPages={totalPages} 
-                onPageChange={(page) => setCurrentPage(page)} 
-            />
-        </div>        
-    </>)
+                </thead>
+                <tbody>{                  
+                    card.map((emp, index) => (
+                        <tr key={`row-${index+1}`} >
+                            <td>{emp.employee_code}</td>
+                            <td>{emp.employee_name}</td>
+                            <td>{emp.card_number}</td>
+                            <td>{emp.v_valid_from ? emp.v_valid_from : '-'}</td>
+                            <td>{emp.v_valid_to ? emp.v_valid_to : '-'}</td>
+                            <td>
+                                <button className="btn-app btn-ghost-app btn-sm-app me-1" onClick={() => onEditClick(emp)}>
+                                    <i className="bi bi-pencil-square"></i>
+                                </button>
+                                <button className="btn-app btn-danger-app btn-sm-app"
+                                    onClick={() => handleDelete(emp.card_id, emp.employee_name)}
+                                >
+                                    <i className="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+                </table>
+                
+                <PageNav 
+                    currentPage={currentPage} 
+                    totalPages={totalPages} 
+                    onPageChange={(page) => setCurrentPage(page)} 
+                />
+            </div>        
+        </>
+    );
 };
+
 export default OsCardTable;

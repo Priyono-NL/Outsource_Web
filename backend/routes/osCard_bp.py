@@ -7,7 +7,7 @@ from extensions import db
 from model.card import OsCard
 from model.employment import OsEmployment
 from model.person import OsPerson
-
+from model.hr_models import User, UserSubcompanyAccess
 
 osCard_bp = Blueprint('osCard_bp', __name__)
 
@@ -17,12 +17,28 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
-        filter = request.args.get('filter', '', type=str)
-        query = OsCard.query
+        filter_status = request.args.get('filter', '', type=str)
+        req_subco = request.args.get('subcompany', '', type=str)
+        
+        query = OsCard.query.join(OsEmployment, OsCard.employee_id == OsEmployment.id) \
+                            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
+
+        user_email = request.headers.get('X-User-Email')
+        if user_email:
+            user = User.query.filter_by(email=user_email).first()
+            if user:
+                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_access = [a.sub_company_id for a in access_records]
+                if allowed_access:
+                    query = query.filter(OsEmployment.sub_company_id.in_(allowed_access))
+                    if req_subco and req_subco not in allowed_access:
+                        return jsonify({"status": "error", "message": "Akses ke Subcompany ini ditolak"}), 403
+        if req_subco:
+            query = query.filter(OsEmployment.sub_company_id == req_subco)
+
         now = datetime.now()
+        
         if search:
-            query = query.join(OsEmployment, OsCard.employee_id == OsEmployment.id) \
-                    .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)                     
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
@@ -30,11 +46,14 @@ def index():
                     OsCard.card_number.ilike(f"%{search}%"),
                 )
             )
-        if filter == 'active':
+            
+        if filter_status == 'active':
             query = query.filter((OsCard.valid_to >= now) | (OsCard.valid_to == None))
-        elif filter == 'inactive':
+        elif filter_status == 'inactive':
             query = query.filter(OsCard.valid_to < now)
+            
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
+        
         return jsonify({
             "status": "success",
             "data": [emp.to_dict() for emp in pagination.items],
@@ -123,33 +142,3 @@ def delete(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
-    
-@osCard_bp.route('/oscard/export', methods=['GET'])
-def export():
-    try:
-        master = OsCard.query.all()
-        data = []
-        for m in master:
-            d = m.to_dict()
-            data.append({
-                "Employee ID": d['employee_id'],
-                "Employee Name": d['employee_name'],
-                "Card Number": d['medical_name'],
-                "Valid From": d['v_valid_from'],
-                "Valid To": d['valid_to'],
-            })
-        if not data:
-            return jsonify({'status': 'error', 'message': 'tidak ada data'})
-        df = pd.DataFrame(data)
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data OS Medical')        
-        output.seek(0)
-        return send_file(
-            output, 
-            as_attachment=True, 
-            download_name="Export_OS_Medical.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500

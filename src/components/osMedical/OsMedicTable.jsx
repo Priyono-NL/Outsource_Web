@@ -3,7 +3,8 @@ import { Toast, Confirm } from '../../utils/sweetalert';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => { 
+// 1. Tambahkan subCompanyFilter di props
+const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm, subCompanyFilter }) => { 
        
     const [osmedical, setOsMedical] = useState([]);   
     const [error, setError] = useState(null); 
@@ -13,11 +14,13 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
 
     const fetchData = async() => {
         try {
-            const response = await api.get(`/osmedical?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
-            const result = await response.data;
+            // 2. Sisipkan parameter &subcompany= ke URL API
+            const response = await api.get(`/osmedical?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}&subcompany=${subCompanyFilter || ''}`);
+            const result = response.data; // Hapus await, Axios sudah me-resolve data JSON
+            
             if (result.status === 'success') { 
-            setOsMedical(result.data);
-            setTotalPages(result.total_page);
+                setOsMedical(result.data);
+                setTotalPages(result.total_page);
             } 
             else { throw new Error(result.message || 'Terjadi kesalahan pada data'); }
         } catch (err) {
@@ -48,58 +51,64 @@ const OsMedicTable = ({ refreshTrigger, onEditClick, searchTerm  }) => {
         });
     };
 
+    // 3. Tambahkan subCompanyFilter agar halaman kembali ke 1 saat filter diubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, subCompanyFilter]);
 
+    // 4. Tambahkan subCompanyFilter agar men-trigger fetch ulang saat filter berubah
     useEffect(() => {
         fetchData();
-    }, [currentPage, refreshTrigger, searchTerm]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, refreshTrigger, searchTerm, subCompanyFilter]);
 
-    return (<>
-        {error && <div className="alert alert-danger">{error}</div>}        
-        <div className="table-responsive">
-            <table className="app-table">
-            <thead>
-                <tr>
-                    <th>Employee ID</th>
-                    <th>Employee Name</th>
-                    <th>Medical Check</th>
-                    <th>Date</th>
-                    <th>Result</th>
-                    <th>Notes</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>{                  
-                osmedical.map((emp, index) => (
-                    <tr key={`row-${index+1}`} >
-                        <td>{emp.employee_code}</td>
-                        <td>{emp.employee_name}</td>
-                        <td>{emp.medical_name}</td>
-                        <td>{emp.v_medical_date ? emp.v_medical_date : '-'}</td>
-                        <td>{emp.medical_result}</td>                        
-                        <td>{emp.medical_notes ? emp.medical_notes : '-'}</td>
-                        <td>
-                            <button className="btn-app btn-ghost-app btn-sm-app" onClick={() => onEditClick(emp)}>
-                                <i className="bi bi-pencil-square"></i>
-                            </button>
-                            <button className="btn-app btn-danger-app btn-sm-app"
-                                onClick={() => handleDelete(emp.osMedical_id, emp.employee_name)}
-                            >
-                                <i className="bi bi-trash"></i>
-                            </button>
-                        </td>
+    return (
+        <>
+            {error && <div className="alert alert-danger">{error}</div>}        
+            <div className="table-responsive">
+                <table className="app-table">
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>Employee Name</th>
+                        <th>Medical Check</th>
+                        <th>Date</th>
+                        <th>Result</th>
+                        <th>Notes</th>
+                        <th>Action</th>
                     </tr>
-                ))}
-            </tbody>
-            </table>
-            <PageNav 
-                currentPage={currentPage} 
-                totalPages={totalPages} 
-                onPageChange={(page) => setCurrentPage(page)} 
-            />
-        </div>        
-    </>)
+                </thead>
+                <tbody>{                  
+                    osmedical.map((emp, index) => (
+                        <tr key={`row-${index+1}`} >
+                            <td>{emp.employee_code}</td>
+                            <td>{emp.employee_name}</td>
+                            <td>{emp.medical_name}</td>
+                            <td>{emp.v_medical_date ? emp.v_medical_date : '-'}</td>
+                            <td>{emp.medical_result}</td>                        
+                            <td>{emp.medical_notes ? emp.medical_notes : '-'}</td>
+                            <td>
+                                <button className="btn-app btn-ghost-app btn-sm-app me-1" onClick={() => onEditClick(emp)}>
+                                    <i className="bi bi-pencil-square"></i>
+                                </button>
+                                <button className="btn-app btn-danger-app btn-sm-app"
+                                    onClick={() => handleDelete(emp.osMedical_id, emp.employee_name)}
+                                >
+                                    <i className="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+                </table>
+                <PageNav 
+                    currentPage={currentPage} 
+                    totalPages={totalPages} 
+                    onPageChange={(page) => setCurrentPage(page)} 
+                />
+            </div>        
+        </>
+    )
 };
+
 export default OsMedicTable;
