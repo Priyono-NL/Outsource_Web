@@ -4,6 +4,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func, and_
+from PIL import Image, ImageOps
 
 from extensions import db
 
@@ -49,6 +50,26 @@ def get_allowed_subcompanies():
     access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
     return [a.sub_company_id for a in access_records]
 
+def process_and_save_photo(file_storage, target_folder, filename_without_ext, max_width=600, quality=80):
+    try:
+        img = Image.open(file_storage)
+        try:
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        if img.width > max_width:
+            ratio = max_width / float(img.width)
+            new_height = int((float(img.height) * float(ratio)))
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+        new_filename = f"{filename_without_ext}.webp"
+        file_path = os.path.join(target_folder, new_filename)
+        img.save(file_path, "WEBP", quality=quality, optimize=True)
+        return f"/{target_folder}/{new_filename}"
+    except Exception as e:
+        print(f"[ERROR] Gagal mengompresi foto: {str(e)}")
+        return None
 
 @employee_bp.route('/employee')
 def index():
@@ -295,12 +316,17 @@ def add():
         if 'photo' in request.files:
             file = request.files['photo']
             if file.filename != '':
-                ext = os.path.splitext(file.filename)[1].lower()
                 upload_date = datetime.now().strftime('%Y%m%d')
-                new_filename = f"{employee_code_input}_{upload_date}{ext}"
-                file_path = os.path.join(UPLOAD_FOLDER, new_filename)
-                file.save(file_path)
-                target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"
+                base_name = f"{employee_code_input}_{upload_date}"                
+                saved_path = process_and_save_photo(
+                    file_storage=file,
+                    target_folder=UPLOAD_FOLDER,
+                    filename_without_ext=base_name,
+                    max_width=600,
+                    quality=80
+                )
+                if saved_path:
+                    target_person.photo = saved_path
 
         db.session.add(target_person)
         db.session.flush()
@@ -473,12 +499,17 @@ def edit(id):
             if 'photo' in request.files:
                 file = request.files['photo']
                 if file.filename != '':
-                    ext = os.path.splitext(file.filename)[1].lower()
                     upload_date = datetime.now().strftime('%Y%m%d')
-                    new_filename = f"{employee_code_input}_{upload_date}{ext}"
-                    file_path = os.path.join(UPLOAD_FOLDER, new_filename)
-                    file.save(file_path)
-                    target_person.photo = f"/{UPLOAD_FOLDER}/{new_filename}"
+                    base_name = f"{employee_code_input}_{upload_date}"                    
+                    saved_path = process_and_save_photo(
+                        file_storage=file,
+                        target_folder=UPLOAD_FOLDER,
+                        filename_without_ext=base_name,
+                        max_width=600,
+                        quality=80
+                    )
+                    if saved_path:
+                        target_person.photo = saved_path
             
             db.session.add(target_person)
 

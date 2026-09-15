@@ -2,21 +2,28 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav';
 
-const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, startDate, endDate, statusFilter }) => { 
+const AbsensiTable = ({ 
+    refreshTrigger, 
+    onEditClick, 
+    searchTerm, 
+    subCompany, 
+    department, // PROPS BARU: Untuk filter Department / Cost Center
+    startDate, 
+    endDate, 
+    statusFilter 
+}) => { 
     
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
-    
-    // STATE BARU: Indikator Loading
     const [loading, setLoading] = useState(false);
 
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(20);
+    const [itemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async () => {
         try {
-            setLoading(true); // Nyalakan loading sebelum request
+            setLoading(true);
             setError(null);
             
             const params = new URLSearchParams({
@@ -24,6 +31,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 pageSize: itemsPerPage,
                 search: searchTerm || '',
                 sub_company: subCompany || '',
+                department: department || '', // Disuntikkan ke parameter endpoint Flask
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
@@ -34,28 +42,30 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
             const result = response.data;
             
             if (result.status === 'success') { 
-                setAbsensi(result.data);
+                setAbsensi(result.data || []);
                 setTotalPages(result.total_page || 0);
             } else { 
                 throw new Error(result.message || 'Terjadi kesalahan pada data absensi'); 
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
-            setAbsensi([]); // Kosongkan data jika error
+            setAbsensi([]);
             setTotalPages(0);
         } finally {
-            setLoading(false); // Matikan loading setelah selesai
+            setLoading(false);
         }
     };
 
+    // Reset ke halaman 1 saat filter terapan berubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, startDate, endDate, statusFilter]);
+    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter]);
     
+    // Fetch data saat pagination atau filter berubah
     useEffect(() => {
         if (!startDate || !endDate) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter]);
 
     // Helper formatter jam
     const formatTime = (timeStr) => {
@@ -117,9 +127,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                         let isClockInFromBAC = false;
                         let isClockOutFromBAC = false;
 
-                        // =========================================================
-                        // 1. EVALUASI CLOCK IN (PRIORITAS: BAC > Tidak Lengkap > MESIN)
-                        // =========================================================
+                        // 1. EVALUASI CLOCK IN
                         if (emp.bac_clock_in) {
                             displayClockIn = formatTime(emp.bac_clock_in);
                             isClockInFromBAC = true;
@@ -129,9 +137,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                             displayClockIn = formatTime(emp.clock_in);
                         }
 
-                        // =========================================================
-                        // 2. EVALUASI CLOCK OUT (PRIORITAS: BAC > Tidak Lengkap > MESIN)
-                        // =========================================================
+                        // 2. EVALUASI CLOCK OUT
                         if (emp.bac_clock_out) {
                             displayClockOut = formatTime(emp.bac_clock_out);
                             isClockOutFromBAC = true;
@@ -145,13 +151,11 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                         let statusElement = null;
                         let actionElement = null;
 
-                        // =========================================================
                         // 3. BADGE STATUS DAN AKSI KOREKSI
-                        // =========================================================
                         if (hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
-                                    <i className="bi bi-shield-check" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-shield-check me-1"></i>
                                     BAC Found
                                 </span>
                             );                        
@@ -162,14 +166,14 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     onClick={() => onEditClick(emp)}
                                     title="Koreksi Data Absensi"
                                 >
-                                    <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-pencil-square me-1"></i>
                                     Koreksi
                                 </button>
                             );
                         } else if (isAnomaly) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-exclamation-triangle-fill" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
                                     Tidak Lengkap
                                 </span>
                             );
@@ -180,22 +184,22 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     onClick={() => onEditClick(emp)}
                                     title="Koreksi Data Absensi Tidak Lengkap"
                                 >
-                                    <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-pencil-square me-1"></i>
                                     Koreksi
                                 </button>
                             );
                         } else if (!isViolation) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
-                                    <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-check-circle-fill me-1"></i>
                                     Lengkap
                                 </span>
                             );
-                            actionElement = statusElement; // Tidak ada aksi jika lengkap
+                            actionElement = statusElement;
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-x-circle-fill" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-x-circle-fill me-1"></i>
                                     BAC not found
                                 </span>
                             );
@@ -206,7 +210,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                     onClick={() => onEditClick(emp)}
                                     title="Koreksi Data Absensi"
                                 >
-                                    <i className="bi bi-pencil-square" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-pencil-square me-1"></i>
                                     Koreksi
                                 </button>
                             );
@@ -217,7 +221,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                                 key={`abs-${emp.employee_id}-${emp.clocking_date}-${index}`} 
                                 className={isAnomaly && !hasBAC ? 'table-warning' : ''}
                             >
-                                <td className="fw-bold">{emp.employee_code || emp.employee_id}</td>
+                                <td className="fw-bold text-primary">{emp.employee_code || emp.employee_id}</td>
                                 <td>{emp.employee_name || '-'}</td>
                                 <td>{emp.gender || '-'}</td>
                                 <td>{emp.subCom || '-'}</td>
@@ -258,7 +262,7 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
                 ) : (
                     <tr>
                         <td colSpan="15" className="empty-state text-center py-4 text-muted">
-                            <i className="bi bi-inbox d-block mb-1 fs-4"></i>
+                            <i className="bi bi-inbox d-block mb-1 fs-4 text-secondary"></i>
                             Data absensi tidak ditemukan untuk filter tersebut.
                         </td>
                     </tr>
@@ -266,7 +270,6 @@ const AbsensiTable = ({ refreshTrigger, onEditClick, searchTerm, subCompany, sta
             </tbody>
             </table>
             
-            {/* Sembunyikan Pagination saat loading agar UI tidak melompat */}
             {!loading && startDate && endDate && totalPages > 1 && (
                 <PageNav 
                     currentPage={currentPage} 

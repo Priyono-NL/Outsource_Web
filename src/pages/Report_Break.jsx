@@ -7,7 +7,9 @@ import { Toast } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
 import { useAuth } from '../utils/useAuth';
 
+// Import Komponen Modular
 import PageHeader from '../components/PageHeader';
+import LoadingButton from '../components/LoadingButton';
 import BreakReport_Table from '../components/absensi_all/BreakReport_Table';
 
 const Report_Break = () => {
@@ -23,31 +25,37 @@ const Report_Break = () => {
   const crud = useCrudPage();
   const todayStr = getTodayString();
   const { user } = useAuth();
-  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
 
-  // --- FILTER STATES ---
+  // Flag Pembatasan Hak Akses SSO
+  const isSubCompanyRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  const isDeptRestricted       = user?.allowed_costcenters && user.allowed_costcenters.length > 0;
+
+  // --- MASTER DATA STATES ---
   const [subCompanies, setSubCompanies] = useState([]);
+  const [departments, setDepartments]   = useState([]);
+
+  // --- STATE FORM FILTER (DRAFT) ---
   const [subCompanyInput, setSubCompanyInput] = useState('');
-  const [appliedSubCompany, setAppliedSubCompany] = useState('');
-
-  const [departments, setDepartments] = useState([]);
   const [departmentInput, setDepartmentInput] = useState('');
+  const [startDate, setStartDate]             = useState(todayStr);
+  const [endDate, setEndDate]                 = useState(todayStr);
+  const [statusInput, setStatusInput]         = useState('all_data');
+
+  // --- STATE APPLIED FILTER (TERAPAN) ---
+  const [appliedSubCompany, setAppliedSubCompany] = useState('');
   const [appliedDepartment, setAppliedDepartment] = useState('');
+  const [appliedStartDate, setAppliedStartDate]   = useState(todayStr);
+  const [appliedEndDate, setAppliedEndDate]       = useState(todayStr);
+  const [appliedStatus, setAppliedStatus]         = useState('all_data');
+  const [appliedSearch, setAppliedSearch]         = useState('');
 
-  const [startDate, setStartDate] = useState(todayStr);
-  const [endDate, setEndDate] = useState(todayStr);
-  const [appliedStartDate, setAppliedStartDate] = useState(todayStr);
-  const [appliedEndDate, setAppliedEndDate] = useState(todayStr);
+  // --- FLAG FILTER STATES ---
+  const [isFilterApplied, setIsFilterApplied] = useState(true);
+  const [isFilterDirty, setIsFilterDirty]     = useState(false);
 
-  // Status Filter Baru
-  const [statusInput, setStatusInput] = useState('all_data');
-  const [appliedStatus, setAppliedStatus] = useState('all_data');
-
-  const [appliedSearch, setAppliedSearch] = useState('');
-
-  // UI States
-  const [isExporting, setIsExporting] = useState(false);
-  const [isFilterDirty, setIsFilterDirty] = useState(false); // Flag pembersih tabel
+  // --- ACTION LOADING STATES ---
+  const [isExporting, setIsExporting]             = useState(false);
+  const [isApplyingFilter, setIsApplyingFilter]   = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -56,30 +64,80 @@ const Report_Break = () => {
           api.get('/subcom?page=1&pageSize=200'),
           api.get('/costcenter?page=1&pageSize=200'),
         ]);
-        setSubCompanies(resSub.data.data);
-        setDepartments(resDept.data.data);
-        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
-          setSubCompanyInput(resSub.data.data[0].sub_company_id);
-          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+
+        const subData  = resSub.data.data || [];
+        const deptData = resDept.data.data || [];
+
+        setSubCompanies(subData);
+        setDepartments(deptData);
+
+        // Auto-select Subcompany jika user dibatasi SSO
+        if (isSubCompanyRestricted && subData.length > 0) {
+          const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
+          const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
+          setSubCompanyInput(defaultSub);
+          setAppliedSubCompany(defaultSub);
         }
-      } catch { /* silent */ }
+
+        // Auto-select Department jika user dibatasi SSO
+        if (isDeptRestricted && deptData.length > 0) {
+          const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
+          const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
+          setDepartmentInput(defaultDept);
+          setAppliedDepartment(defaultDept);
+        }
+
+      } catch { /* silent error handling */ }
     };
     if (user) load();
   }, [user]);
 
+  const handleFilterChange = (setter, value) => {
+    setter(value);
+    setIsFilterDirty(true);
+  };
+
   const handleApplyFilters = () => {
+    setIsApplyingFilter(true);
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
-    setAppliedStatus(statusInput); // Terapkan status
+    setAppliedStatus(statusInput);
     setAppliedSearch(crud.searchInput);
     
-    setIsFilterDirty(false); // Tampilkan tabel kembali
+    setIsFilterApplied(true);
+    setIsFilterDirty(false);
+
     crud.handleSearch();
+    setTimeout(() => setIsApplyingFilter(false), 300);
+  };
+
+  const handleResetFilters = () => {
+    setStatusInput('all_data');
+    setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
+    setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
+    setStartDate(todayStr);
+    setEndDate(todayStr);
+    crud.setSearchInput('');
+
+    setAppliedStatus('all_data');
+    if (!isSubCompanyRestricted) setAppliedSubCompany('');
+    if (!isDeptRestricted) setAppliedDepartment('');
+    setAppliedStartDate(todayStr);
+    setAppliedEndDate(todayStr);
+    setAppliedSearch('');
+
+    setIsFilterApplied(false);
+    setIsFilterDirty(false);
   };
 
   const handleExportExcel = async () => {
+    if (isFilterDirty) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengeksport data.' });
+      return;
+    }
+
     try {
       setIsExporting(true);
       const params = new URLSearchParams({
@@ -87,7 +145,7 @@ const Report_Break = () => {
         department: appliedDepartment || '',
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
-        status_filter: appliedStatus || 'all_data', // Kirim status ke endpoint export
+        status_filter: appliedStatus || 'all_data',
         search: appliedSearch || '',
       }).toString();
 
@@ -102,7 +160,7 @@ const Report_Break = () => {
         icon: 'success',
         title: 'Laporan Excel berhasil diunduh'
       });
-    } catch (err) {
+    } catch {
       Toast.fire({
         icon: 'error',
         title: 'Gagal mengunduh laporan Excel'
@@ -112,8 +170,16 @@ const Report_Break = () => {
     }
   };
 
-  const subCompanyOptions = isRestricted
-    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+  const compactSelectStyle = {
+    control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+    menuPortal: base => ({ ...base, zIndex: 9999 })
+  };
+
+  // --- DYNAMIC OPTIONS (SSO RESTRICTED) ---
+  const subCompanyOptions = isSubCompanyRestricted
+    ? subCompanies
+        .filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id))
+        .map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
     : [
         { value: '', label: 'Semua Sub Company' },
         { value: 'TYPE_OS', label: 'Outsource' },
@@ -121,10 +187,14 @@ const Report_Break = () => {
         ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
       ];
 
-  const departmentOptions = [
-    { value: '', label: 'Semua Department' },
-    ...departments.map(d => ({ value: d.cost_center, label: d.org_name })),
-  ];
+  const departmentOptions = isDeptRestricted
+    ? departments
+        .filter(d => user.allowed_costcenters.includes(d.id))
+        .map(d => ({ value: d.id, label: d.org_name }))
+    : [
+        { value: '', label: 'Semua Department' },
+        ...departments.map(d => ({ value: d.id, label: d.org_name })),
+      ];
 
   const statusOptions = [
     { value: 'all_data', label: 'Semua Status' },
@@ -147,97 +217,120 @@ const Report_Break = () => {
       />
 
       <div className="app-card">
-        <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3" style={{ fontSize: '12px' }}>
+        {/* --- FILTER BAR CONTAINER --- */}
+        <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3">
 
-          <div className="filter-group" style={{ minWidth: 140, flex: 1 }}>
-            <label className="fw-semibold mb-1">Sub Company</label>
+          {/* Sub Company Filter */}
+          <div className="filter-group m-0" style={{ minWidth: 160, flex: 1 }}>
+            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Sub Company</label>
             <Select
               options={subCompanyOptions}
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => { setSubCompanyInput(o?.value || ''); setIsFilterDirty(true); }}
-              isClearable isSearchable
+              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
+              isClearable={!isSubCompanyRestricted}
+              isSearchable
               menuPortalTarget={document.body}
+              styles={compactSelectStyle}
             />
           </div>
 
-          <div className="filter-group" style={{ minWidth: 140, flex: 1 }}>
-            <label className="fw-semibold mb-1">Department</label>
+          {/* Department Filter */}
+          <div className="filter-group m-0" style={{ minWidth: 160, flex: 1 }}>
+            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Department</label>
             <Select
               options={departmentOptions}
               placeholder="Cari..."
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
-              onChange={o => { setDepartmentInput(o?.value || ''); setIsFilterDirty(true); }}
-              isClearable isSearchable
+              onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
+              isClearable={!isDeptRestricted}
+              isSearchable
               menuPortalTarget={document.body}
+              styles={compactSelectStyle}
             />
           </div>
 
-          <div className="filter-group" style={{ minWidth: 140, flex: 1 }}>
-            <label className="fw-semibold mb-1">Status Break</label>
+          {/* Status Break Filter */}
+          <div className="filter-group m-0" style={{ minWidth: 160, flex: 1 }}>
+            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Status Break</label>
             <Select
               options={statusOptions}
               value={statusOptions.find(o => o.value === statusInput)}
-              onChange={o => { setStatusInput(o?.value || 'all_data'); setIsFilterDirty(true); }}
+              onChange={o => handleFilterChange(setStatusInput, o?.value || 'all_data')}
               isSearchable={false}
               menuPortalTarget={document.body}
+              styles={compactSelectStyle}
             />
           </div>
 
-          <div className="filter-group" style={{ minWidth: 120 }}>
-            <label className="fw-semibold mb-1">Tanggal Mulai</label>
-            <input 
-              type="date" 
-              className="form-control-app"
-              style={{ height: '30px', fontSize: '12px', padding: '4px 8px' }}
-              value={startDate}
-              onChange={(e) => { setStartDate(e.target.value); setIsFilterDirty(true); }}
-            />
+          {/* Date Range Filters */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+            <div className="filter-group m-0">
+              <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Tanggal Mulai</label>
+              <input 
+                type="date" 
+                className="form-control-app"
+                style={{ height: '34px', fontSize: '13px', width: '130px' }}
+                value={startDate}
+                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
+              />
+            </div>
+
+            <span style={{ paddingBottom: '6px', fontSize: 14, fontWeight: 'bold' }}>-</span>
+
+            <div className="filter-group m-0">
+              <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Sampai</label>
+              <input 
+                type="date" 
+                className="form-control-app"
+                style={{ height: '34px', fontSize: '13px', width: '130px' }}
+                value={endDate}
+                min={startDate}
+                onChange={(e) => handleFilterChange(setEndDate, e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="filter-group" style={{ minWidth: 120 }}>
-            <label className="fw-semibold mb-1">Sampai</label>
-            <input 
-              type="date" 
-              className="form-control-app"
-              style={{ height: '30px', fontSize: '12px', padding: '4px 8px' }}
-              value={endDate}
-              min={startDate}
-              onChange={(e) => { setEndDate(e.target.value); setIsFilterDirty(true); }}
-            />
-          </div>
-
+          {/* Group Tombol Aksi */}
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }} className="d-flex gap-2">
-            <button 
-              className="btn-app btn-primary-app" 
-              style={{ height: '30px', fontSize: '12px', display: 'flex', alignItems: 'center' }}
+            {isFilterApplied && (
+              <button 
+                type="button" 
+                className="btn-app btn-ghost-app" 
+                style={{ height: '34px', fontSize: '13px' }}
+                onClick={handleResetFilters}
+              >
+                <i className="bi bi-x-circle me-1" /> Clear Filter
+              </button>
+            )}
+
+            <LoadingButton
+              loading={isApplyingFilter}
+              loadingText="Memfilter..."
+              className="btn-app btn-primary-app"
+              style={{ height: '34px', fontSize: '13px', display: 'flex', alignItems: 'center' }}
+              icon="bi bi-funnel"
               onClick={handleApplyFilters}
             >
-              <i className="bi bi-funnel me-1" /> Terapkan Filter
-            </button>
+              Terapkan Filter
+            </LoadingButton>
 
-            <button 
-              className="btn-app btn-success-app" 
-              style={{ height: '30px', fontSize: '12px', display: 'flex', alignItems: 'center' }}
+            <LoadingButton
+              loading={isExporting}
+              loadingText="Mengunduh..."
+              className="btn-app btn-success-app"
+              style={{ height: '34px', fontSize: '13px', display: 'flex', alignItems: 'center' }}
+              icon="bi bi-file-earmark-excel"
               onClick={handleExportExcel}
               disabled={isExporting || isFilterDirty}
             >
-              {isExporting ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                  Mengunduh...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-file-earmark-excel me-1" /> Export Excel
-                </>
-              )}
-            </button>
+              Export Excel
+            </LoadingButton>
           </div>
 
         </div>
         
-        {/* State Pencegahan Salah Baca Data */}
+        {/* --- DIRTY FILTER WARNING / DATATABLE --- */}
         {isFilterDirty ? (
           <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>

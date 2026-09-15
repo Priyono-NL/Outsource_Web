@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
-// Sesuaikan path import di bawah ini dengan struktur folder Anda
 import PageNav from '../PageNav'; 
 
-const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDate }) => { 
+const MpEmp_Table = ({ 
+    refreshTrigger, 
+    searchTerm, 
+    subCompany, 
+    department, 
+    startDate, 
+    endDate 
+}) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
     const [loading, setLoading] = useState(false);
 
-    // State untuk Pagination
+    // State Pagination
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
+    const [pageSize] = useState(10);
     const [totalItem, setTotalItem] = useState(0);
     const [totalPage, setTotalPage] = useState(0);
 
@@ -23,6 +29,7 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDat
             setError(null);
             
             const params = new URLSearchParams({
+                search: searchTerm || '',
                 sub_company: subCompany || '',
                 department: department || '',
                 start_date: startDate || '',
@@ -51,13 +58,15 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDat
         }
     };
 
+    // Reset ke halaman 1 jika filter terapan diubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, startDate, endDate]);
+    }, [searchTerm, subCompany, department, startDate, endDate]);
 
+    // Refetch data saat pagination, trigger refresh, atau filter berubah
     useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, currentPage]);
+    }, [refreshTrigger, searchTerm, subCompany, department, startDate, endDate, currentPage]);
 
     return (
         <>
@@ -90,13 +99,13 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDat
                             </tr>
                         ) : employees.length > 0 ? (
                             employees.map((emp, index) => (
-                                <tr key={`mp-emp-${emp.emp_id}-${index}`}>
-                                    <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
+                                <tr key={`mp-emp-${emp.emp_id || index}-${index}`}>
+                                    <td className="text-center fw-bold text-primary">{emp.emp_id || '-'}</td>
                                     <td>{emp.display_name || '-'}</td>
                                     <td className="text-center">{emp.cc_name || '-'}</td>
                                     <td className="text-center">{emp.working_days || 0}</td>
                                     <td className="text-center text-primary fw-bold">
-                                        {(emp.working_hours || 0).toFixed(2)}
+                                        {Number(emp.working_hours || 0).toFixed(2)}
                                     </td>
                                     <td className="text-center">{emp.join_date || '-'}</td>
                                     <td className="text-center">{emp.termination_date || '-'}</td>
@@ -105,13 +114,12 @@ const MpEmp_Table = ({ refreshTrigger, subCompany, department, startDate, endDat
                         ) : (
                             <tr>
                                 <td colSpan="7" className="empty-state text-center py-4 text-muted">
-                                    <i className="bi bi-inbox d-block mb-1 fs-4"></i>
+                                    <i className="bi bi-inbox d-block mb-1 fs-4 text-secondary"></i>
                                     Data absensi tidak ditemukan untuk periode ini
                                 </td>
                             </tr>
                         )}
                     </tbody>
-
                 </table>
             </div>        
 

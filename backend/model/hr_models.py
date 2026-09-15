@@ -11,6 +11,12 @@ class UserSubcompanyAccess(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('hr_users.id'), nullable=False)
     sub_company_id = db.Column(db.String(50), nullable=False)
 
+class UserCostCenterAccess(db.Model):
+    __tablename__ = 'hr_user_cost_center_access'    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('hr_users.id'), nullable=False)
+    cost_center_id = db.Column(db.Integer, db.ForeignKey('org_cost_center.id'), nullable=False)
+
 class User(db.Model):
     __tablename__ = 'hr_users'
     id = db.Column(db.Integer, primary_key=True)

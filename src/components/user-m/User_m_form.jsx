@@ -6,10 +6,15 @@ function User_m_form({ onClose, onSuccess, initialData }) {
   const formRef = useRef(null);
   const [roles, setRoles] = useState([]);
   const [subcompanies, setSubcompanies] = useState([]);
+  const [costCenters, setCostCenters] = useState([]); // Master Cost Center
   const [loadingForm, setLoadingForm] = useState(false);
+  
   const [selectedRole, setSelectedRole] = useState(initialData?.local_role_id || '');
   const [selectedSubcompanies, setSelectedSubcompanies] = useState(initialData?.subcompany_access || []);
+  const [selectedCostCenters, setSelectedCostCenters] = useState(initialData?.costcenter_access || []); // Selected CC
+
   const [searchSubco, setSearchSubco] = useState('');
+  const [searchCc, setSearchCc] = useState('');
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -19,6 +24,7 @@ function User_m_form({ onClose, onSuccess, initialData }) {
         if (res.data.success) {
           setRoles(res.data.data.roles || []);
           setSubcompanies(res.data.data.subcompanies || []);
+          setCostCenters(res.data.data.cost_centers || []); // Master CC dari backend
         }
       } catch (error) {
         Toast.fire({ icon: 'error', title: 'Gagal memuat master data' });
@@ -29,7 +35,7 @@ function User_m_form({ onClose, onSuccess, initialData }) {
     fetchMasterData();
   }, []);
 
-  // Toggle checklist subcompany
+  // --- HANDLER SUBCOMPANY ---
   const handleToggleSubcompany = (subcoId) => {
     if (selectedSubcompanies.includes(subcoId)) {
       setSelectedSubcompanies(selectedSubcompanies.filter(id => id !== subcoId));
@@ -38,15 +44,13 @@ function User_m_form({ onClose, onSuccess, initialData }) {
     }
   };
 
-  // Pilih Semua Subcompany
-  const handleSelectAll = () => {
-    const allIds = subcompanies.map(s => s.sub_company_id);
-    setSelectedSubcompanies(allIds);
-  };
-
-  // Kosongkan Pilihan (Akses Penuh ke Semua Subcompany)
-  const handleClearAll = () => {
-    setSelectedSubcompanies([]);
+  // --- HANDLER COST CENTER ---
+  const handleToggleCostCenter = (ccId) => {
+    if (selectedCostCenters.includes(ccId)) {
+      setSelectedCostCenters(selectedCostCenters.filter(id => id !== ccId));
+    } else {
+      setSelectedCostCenters([...selectedCostCenters, ccId]);
+    }
   };
 
   const handleSave = async (e) => {
@@ -60,7 +64,8 @@ function User_m_form({ onClose, onSuccess, initialData }) {
       const payload = {
         user_id: initialData.id,
         role_id: selectedRole,
-        subcompanies: selectedSubcompanies
+        subcompanies: selectedSubcompanies,
+        cost_centers: selectedCostCenters // Payload baru
       };
 
       const response = await api.post('/api/users/update-access', payload);
@@ -77,37 +82,38 @@ function User_m_form({ onClose, onSuccess, initialData }) {
     }
   };
 
-  // Filter pencarian subcompany
   const filteredSubcompanies = subcompanies.filter(s => 
     s.sub_company_name.toLowerCase().includes(searchSubco.toLowerCase()) ||
     s.sub_company_id.toLowerCase().includes(searchSubco.toLowerCase())
   );
 
+  const filteredCostCenters = costCenters.filter(c => {
+    const orgName = String(c.org_name || '').toLowerCase();
+    const costCenterCode = String(c.cost_center || '').toLowerCase();
+    const search = searchCc.toLowerCase();
+    return orgName.includes(search) || costCenterCode.includes(search);
+  });
+
   return (
     <>
-      <div 
-        className="modal-backdrop fade show" 
-        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} 
-        onClick={onClose}
-      ></div>
+      <div className="modal-backdrop fade show" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={onClose}></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
-        <div className="modal-dialog modal-md modal-dialog-centered">
+        <div className="modal-dialog modal-lg modal-dialog-centered">
           <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px', overflow: 'hidden' }}>
             
-            {/* Header Modal */}
+            {/* Header */}
             <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0 text-primary">
-                <i className="bi bi-shield-lock-fill me-2"></i>
-                Kelola Hak Akses User
+                <i className="bi bi-shield-lock-fill me-2"></i>Kelola Hak Akses User
               </h6>
               <button type="button" className="btn-close" onClick={onClose}></button>
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
-              <div className="modal-body p-3 bg-light">
+              <div className="modal-body p-3 bg-light" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
                 
-                {/* User Information Card */}
+                {/* User Info Header */}
                 <div className="card border-0 shadow-sm mb-3">
                   <div className="card-body p-2 px-3 d-flex align-items-center justify-content-between">
                     <div>
@@ -115,8 +121,7 @@ function User_m_form({ onClose, onSuccess, initialData }) {
                       <span className="fw-bold text-dark">{initialData?.nama || '-'}</span>
                     </div>
                     <span className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
-                      <i className="bi bi-envelope me-1"></i>
-                      {initialData?.email}
+                      <i className="bi bi-envelope me-1"></i>{initialData?.email}
                     </span>
                   </div>
                 </div>
@@ -129,7 +134,7 @@ function User_m_form({ onClose, onSuccess, initialData }) {
                 ) : (
                   <div className="d-flex flex-column gap-3">
                     
-                    {/* Role App Dropdown */}
+                    {/* Role Dropdown */}
                     <div className="bg-white p-3 rounded border shadow-sm">
                       <label className="form-label fw-semibold mb-1" style={{ fontSize: '0.8rem' }}>
                         Role Aplikasi <span className="text-danger">*</span>
@@ -147,109 +152,99 @@ function User_m_form({ onClose, onSuccess, initialData }) {
                       </select>
                     </div>
 
-                    {/* Interactive Subcompany Access Section */}
-                    <div className="bg-white p-3 rounded border shadow-sm">
-                      <div className="d-flex align-items-center justify-content-between mb-3">
-                        <label className="form-label fw-semibold mb-0" style={{ fontSize: '0.82rem' }}>
-                          Akses Subcompany (Cabang)
-                        </label>
-                        
-                        {/* Status Summary */}
-                        {selectedSubcompanies.length === 0 ? (
-                          <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1" style={{ fontSize: '0.72rem' }}>
-                            <i className="bi bi-globe me-1"></i> Akses Semua Subcompany
-                          </span>
-                        ) : (
-                          <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1" style={{ fontSize: '0.72rem' }}>
-                            <i className="bi bi-building-lock me-1"></i> Terbatas ({selectedSubcompanies.length} Dipilih)
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Filter Search Box */}
-                      <div className="input-group input-group-sm mb-2">
-                        <span className="input-group-text bg-light border-end-0 text-muted px-2.5">
-                          <i className="bi bi-search" style={{ fontSize: '0.75rem' }}></i>
-                        </span>
-                        <input 
-                          type="text" 
-                          className="form-control border-start-0 bg-light shadow-none"
-                          style={{ fontSize: '0.78rem' }}
-                          placeholder="Cari Subcompany..."
-                          value={searchSubco}
-                          onChange={(e) => setSearchSubco(e.target.value)}
-                        />
-                      </div>
-
-                      {/* Quick Action Buttons */}
-                      <div className="d-flex justify-content-start gap-1 mb-2.5">
-                        <button 
-                          type="button" 
-                          className="btn btn-sm btn-light border py-1 px-2 text-secondary fw-medium"
-                          style={{ fontSize: '0.72rem', borderRadius: '5px' }}
-                          onClick={handleSelectAll}
-                        >
-                          <i className="bi bi-check2-all me-1"></i>Pilih Semua
-                        </button>
-                        <button 
-                          type="button" 
-                          className="btn btn-sm btn-light border py-1 px-2 text-secondary fw-medium"
-                          style={{ fontSize: '0.72rem', borderRadius: '5px' }}
-                          onClick={handleClearAll}
-                        >
-                          <i className="bi bi-arrow-counterclockwise me-1"></i>Reset (Akses Semua)
-                        </button>
-                      </div>
-
-                      {/* Custom List Container - Dibuat Lebih Lega */}
-                      <div 
-                        className="border rounded p-2 bg-light overflow-auto d-flex flex-column gap-2" 
-                        style={{ maxHeight: '200px' }}
-                      >
-                        {filteredSubcompanies.length === 0 ? (
-                          <div className="text-center text-muted py-3" style={{ fontSize: '0.78rem' }}>
-                            Subcompany tidak ditemukan
+                    <div className="row g-3">
+                      {/* Subcompany Access Section */}
+                      <div className="col-md-6">
+                        <div className="bg-white p-3 rounded border shadow-sm h-100">
+                          <div className="d-flex align-items-center justify-content-between mb-2">
+                            <label className="form-label fw-semibold mb-0" style={{ fontSize: '0.8rem' }}>Akses Subcompany</label>
+                            <span className={`badge ${selectedSubcompanies.length === 0 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning-emphasis'}`} style={{ fontSize: '0.68rem' }}>
+                              {selectedSubcompanies.length === 0 ? 'Akses Semua' : `${selectedSubcompanies.length} Dipilih`}
+                            </span>
                           </div>
-                        ) : (
-                          filteredSubcompanies.map(subco => {
-                            const isChecked = selectedSubcompanies.includes(subco.sub_company_id);
-                            return (
+
+                          <input 
+                            type="text" 
+                            className="form-control form-control-sm bg-light mb-2"
+                            placeholder="Cari Subcompany..."
+                            value={searchSubco}
+                            onChange={(e) => setSearchSubco(e.target.value)}
+                          />
+
+                          <div className="btn-group btn-group-sm mb-2 w-100">
+                            <button type="button" className="btn btn-outline-secondary py-0" style={{ fontSize: '0.7rem' }} onClick={() => setSelectedSubcompanies(subcompanies.map(s => s.sub_company_id))}>Semua</button>
+                            <button type="button" className="btn btn-outline-secondary py-0" style={{ fontSize: '0.7rem' }} onClick={() => setSelectedSubcompanies([])}>Reset</button>
+                          </div>
+
+                          <div className="border rounded p-2 bg-light overflow-auto d-flex flex-column gap-1.5" style={{ maxHeight: '160px' }}>
+                            {filteredSubcompanies.map(subco => (
                               <div 
                                 key={subco.sub_company_id}
-                                className={`d-flex align-items-center p-2 px-3 rounded border bg-white user-select-none ${
-                                  isChecked ? 'border-primary shadow-sm bg-primary-subtle bg-opacity-10' : 'border-gray-200'
-                                }`}
-                                style={{ cursor: 'pointer', transition: 'all 0.15s ease-in-out' }}
+                                className={`d-flex align-items-center p-2 rounded border bg-white ${selectedSubcompanies.includes(subco.sub_company_id) ? 'border-primary bg-primary-subtle bg-opacity-10' : ''}`}
+                                style={{ cursor: 'pointer' }}
                                 onClick={() => handleToggleSubcompany(subco.sub_company_id)}
                               >
-                                {/* Custom Checkbox Tanpa Kelas .form-check Agar Tidak Terpotong */}
                                 <input 
                                   className="form-check-input me-3 mt-0 flex-shrink-0" 
-                                  type="checkbox" 
+                                  type="checkbox"
                                   style={{ cursor: 'pointer', width: '15px', height: '15px' }}
-                                  id={`subco-${subco.sub_company_id}`}
-                                  checked={isChecked}
+                                  checked={selectedSubcompanies.includes(subco.sub_company_id)}
                                   onChange={() => {}}
                                 />
-                                <label 
-                                  className="form-check-label mb-0 text-truncate text-dark" 
-                                  htmlFor={`subco-${subco.sub_company_id}`}
-                                  style={{ fontSize: '0.8rem', cursor: 'pointer', fontWeight: isChecked ? '600' : 'normal' }}
-                                >
-                                    {subco.sub_company_name}
-                                </label>
+                                <span style={{ fontSize: '0.78rem' }}>
+                                  {subco.sub_company_name}
+                                </span>
                               </div>
-                            );
-                          })
-                        )}
+                            ))}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Explanatory Helper Note */}
-                      <div className="d-flex align-items-start gap-1.5 mt-2.5 text-muted" style={{ fontSize: '0.7rem', lineHeight: '1.35' }}>
-                        <i className="bi bi-info-circle-fill text-primary flex-shrink-0 mt-0.5" style={{ fontSize: '0.75rem' }}></i>
-                        <span>
-                          Jika <b>tidak ada</b> subcompany yang dicentang, user secara otomatis berhak mengakses <b>SEMUA</b> data subcompany (Akses Global).
-                        </span>
+                      {/* Cost Center / Department Access Section */}
+                      <div className="col-md-6">
+                        <div className="bg-white p-3 rounded border shadow-sm h-100">
+                          <div className="d-flex align-items-center justify-content-between mb-2">
+                            <label className="form-label fw-semibold mb-0" style={{ fontSize: '0.8rem' }}>Akses Cost Center / Dept</label>
+                            <span className={`badge ${selectedCostCenters.length === 0 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning-emphasis'}`} style={{ fontSize: '0.68rem' }}>
+                              {selectedCostCenters.length === 0 ? 'Akses Semua' : `${selectedCostCenters.length} Dipilih`}
+                            </span>
+                          </div>
+
+                          <input 
+                            type="text" 
+                            className="form-control form-control-sm bg-light mb-2"
+                            placeholder="Cari Cost Center..."
+                            value={searchCc}
+                            onChange={(e) => setSearchCc(e.target.value)}
+                          />
+
+                          <div className="btn-group btn-group-sm mb-2 w-100">
+                            <button type="button" className="btn btn-outline-secondary py-0" style={{ fontSize: '0.7rem' }} onClick={() => setSelectedCostCenters(costCenters.map(c => c.id))}>Semua</button>
+                            <button type="button" className="btn btn-outline-secondary py-0" style={{ fontSize: '0.7rem' }} onClick={() => setSelectedCostCenters([])}>Reset</button>
+                          </div>
+
+                          <div className="border rounded p-2 bg-light overflow-auto d-flex flex-column gap-1.5" style={{ maxHeight: '160px' }}>
+                            {filteredCostCenters.map(cc => (
+                              <div 
+                                key={cc.id}
+                                className={`d-flex align-items-center p-2 rounded border bg-white ${selectedCostCenters.includes(cc.id) ? 'border-primary bg-primary-subtle bg-opacity-10' : ''}`}
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handleToggleCostCenter(cc.id)}
+                              >
+                                <input 
+                                  className="form-check-input me-3 mt-0 flex-shrink-0" 
+                                  type="checkbox"
+                                  style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                  checked={selectedCostCenters.includes(cc.id)}
+                                  onChange={() => {}}
+                                />
+                                <span style={{ fontSize: '0.78rem' }}>
+                                  {cc.org_name}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -258,23 +253,11 @@ function User_m_form({ onClose, onSuccess, initialData }) {
 
               </div>
 
-              {/* Modal Footer */}
+              {/* Footer */}
               <div className="modal-footer bg-white border-top p-2 px-3">
-                <button 
-                  type="button" 
-                  className="btn btn-sm btn-light border" 
-                  style={{ fontSize: '0.8rem' }} 
-                  onClick={onClose}
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-sm btn-primary px-3 shadow-sm" 
-                  style={{ fontSize: '0.8rem' }}
-                  disabled={loadingForm}
-                >
-                  <i className="bi bi-check-lg me-1"></i> Simpan Akses
+                <button type="button" className="btn btn-sm btn-light border" onClick={onClose}>Batal</button>
+                <button type="submit" className="btn btn-sm btn-primary px-3 shadow-sm" disabled={loadingForm}>
+                  <i className="bi bi-check-lg me-1"></i>Simpan Akses
                 </button>
               </div>
             </form>

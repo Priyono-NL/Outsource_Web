@@ -11,52 +11,74 @@ from model.osMedical import osMedical
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.ob_emp import ObEmployee
-# 1. Import Model Hak Akses SSO
-from model.hr_models import User, UserSubcompanyAccess
+from model.osCostCenter import OsCostCenter
+from model.hr_models import User, UserSubcompanyAccess, UserCostCenterAccess
 
 osMedical_bp = Blueprint('osMedical_bp', __name__)
 
-@osMedical_bp.route('/osmedical')
+@osMedical_bp.route('/osmedical', methods=['GET'])
 def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
         search = request.args.get('search', '', type=str)
-        req_subco = request.args.get('subcompany', '', type=str) # Tangkap parameter dari React
+        req_subco = request.args.get('subcompany', '', type=str)
+        req_dept = request.args.get('department', '', type=str)
         
         query = osMedical.query
 
         # =================================================================
-        # 2. LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO SECURITY CHECK)
+        # LOGIKA FILTER HAK AKSES SSO (SUBCOMPANY & COST CENTER)
         # =================================================================
         user_email = request.headers.get('X-User-Email')
-        allowed_access = []
+        allowed_subco = []
+        allowed_cc = []
+
         if user_email:
             user = User.query.filter_by(email=user_email).first()
             if user:
-                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
-                allowed_access = [a.sub_company_id for a in access_records]
-                
-                # Cegah bypass manual dari URL/Postman
-                if allowed_access and req_subco and req_subco not in allowed_access:
-                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+                # 1. Access Subcompany Check
+                subco_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_subco = [a.sub_company_id for a in subco_records]
+                if allowed_subco and req_subco and req_subco not in allowed_subco:
+                    return jsonify({"status": "error", "message": "Akses Subcompany ditolak"}), 403
 
-        # Tentukan batasan subcompany (apakah dari DB user atau pilihan dropdown)
-        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
+                # 2. Access Cost Center / Department Check
+                cc_records = UserCostCenterAccess.query.filter_by(user_id=user.id).all()
+                allowed_cc = [c.cost_center_id for c in cc_records]
+                if allowed_cc and req_dept:
+                    try:
+                        if int(req_dept) not in allowed_cc:
+                            return jsonify({"status": "error", "message": "Akses Departemen ditolak"}), 403
+                    except ValueError:
+                        pass
+
+        # Penentuan Filter Aktif
+        subco_filter_active = allowed_subco or ([req_subco] if req_subco else None)
+        cc_filter_active = allowed_cc or ([int(req_dept)] if req_dept and req_dept.isdigit() else None)
+
         subco_emp_ids = None
-        
-        if subco_filter_active:
-            subco_matches = db.session.query(OsEmployment.id).filter(
-                OsEmployment.sub_company_id.in_(subco_filter_active)
-            ).all()
+        if subco_filter_active or cc_filter_active:
+            emp_query = db.session.query(OsEmployment.id)
+            
+            if subco_filter_active:
+                emp_query = emp_query.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+            
+            if cc_filter_active:
+                emp_query = emp_query.join(OsCostCenter, OsEmployment.id == OsCostCenter.employee_id)\
+                                     .filter(OsCostCenter.org_cc_id.in_(cc_filter_active))
+            
+            subco_matches = emp_query.all()
             subco_emp_ids = [str(row.id) for row in subco_matches]
-        # =================================================================
 
+        # =================================================================
+        # PROCESS SEARCH / FILTER QUERY
+        # =================================================================
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
 
-            # 1. Cari di OsEmployment dengan filter Subcompany
+            # Search pada Karyawan Outsource
             os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
@@ -68,12 +90,15 @@ def index():
             
             if subco_filter_active:
                 os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
-                
+            if cc_filter_active:
+                os_matches_q = os_matches_q.join(OsCostCenter, OsEmployment.id == OsCostCenter.employee_id)\
+                                           .filter(OsCostCenter.org_cc_id.in_(cc_filter_active))
+
             os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
 
-            # 2. Cari di ObEmployee (hanya jika tidak terhambat filter subcompany spesifik)
-            if not req_subco:
+            # Search pada ObEmployee (Hanya jika tidak ada batasan subcompany / department spesifik)
+            if not req_subco and not req_dept and not allowed_subco and not allowed_cc:
                 ob_matches = db.session.query(ObEmployee.employee_id).filter(
                     or_(
                         ObEmployee.employee_id.cast(db.String).ilike(search_term),
@@ -87,7 +112,6 @@ def index():
             else:
                 query = query.filter(False)
         else:
-            # Jika tidak ada pencarian kata kunci, terapkan filter ID karyawan berdasarkan subcompany
             if subco_emp_ids is not None:
                 query = query.filter(osMedical.employee_id.in_(subco_emp_ids))
 
@@ -99,11 +123,13 @@ def index():
             "current_page": pagination.page,
             "total_item": pagination.total
         }), 200
+
     except Exception as e:
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
+
 
 @osMedical_bp.route('/osmedical/submit', methods=['POST'])
 def add():
@@ -120,7 +146,7 @@ def add():
         db.session.commit()
         return jsonify({
             "status": "success",
-            "message": "Data berhasil disimpan!"
+            "message": "Data medical berhasil disimpan!"
         }), 201     
     except Exception as e:
         db.session.rollback()
@@ -128,6 +154,7 @@ def add():
             "status": "error",
             "message": "Terjadi kesalahan pada server: " + str(e)
         }), 500
+
 
 @osMedical_bp.route('/osmedical/<string:id>', methods=['PUT'])
 def update(id):
@@ -143,10 +170,11 @@ def update(id):
         osMedical_data.medical_result = data.get('medical_result', osMedical_data.medical_result)
         osMedical_data.medical_notes = data.get('medical_notes', osMedical_data.medical_notes)
         db.session.commit()
-        return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
+        return jsonify({"status": "success", "message": "Data medical berhasil diupdate!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @osMedical_bp.route('/osmedical/<string:id>', methods=['DELETE'])
 def delete(id):
@@ -157,31 +185,45 @@ def delete(id):
 
         db.session.delete(data)
         db.session.commit()
-        return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
+        return jsonify({"status": "success", "message": "Data medical berhasil dihapus!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
-    
+
+
 @osMedical_bp.route('/osmedical/export', methods=['GET'])
 def export():
     try:
         search = request.args.get('search', '', type=str)
         req_subco = request.args.get('subcompany', '', type=str)
+        req_dept = request.args.get('department', '', type=str)
         
         query = osMedical.query
 
-        # 3. FILTER AKSES HAK SUBCOMPANY SAAT EXPORT
+        # SSO Security Filter Check
         user_email = request.headers.get('X-User-Email')
-        allowed_access = []
+        allowed_subco = []
+        allowed_cc = []
+
         if user_email:
             user = User.query.filter_by(email=user_email).first()
             if user:
-                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
-                allowed_access = [a.sub_company_id for a in access_records]
-                if allowed_access and req_subco and req_subco not in allowed_access:
+                subco_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_subco = [a.sub_company_id for a in subco_records]
+                if allowed_subco and req_subco and req_subco not in allowed_subco:
                     return jsonify({"status": "error", "message": "Akses ditolak"}), 403
 
-        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
+                cc_records = UserCostCenterAccess.query.filter_by(user_id=user.id).all()
+                allowed_cc = [c.cost_center_id for c in cc_records]
+                if allowed_cc and req_dept:
+                    try:
+                        if int(req_dept) not in allowed_cc:
+                            return jsonify({"status": "error", "message": "Akses Departemen ditolak"}), 403
+                    except ValueError:
+                        pass
+
+        subco_filter_active = allowed_subco or ([req_subco] if req_subco else None)
+        cc_filter_active = allowed_cc or ([int(req_dept)] if req_dept and req_dept.isdigit() else None)
 
         if search:
             search_term = f"%{search}%"
@@ -197,11 +239,14 @@ def export():
             )
             if subco_filter_active:
                 os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
-                
+            if cc_filter_active:
+                os_matches_q = os_matches_q.join(OsCostCenter, OsEmployment.id == OsCostCenter.employee_id)\
+                                           .filter(OsCostCenter.org_cc_id.in_(cc_filter_active))
+
             os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
 
-            if not req_subco:
+            if not req_subco and not req_dept and not allowed_subco and not allowed_cc:
                 ob_matches = db.session.query(ObEmployee.employee_id).filter(
                     or_(
                         ObEmployee.employee_id.cast(db.String).ilike(search_term),
@@ -214,10 +259,15 @@ def export():
                 query = query.filter(osMedical.employee_id.in_(matched_employee_ids))
             else:
                 query = query.filter(False)
-        elif subco_filter_active:
-            subco_matches = db.session.query(OsEmployment.id).filter(
-                OsEmployment.sub_company_id.in_(subco_filter_active)
-            ).all()
+        elif subco_filter_active or cc_filter_active:
+            emp_query = db.session.query(OsEmployment.id)
+            if subco_filter_active:
+                emp_query = emp_query.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+            if cc_filter_active:
+                emp_query = emp_query.join(OsCostCenter, OsEmployment.id == OsCostCenter.employee_id)\
+                                     .filter(OsCostCenter.org_cc_id.in_(cc_filter_active))
+            
+            subco_matches = emp_query.all()
             subco_emp_ids = [str(row.id) for row in subco_matches]
             query = query.filter(osMedical.employee_id.in_(subco_emp_ids))
 
@@ -235,13 +285,14 @@ def export():
             })
 
         if not data:
-            return jsonify({'status': 'error', 'message': 'tidak ada data untuk diexport'})
+            return jsonify({'status': 'error', 'message': 'Tidak ada data untuk diexport'}), 400
             
         df = pd.DataFrame(data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Data OS Medical')        
         output.seek(0)
+
         return send_file(
             output, 
             as_attachment=True, 
@@ -250,7 +301,8 @@ def export():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
+
+
 @osMedical_bp.route('/osmedical/template', methods=['GET'])
 def template():
     try:
@@ -276,7 +328,6 @@ def template():
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Template_Import')
-            
             worksheet = writer.sheets['Template_Import']
 
             worksheet.column_dimensions['A'].width = 18 
@@ -292,7 +343,6 @@ def template():
             )
             dv_medical.error = 'Silakan pilih Jenis Medical dari daftar dropdown yang tersedia!'
             dv_medical.errorTitle = 'Pilihan Tidak Valid'
-            
             worksheet.add_data_validation(dv_medical)
             dv_medical.add("B2:B500")
 
@@ -303,7 +353,6 @@ def template():
             )
             dv_result.error = 'Silakan pilih Status Hasil dari daftar dropdown!'
             dv_result.errorTitle = 'Pilihan Tidak Valid'
-            
             worksheet.add_data_validation(dv_result)
             dv_result.add("D2:D500")
 
@@ -316,6 +365,7 @@ def template():
         )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @osMedical_bp.route('/osmedical/upload', methods=['POST'])
 def upload():
@@ -334,8 +384,8 @@ def upload():
         errors = []
         notes = []
         success_count = 0
-        
         today = datetime.now().date()
+
         for index, row in df.iterrows():
             line_number = index + 2
             try:

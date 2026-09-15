@@ -23,16 +23,19 @@ const ReportAktif = () => {
   const crud = useCrudPage();
   const todayStr = getTodayString();
   const { user } = useAuth();
-  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
 
-  // Form Filter States
+  // Flag Pembatasan Hak Akses SSO
+  const isSubCompanyRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  const isDeptRestricted       = user?.allowed_costcenters && user.allowed_costcenters.length > 0;
+
+  // Form Filter States (Draft)
   const [statusInput, setStatusInput]           = useState('active');
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [departmentInput, setDepartmentInput]   = useState('');
   const [targetDateInput, setTargetDateInput]   = useState(todayStr);
   
-  // Applied Filter States
-  const [appliedStatus, setAppliedStatus]       = useState('active');
+  // Applied Filter States (Terapan)
+  const [appliedStatus, setAppliedStatus]         = useState('active');
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
   const [appliedDepartment, setAppliedDepartment] = useState('');
   const [appliedTargetDate, setAppliedTargetDate] = useState(todayStr);
@@ -41,6 +44,7 @@ const ReportAktif = () => {
   const [isFilterApplied, setIsFilterApplied]   = useState(false);
   const [isFilterDirty, setIsFilterDirty]       = useState(false);
 
+  // Master Data States
   const [subCompanies, setSubCompanies] = useState([]);
   const [departments, setDepartments]   = useState([]);
 
@@ -55,13 +59,30 @@ const ReportAktif = () => {
           api.get('/subcom?page=1&pageSize=200'),
           api.get('/costcenter?page=1&pageSize=200'),
         ]);
-        setSubCompanies(resSub.data.data);
-        setDepartments(resDept.data.data);
-        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
-          setSubCompanyInput(resSub.data.data[0].sub_company_id);
-          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+
+        const subData  = resSub.data.data || [];
+        const deptData = resDept.data.data || [];
+
+        setSubCompanies(subData);
+        setDepartments(deptData);
+
+        // Auto-select Subcompany jika user dibatasi SSO
+        if (isSubCompanyRestricted && subData.length > 0) {
+          const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
+          const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
+          setSubCompanyInput(defaultSub);
+          setAppliedSubCompany(defaultSub);
         }
-      } catch { /* silent */ }
+
+        // Auto-select Department jika user dibatasi SSO
+        if (isDeptRestricted && deptData.length > 0) {
+          const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
+          const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
+          setDepartmentInput(defaultDept);
+          setAppliedDepartment(defaultDept);
+        }
+
+      } catch { /* silent error handling */ }
     };
     if (user) load();
   }, [user]);
@@ -69,6 +90,7 @@ const ReportAktif = () => {
   const handleApplyFilters = () => {
     setIsApplyingFilter(true);
     crud.handleSearch();
+
     setAppliedStatus(statusInput);
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
@@ -81,16 +103,18 @@ const ReportAktif = () => {
 
   const handleResetFilters = () => {
     setStatusInput('active');
-    setSubCompanyInput('');
-    setDepartmentInput('');
+    setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
+    setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
     setTargetDateInput(todayStr);
     crud.setSearchInput('');
     
     setAppliedStatus('active');
-    setAppliedSubCompany('');
-    setAppliedDepartment('');
+    if (!isSubCompanyRestricted) setAppliedSubCompany('');
+    if (!isDeptRestricted) setAppliedDepartment('');
     setAppliedTargetDate(todayStr);
+    
     setIsFilterApplied(false); 
+    setIsFilterDirty(false);
   };
 
   const handleExport = async () => {
@@ -98,6 +122,11 @@ const ReportAktif = () => {
       Toast.fire({ icon: 'warning', title: 'Terapkan filter terlebih dahulu untuk mengeksport data.' });
       return;
     }
+    if (isFilterDirty) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengeksport data.' });
+      return;
+    }
+
     setIsExporting(true);
     try {
       const params = new URLSearchParams({
@@ -105,7 +134,7 @@ const ReportAktif = () => {
         status: appliedStatus || 'active',
         sub_company: appliedSubCompany || '',
         department: appliedDepartment || '',
-        target_date: appliedTargetDate || '', // Kirim target date
+        target_date: appliedTargetDate || '',
       }).toString();
       
       const res = await api.get(`/employee/export?${params}`, { responseType: 'blob' });
@@ -122,8 +151,11 @@ const ReportAktif = () => {
     menuPortal: base => ({ ...base, zIndex: 9999 })
   };
 
-  const subCompanyOptions = isRestricted
-    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+  // Dynamic Options (SSO Restricted)
+  const subCompanyOptions = isSubCompanyRestricted
+    ? subCompanies
+        .filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id))
+        .map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
     : [
         { value: '', label: 'Semua Sub Company' },
         { value: 'TYPE_OS', label: 'Outsource' },
@@ -131,10 +163,14 @@ const ReportAktif = () => {
         ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
       ];
   
-  const departmentOptions = [
-    { value: '', label: 'Semua Department' },
-    ...departments.map(d => ({ value: d.cost_center, label: d.org_name })),
-  ];
+  const departmentOptions = isDeptRestricted
+    ? departments
+        .filter(d => user.allowed_costcenters.includes(d.id))
+        .map(d => ({ value: d.id, label: d.org_name }))
+    : [
+        { value: '', label: 'Semua Department' },
+        ...departments.map(d => ({ value: d.id, label: d.org_name })),
+      ];
 
   return (
     <div>
@@ -154,6 +190,7 @@ const ReportAktif = () => {
           className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExport}
+          disabled={!isFilterApplied || isFilterDirty}
         >
           Eksport Excel
         </LoadingButton>
@@ -177,6 +214,7 @@ const ReportAktif = () => {
             />
           </div>
 
+          {/* Sub Company Filter */}
           <div className="filter-group" style={{ minWidth: 180, flex: 1 }}>
             <label className="fw-semibold mb-1">Sub Company</label>
             <Select
@@ -184,12 +222,14 @@ const ReportAktif = () => {
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
               onChange={o => { setSubCompanyInput(o?.value || ''); setIsFilterDirty(true); }}
-              isClearable isSearchable
+              isClearable={!isSubCompanyRestricted}
+              isSearchable
               menuPortalTarget={document.body}
               styles={compactSelectStyle}
             />
           </div>
 
+          {/* Department / Cost Center Filter */}
           <div className="filter-group" style={{ minWidth: 180, flex: 1 }}>
             <label className="fw-semibold mb-1">Department</label>
             <Select
@@ -197,12 +237,14 @@ const ReportAktif = () => {
               placeholder="Cari..."
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
               onChange={o => { setDepartmentInput(o?.value || ''); setIsFilterDirty(true); }}
-              isClearable isSearchable
+              isClearable={!isDeptRestricted}
+              isSearchable
               menuPortalTarget={document.body}
               styles={compactSelectStyle}
             />
           </div>
 
+          {/* Filter Action Buttons */}
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end', display: 'flex', gap: '8px' }}>
             {isFilterApplied && (
               <button 
@@ -228,6 +270,7 @@ const ReportAktif = () => {
           </div>
         </div>
         
+        {/* Dirty Filter Warning */}
         {isFilterDirty && isFilterApplied ? (
            <div className="alert alert-warning text-center mt-3 py-3" style={{ borderStyle: 'dashed' }}>
              <i className="bi bi-exclamation-triangle text-warning fs-5 me-2"></i>
@@ -239,7 +282,7 @@ const ReportAktif = () => {
             searchTerm={crud.appliedSearch}
             filterSubCompany={appliedSubCompany}
             filterDepartment={appliedDepartment}
-            filterTargetDate={appliedTargetDate} // PROPS BARU
+            filterTargetDate={appliedTargetDate}
             isFilterApplied={isFilterApplied}
           />
         )}

@@ -16,7 +16,8 @@ import ViewDetails from '../components/employment/ViewDetails';
 const Employment = () => {
   const crud = useCrudPage();
   const { user } = useAuth();
-  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  const isSubCompanyRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  const isDeptRestricted       = user?.allowed_costcenters && user.allowed_costcenters.length > 0;
 
   const [viewForm, setViewForm]       = useState(false);
   const [viewData, setViewData]       = useState(null);
@@ -53,12 +54,29 @@ const Employment = () => {
           api.get('/subcom?page=1&pageSize=200'),
           api.get('/costcenter?page=1&pageSize=200'),
         ]);
-        setSubCompanies(resSub.data.data);
-        setDepartments(resDept.data.data);
-        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
-          setSubCompanyInput(resSub.data.data[0].sub_company_id);
-          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        
+        const subData  = resSub.data.data || [];
+        const deptData = resDept.data.data || [];
+
+        setSubCompanies(subData);
+        setDepartments(deptData);
+
+        // --- Auto-Select Subcompany jika user dibatasi ---
+        if (isSubCompanyRestricted && subData.length > 0) {
+          const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
+          const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
+          setSubCompanyInput(defaultSub);
+          setAppliedSubCompany(defaultSub);
         }
+
+        // --- Auto-Select Department / Cost Center jika user dibatasi ---
+        if (isDeptRestricted && deptData.length > 0) {
+          const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
+          const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
+          setDepartmentInput(defaultDept);
+          setAppliedDepartment(defaultDept);
+        }
+
       } catch { /* silent */ }
     };
     if (user) load();
@@ -84,13 +102,13 @@ const Employment = () => {
 
   const handleResetFilters = () => {
     setStatusInput('all');
-    setSubCompanyInput('');
-    setDepartmentInput('');
+    setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
+    setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
     crud.setSearchInput('');
     
     setAppliedStatus('all');
-    setAppliedSubCompany('');
-    setAppliedDepartment('');
+    if (!isSubCompanyRestricted) setAppliedSubCompany('');
+    if (!isDeptRestricted) setAppliedDepartment('');
     
     setIsFilterApplied(false);
     setIsFilterDirty(false);
@@ -245,8 +263,11 @@ const Employment = () => {
     }
   };
 
-  const subCompanyOptions = isRestricted
-    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+  // --- Dynamic Opsi Subcompany ---
+  const subCompanyOptions = isSubCompanyRestricted
+    ? subCompanies
+        .filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id))
+        .map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
     : [
         { value: '', label: 'Semua Sub Company' },
         { value: 'TYPE_OS', label: 'Outsource' },
@@ -254,10 +275,15 @@ const Employment = () => {
         ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
       ];
       
-  const departmentOptions = [
-    { value: '', label: 'Semua Department' },
-    ...departments.map(d => ({ value: d.id, label: d.org_name })),
-  ];
+  // --- Dynamic Opsi Department / Cost Center ---
+  const departmentOptions = isDeptRestricted
+    ? departments
+        .filter(d => user.allowed_costcenters.includes(d.id))
+        .map(d => ({ value: d.id, label: d.org_name }))
+    : [
+        { value: '', label: 'Semua Department' },
+        ...departments.map(d => ({ value: d.id, label: d.org_name })),
+      ];
 
   return (
     <div>
@@ -338,6 +364,7 @@ const Employment = () => {
             </select>
           </div>
 
+          {/* Sub Company Dropdown */}
           <div className="filter-group" style={{ minWidth: 180 }}>
             <label>Sub Company</label>
             <Select
@@ -345,7 +372,8 @@ const Employment = () => {
               placeholder="Cari..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
               onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
-              isClearable isSearchable
+              isClearable={!isSubCompanyRestricted} 
+              isSearchable
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
@@ -354,6 +382,7 @@ const Employment = () => {
             />
           </div>
 
+          {/* Department / Cost Center Dropdown (Restricted Dynamic) */}
           <div className="filter-group" style={{ minWidth: 180 }}>
             <label>Department</label>
             <Select
@@ -361,7 +390,8 @@ const Employment = () => {
               placeholder="Cari..."
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
               onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
-              isClearable isSearchable
+              isClearable={!isDeptRestricted}
+              isSearchable
               menuPortalTarget={document.body}
               styles={{ 
                 control: b => ({ ...b, minHeight: 34, fontSize: 13 }),

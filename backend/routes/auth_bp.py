@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import IntegrityError
 from extensions import db
-from model.hr_models import User, Role, AppMenu, RoleMenuPermission, UserSubcompanyAccess
+from model.hr_models import User, Role, AppMenu, RoleMenuPermission, UserSubcompanyAccess, UserCostCenterAccess
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -9,23 +9,19 @@ auth_bp = Blueprint('auth', __name__)
 def sso_sync():
     data = request.json or {}
     raw_sso_id = data.get('sso_user_id')
-    raw_email = data.get('email')
-    
+    raw_email = data.get('email')    
     sso_user_id = str(raw_sso_id).strip() if raw_sso_id else (str(raw_email).strip() if raw_email else None)
     email = str(raw_email).strip() if raw_email else None
     nama = data.get('nama', '').strip()
     department = data.get('department')
     role_sso = data.get('role_sso', '').strip()
-
     if not sso_user_id:
         return jsonify({'success': False, 'message': 'ID Pengguna / SSO User ID wajib ada'}), 400
-
     try:
         matched_role = None
         if role_sso:
             matched_role = Role.query.filter(Role.role_name.ilike(role_sso)).first()            
         user = User.query.filter((User.sso_user_id == sso_user_id) | (User.email == email)).first()
-
         if not user:
             try:
                 user = User(
@@ -58,14 +54,11 @@ def sso_sync():
                 user.local_role_id = matched_role.id
             user.status = 'active'
             db.session.commit()
-
         role_obj = Role.query.get(user.local_role_id)
         role_name = role_obj.role_name if role_obj else 'user'
         is_superadmin = (role_name.lower() == 'superadmin')
-
         crud_permissions = {}
         menu_items_raw = []
-
         if is_superadmin:
             all_menus = AppMenu.query.order_by(AppMenu.group_no.asc(), AppMenu.order_no.asc()).all()
             for m in all_menus:
@@ -78,7 +71,6 @@ def sso_sync():
         else:
             perms = RoleMenuPermission.query.filter_by(role_id=user.local_role_id, can_view=True).all()
             perm_dict = {p.menu_id: p for p in perms}
-
             if perm_dict:
                 allowed_menus = AppMenu.query.filter(AppMenu.id.in_(list(perm_dict.keys()))).order_by(AppMenu.group_no.asc(), AppMenu.order_no.asc()).all()
                 for m in allowed_menus:
@@ -86,14 +78,12 @@ def sso_sync():
                     can_c = p.can_create if p else False
                     can_e = p.can_edit if p else False
                     can_d = p.can_delete if p else False
-
                     menu_items_raw.append({
                         'id': m.id, 'title': m.title, 'path': m.path, 'icon': m.icon, 'parent_id': m.parent_id,
                         'can_create': can_c, 'can_edit': can_e, 'can_delete': can_d
                     })
                     if m.path:
                         crud_permissions[m.path] = {'can_create': can_c, 'can_edit': can_e, 'can_delete': can_d}
-
         menus_dict = {m['id']: {**m, 'children': []} for m in menu_items_raw}
         nested_menus = []
         for m_id, m_item in menus_dict.items():
@@ -104,6 +94,7 @@ def sso_sync():
                 nested_menus.append(m_item)
 
         subco_access = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+        cc_access = UserCostCenterAccess.query.filter_by(user_id=user.id).all()
 
         return jsonify({
             'success': True,
@@ -113,6 +104,7 @@ def sso_sync():
                 'email': user.email,
                 'role_app': role_name,
                 'allowed_subcompanies': [s.sub_company_id for s in subco_access],
+                'allowed_costcenters': [c.cost_center_id for c in cc_access],
                 'menus': nested_menus,
                 'permissions': crud_permissions
             }

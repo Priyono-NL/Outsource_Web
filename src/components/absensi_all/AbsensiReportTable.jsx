@@ -6,25 +6,24 @@ const AbsensiReportTable = ({
     refreshTrigger, 
     searchTerm, 
     subCompany, 
+    department, // PROPS BARU: Untuk filter Cost Center / Departemen
     startDate, 
     endDate, 
     statusFilter,
-    workerType // PROPS BARU
+    workerType 
 }) => { 
     
     const [absensi, setAbsensi] = useState([]);   
     const [error, setError] = useState(null); 
-    
-    // STATE BARU: Indikator Loading
     const [loading, setLoading] = useState(false);
 
     const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(20);
+    const [itemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
     const fetchData = async () => {
         try {
-            setLoading(true); // Nyalakan loading sebelum request
+            setLoading(true);
             setError(null);
             
             const params = new URLSearchParams({
@@ -32,6 +31,7 @@ const AbsensiReportTable = ({
                 pageSize: itemsPerPage,
                 search: searchTerm || '',
                 sub_company: subCompany || '',
+                department: department || '', // Disuntikkan ke query parameter API
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
@@ -42,30 +42,32 @@ const AbsensiReportTable = ({
             const result = response.data;
             
             if (result.status === 'success') { 
-                setAbsensi(result.data);
+                setAbsensi(result.data || []);
                 setTotalPages(result.total_page || 0);
             } else { 
                 throw new Error(result.message || 'Terjadi kesalahan pada data absensi'); 
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
-            setAbsensi([]); // Kosongkan data jika error
+            setAbsensi([]);
             setTotalPages(0);
         } finally {
-            setLoading(false); // Matikan loading setelah request selesai (sukses/gagal)
+            setLoading(false);
         }
     };
 
+    // Reset ke Halaman 1 saat ada perubahan filter terapan
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, startDate, endDate, statusFilter, workerType]);
+    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter, workerType]);
     
+    // Trigger pemanggilan data
     useEffect(() => {
         if (!startDate || !endDate) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, startDate, endDate, statusFilter, workerType]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, workerType]);
 
-    // Helper formatter jam
+    // Helper Formatter Jam (HH:mm)
     const formatTime = (timeStr) => {
         if (!timeStr || timeStr === 'null' || timeStr === 'None') return null;
         if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
@@ -97,7 +99,7 @@ const AbsensiReportTable = ({
                 </tr>
             </thead>
             <tbody>
-                {/* 1. Kondisi jika filter belum diisi */}
+                {/* 1. Kondisi jika parameter tanggal belum diisi */}
                 {(!startDate || !endDate) ? (
                     <tr>
                         <td colSpan="14" className="empty-state text-center py-5 text-muted">
@@ -148,28 +150,28 @@ const AbsensiReportTable = ({
                         if (hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
-                                    <i className="bi bi-shield-check" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-shield-check me-1"></i>
                                     BAC Found
                                 </span>
                             );
                         } else if (isAnomaly) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-exclamation-triangle-fill" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
                                     Tidak Lengkap
                                 </span>
                             );
                         } else if (!isViolation) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
-                                    <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-check-circle-fill me-1"></i>
                                     Lengkap
                                 </span>
                             );
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-x-circle-fill" style={{ marginRight: '4px' }}></i>
+                                    <i className="bi bi-x-circle-fill me-1"></i>
                                     BAC not found
                                 </span>
                             );                            
@@ -180,7 +182,7 @@ const AbsensiReportTable = ({
                                 key={`abs-${emp.employee_id}-${emp.clocking_date}-${index}`} 
                                 className={isAnomaly && !hasBAC ? 'table-warning' : ''}
                             >
-                                <td className="fw-bold">{emp.employee_code || emp.employee_id}</td>
+                                <td className="fw-bold text-primary">{emp.employee_code || emp.employee_id}</td>
                                 <td>{emp.employee_name || '-'}</td>
                                 <td>{emp.gender || '-'}</td>
                                 <td>{emp.subCom || '-'}</td>
@@ -217,7 +219,7 @@ const AbsensiReportTable = ({
                 ) : (
                     <tr>
                         <td colSpan="14" className="empty-state text-center py-4 text-muted">
-                            <i className="bi bi-inbox d-block mb-1 fs-4"></i>
+                            <i className="bi bi-inbox d-block mb-1 fs-4 text-secondary"></i>
                             Data absensi tidak ditemukan untuk filter tersebut.
                         </td>
                     </tr>

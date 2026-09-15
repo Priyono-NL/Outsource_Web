@@ -10,6 +10,7 @@ class VwMasterOsActive(db.Model):
     sub_company_name = db.Column(db.String(100))
     type_company = db.Column(db.String(50))    
     card_number = db.Column(db.String(50))
+    org_cc_id = db.Column(db.String(50))
     cost_center_id = db.Column(db.String(50))
     cc_name = db.Column(db.String(50))    
     type_worker = db.Column(db.String(50))

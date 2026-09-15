@@ -1,13 +1,14 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { saveAs } from 'file-saver';
-import Select from 'react-select'; // 1. Import Select
+import Select from 'react-select'; 
 import { Toast, Confirm } from '../utils/sweetalert';
 import { downloadLogFile } from '../utils/logDownloader';
 import api from '../api/api';
 import { useCrudPage } from '../utils/useCrudPage';
-import { useAuth } from '../utils/useAuth'; // 2. Import useAuth
+import { useAuth } from '../utils/useAuth';
 
 import PageHeader from '../components/PageHeader';
+import LoadingButton from '../components/LoadingButton';
 import OsTrainingForm from '../components/osTraining/OsTrainingForm';
 import OsTrainingTable from '../components/osTraining/OsTrainingTable';
 
@@ -15,72 +16,154 @@ const OsTraining = () => {
   const crud = useCrudPage();
   const { user } = useAuth();
   
-  // 3. Cek pembatasan hak akses SSO
-  const isRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  // Flag Pembatasan Hak Akses SSO
+  const isSubCompanyRestricted = user?.allowed_subcompanies && user.allowed_subcompanies.length > 0;
+  const isDeptRestricted       = user?.allowed_costcenters && user.allowed_costcenters.length > 0;
 
-  const [isUploading, setIsUploading] = useState(false);
+  // --- STATE FORM FILTER (DRAFT) ---
+  const [subCompanyInput, setSubCompanyInput] = useState('');
+  const [departmentInput, setDepartmentInput] = useState('');
+
+  // --- STATE APPLIED FILTER (TERAPAN) ---
+  const [appliedSubCompany, setAppliedSubCompany] = useState('');
+  const [appliedDepartment, setAppliedDepartment] = useState('');
+
+  // --- FLAG FILTER STATES ---
+  const [isFilterApplied, setIsFilterApplied] = useState(false);
+  const [isFilterDirty, setIsFilterDirty]     = useState(false);
+  const [isApplyingFilter, setIsApplyingFilter] = useState(false);
+
+  // --- MASTER DATA STATES ---
+  const [subCompanies, setSubCompanies] = useState([]); 
+  const [departments, setDepartments]   = useState([]);
+
+  // --- ACTION LOADING STATES ---
+  const [isUploading, setIsUploading]             = useState(false);
+  const [isExporting, setIsExporting]             = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+
   const fileInputRef = useRef(null);
 
-  // --- STATE FILTER SUB COMPANY ---
-  const [subCompanies, setSubCompanies] = useState([]); 
-  const [subCompanyInput, setSubCompanyInput] = useState('');
-  const [appliedSubCompany, setAppliedSubCompany] = useState('');
-
-  // 4. Fetch Master Subcompany
   useEffect(() => {
     const load = async () => {
       try {
-        const [resSub] = await Promise.all([
+        const [resSub, resDept] = await Promise.all([
           api.get('/subcom?page=1&pageSize=200'),
+          api.get('/costcenter?page=1&pageSize=200'),
         ]);
         
-        setSubCompanies(resSub.data.data || []);
-        
-        // Auto-select Sub Company jika user dibatasi aksesnya
-        if (user?.allowed_subcompanies?.length > 0 && resSub.data.data.length > 0) {
-          setSubCompanyInput(resSub.data.data[0].sub_company_id);
-          setAppliedSubCompany(resSub.data.data[0].sub_company_id);
+        const subData  = resSub.data.data || [];
+        const deptData = resDept.data.data || [];
+
+        setSubCompanies(subData);
+        setDepartments(deptData);
+
+        // Auto-select Subcompany jika user dibatasi SSO
+        if (isSubCompanyRestricted && subData.length > 0) {
+          const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
+          const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
+          setSubCompanyInput(defaultSub);
+          setAppliedSubCompany(defaultSub);
         }
-      } catch { /* silent */ }
+
+        // Auto-select Department jika user dibatasi SSO
+        if (isDeptRestricted && deptData.length > 0) {
+          const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
+          const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
+          setDepartmentInput(defaultDept);
+          setAppliedDepartment(defaultDept);
+        }
+
+      } catch { /* silent error handling */ }
     };
     if (user) load();
   }, [user]);
 
-  // Handler update state filter
   const handleFilterChange = (setter, value) => {
     setter(value);
-    setAppliedSubCompany(value); 
+    setIsFilterDirty(true);
   };
 
-  // Dinamisasi opsi dropdown
-  const subCompanyOptions = isRestricted
-    ? subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
+  const handleApplyFilters = () => {
+    setIsApplyingFilter(true);
+    crud.handleSearch();
+    
+    setAppliedSubCompany(subCompanyInput);
+    setAppliedDepartment(departmentInput);
+
+    setIsFilterApplied(true);
+    setIsFilterDirty(false);
+
+    setTimeout(() => setIsApplyingFilter(false), 300);
+  };
+
+  const handleResetFilters = () => {
+    setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
+    setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
+    crud.setSearchInput('');
+
+    if (!isSubCompanyRestricted) setAppliedSubCompany('');
+    if (!isDeptRestricted) setAppliedDepartment('');
+
+    setIsFilterApplied(false);
+    setIsFilterDirty(false);
+  };
+
+  // --- DYNAMIC OPTIONS (SSO RESTRICTED) ---
+  const subCompanyOptions = isSubCompanyRestricted
+    ? subCompanies
+        .filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id))
+        .map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name }))
     : [
         { value: '', label: 'Semua Sub Company' },
         ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
       ];
 
+  const departmentOptions = isDeptRestricted
+    ? departments
+        .filter(d => user.allowed_costcenters.includes(d.id))
+        .map(d => ({ value: d.id, label: d.org_name }))
+    : [
+        { value: '', label: 'Semua Department' },
+        ...departments.map(d => ({ value: d.id, label: d.org_name })),
+      ];
+
   const handleExport = async () => {
+    if (!isFilterApplied) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter terlebih dahulu untuk mengeksport data.' });
+      return;
+    }
+    if (isFilterDirty) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengeksport data.' });
+      return;
+    }
+
+    setIsExporting(true);
     try {
-      // 5. Tambahkan subcompany ke parameter Export
       const params = new URLSearchParams({ 
         search: crud.appliedSearch || '',
-        subcompany: appliedSubCompany || '' 
+        subcompany: appliedSubCompany || '',
+        department: appliedDepartment || ''
       }).toString();
       
       const res = await api.get(`/ostraining/export?${params}`, { responseType: 'blob' });
-      saveAs(res.data, 'Data_OS_Training.xlsx');
+      saveAs(res.data, 'Export_OS_Training.xlsx');
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal export data' });
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const handleDownloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
     try {
       const { data } = await api.get('/ostraining/template', { responseType: 'blob' });
       saveAs(data, 'Template_Import_Training.xlsx');
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal download template' });
+    } finally {
+      setIsDownloadingTemplate(false);
     }
   };
 
@@ -183,23 +266,53 @@ const OsTraining = () => {
     <div>
       <PageHeader
         title="OS Training"
-        searchPlaceholder="Cari ID atau Nama Karyawan..."
+        searchPlaceholder="Cari ID / Nama Karyawan..."
         searchValue={crud.searchInput}
-        onSearchChange={crud.setSearchInput}
-        onSearch={crud.handleSearch}
+        onSearchChange={(val) => {
+          crud.setSearchInput(val);
+          setIsFilterDirty(true);
+        }}
+        onSearch={handleApplyFilters}
       >
-        <button className="btn-app btn-ghost-app" onClick={handleDownloadTemplate}>
-          <i className="bi bi-download" /> Template
-        </button>
-        <label className="btn-app btn-ghost-app" style={{ cursor: 'pointer', margin: 0 }}>
-          {isUploading
-            ? <><span className="spinner-border spinner-border-sm me-1" role="status" /> Proses...</>
-            : <><i className="bi bi-upload" /> Import</>}
-          <input type="file" hidden ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls" disabled={isUploading} />
-        </label>
-        <button className="btn-app btn-success-app" onClick={handleExport}>
-          <i className="bi bi-file-earmark-excel" /> Export
-        </button>
+        <LoadingButton
+          loading={isDownloadingTemplate}
+          loadingText="Menyiapkan..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-download"
+          onClick={handleDownloadTemplate}
+        >
+          Template
+        </LoadingButton>
+
+        <input 
+          type="file" 
+          hidden 
+          ref={fileInputRef} 
+          onChange={handleImport} 
+          accept=".xlsx,.xls" 
+          disabled={isUploading} 
+        />
+        <LoadingButton
+          loading={isUploading}
+          loadingText="Proses..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-upload"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Import
+        </LoadingButton>
+
+        <LoadingButton
+          loading={isExporting}
+          loadingText="Exporting Data..."
+          className="btn-app btn-success-app"
+          icon="bi bi-file-earmark-excel"
+          onClick={handleExport}
+          disabled={!isFilterApplied || isFilterDirty}
+        >
+          Eksport Excel
+        </LoadingButton>
+
         <button
           className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
           onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
@@ -208,19 +321,27 @@ const OsTraining = () => {
         </button>
       </PageHeader>
 
-      {crud.showForm && <OsTrainingForm onClose={crud.handleClose} onSuccess={crud.handleRefresh} initialData={crud.editingData} />}
+      {crud.showForm && (
+        <OsTrainingForm 
+          onClose={crud.handleClose} 
+          onSuccess={crud.handleRefresh} 
+          initialData={crud.editingData} 
+        />
+      )}
 
       <div className="app-card">
-        {/* 6. Tambahkan Bar Filter Dropdown */}
-        <div className="filter-bar d-flex gap-3 mb-3">
-          <div className="filter-group m-0" style={{ minWidth: 220 }}>
+        {/* --- FILTER BAR CONTAINER --- */}
+        <div className="filter-bar d-flex flex-wrap gap-3 mb-3">
+          
+          {/* Sub Company Filter */}
+          <div className="filter-group m-0" style={{ minWidth: 180 }}>
             <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
             <Select
               options={subCompanyOptions}
-              placeholder="Cari..."
+              placeholder="Cari Subcompany..."
               value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
               onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
-              isClearable={!isRestricted}
+              isClearable={!isSubCompanyRestricted}
               isSearchable
               menuPortalTarget={document.body}
               styles={{ 
@@ -229,17 +350,73 @@ const OsTraining = () => {
               }}
             />
           </div>
+
+          {/* Department / Cost Center Filter */}
+          <div className="filter-group m-0" style={{ minWidth: 180 }}>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Department</label>
+            <Select
+              options={departmentOptions}
+              placeholder="Cari Department..."
+              value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
+              onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
+              isClearable={!isDeptRestricted}
+              isSearchable
+              menuPortalTarget={document.body}
+              styles={{ 
+                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+                menuPortal: base => ({ ...base, zIndex: 9999 })
+              }}
+            />
+          </div>
+
+          {/* Filter Action Buttons */}
+          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end', display: 'flex', gap: '8px' }}>
+            {isFilterApplied && (
+              <button 
+                type="button" 
+                className="btn-app btn-ghost-app" 
+                onClick={handleResetFilters}
+              >
+                <i className="bi bi-x-circle me-1" /> Clear Filter
+              </button>
+            )}
+
+            <LoadingButton
+              loading={isApplyingFilter}
+              loadingText="Memfilter..."
+              className="btn-app btn-primary-app"
+              icon="bi bi-funnel"
+              onClick={handleApplyFilters}
+            >
+              Terapkan Filter
+            </LoadingButton>
+          </div>
+          
         </div>
 
-        {/* 7. Lempar subCompanyFilter ke komponen Tabel */}
-        <OsTrainingTable 
-          refreshTrigger={crud.refreshKey} 
-          onEditClick={crud.handleEdit} 
-          searchTerm={crud.appliedSearch} 
-          subCompanyFilter={appliedSubCompany} 
-        />
+        {/* --- DIRTY FILTER WARNING / DATATABLE --- */}
+        {isFilterDirty ? (
+          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+            <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
+            <span style={{ fontSize: '14px' }}>
+              <strong>Filter Sedang Diubah!</strong><br />
+              Silakan klik tombol <b>Terapkan Filter</b> untuk memuat ulang data.
+            </span>
+          </div>
+        ) : (
+          <OsTrainingTable 
+            refreshTrigger={crud.refreshKey} 
+            onEditClick={crud.handleEdit} 
+            searchTerm={crud.appliedSearch} 
+            subCompanyFilter={appliedSubCompany} 
+            departmentFilter={appliedDepartment}
+            isFilterApplied={isFilterApplied}
+          />
+        )}
+
       </div>
     </div>
   );
 };
+
 export default OsTraining;

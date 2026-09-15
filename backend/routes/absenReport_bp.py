@@ -9,6 +9,7 @@ from datetime import datetime
 from extensions import db
 from model.subCompany import SubCompany
 from model.ob_emp import ObEmployee
+from model.hr_models import User, UserSubcompanyAccess, UserCostCenterAccess
 
 AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
 
@@ -35,9 +36,14 @@ def _clean_cc(val):
         return None
     return s
 
-def _resolve_cc(terminal_cc, master_cc, use_cc):
-    t_cc = _clean_cc(terminal_cc)
-    m_cc = _clean_cc(master_cc)
+def _resolve_cc(terminal_cc_name, master_cc_name, use_cc):
+    """
+    Menentukan Tampilan Nama Cost Center:
+    - Jika use_cc == 1: Prioritaskan Master CC Name.
+    - Jika use_cc == 0: Prioritaskan Terminal Tapping CC Name, Fallback ke Master CC Name.
+    """
+    t_cc = _clean_cc(terminal_cc_name)
+    m_cc = _clean_cc(master_cc_name)
     
     try:
         flag = int(use_cc)
@@ -62,7 +68,6 @@ def _get_master_dictionaries():
             os.join_date AS valid_from,        
             os.termination_date AS valid_to    
         FROM vw_master_os_active os
-        /* HAPUS COLLATE DI SINI */
         LEFT JOIN org_cost_center occ ON occ.cost_center = os.cost_center_id
         WHERE os.employee_code IS NOT NULL AND os.employee_code != ''
     """
@@ -80,6 +85,7 @@ def _get_master_dictionaries():
             'emp_id': emp_id_str,
             'display_name': ob.employee_name,
             'cc_name': cc_name_resolved,
+            'cost_center_id': ob.cost_center,
             'use_cc': 1
         }
 
@@ -91,17 +97,13 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
             ta.employee_id,
             ta.card_id,
             MIN(COALESCE(ta.clock_in, ta.clock_out)) AS first_clock_in,
-            
-            -- FIX: BUNGKUS DENGAN CAST UNTUK MENCEGAH ERROR COLLATION DI MAX()
-            MAX(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc
+            MIN(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc
             
         FROM `db-webapps`.TBL_ATTENDANCE ta
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
         LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
         LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-        
-        -- FIX: BUNGKUS JUGA PADA SAAT JOIN
         LEFT JOIN org_cost_center occ ON occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)
         
         WHERE ta.clocking_date = :search_date
@@ -119,7 +121,7 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
     return db.session.execute(text(sql), {'search_date': search_date}).mappings().fetchall()
 
 # =============================================================================
-# BUSINESS LOGIC: REPORTING (LAPORAN 1, 2, 3)
+# BUSINESS LOGIC: REPORTING
 # =============================================================================
 def _get_aggregated_mp_cc(search_date):
     """ Laporan 1: MP Per Cost Center """
@@ -128,7 +130,6 @@ def _get_aggregated_mp_cc(search_date):
     
     cc_pivot = defaultdict(lambda: defaultdict(int))
     allowed_sub_companies = ["GLB", "PRO"]
-    debug_os, debug_ob = 0, 0
 
     for row in att_rows:
         emp_id = str(row['employee_id']).strip()
@@ -138,12 +139,10 @@ def _get_aggregated_mp_cc(search_date):
             info = os_map[emp_id]
             final_cc = _resolve_cc(terminal_cc, info['cc_name'], info['use_cc'])
             sub_com = info['sub_company_name']
-            debug_os += 1
         elif emp_id in ob_map:
             info = ob_map[emp_id]
             final_cc = _resolve_cc(terminal_cc, info['cc_name'], 0) 
             sub_com = 'CRS'
-            debug_ob += 1
         else:
             continue
 
@@ -159,14 +158,13 @@ def _get_aggregated_mp_cc(search_date):
         })
 
     report_data.sort(key=lambda x: x['total_manpower'], reverse=True)
-    
     return allowed_sub_companies, report_data
 
 def determine_shift(clock_in_val, is_saturday):
-    """ Helper Shift (NS Digabung ke SHIFT 1) """
     if not clock_in_val: return 'SHIFT 1'
     try:
-        if isinstance(clock_in_val, datetime): jam = clock_in_val.hour * 100 + clock_in_val.minute
+        if isinstance(clock_in_val, datetime): 
+            jam = clock_in_val.hour * 100 + clock_in_val.minute
         else:
             val_str = str(clock_in_val).strip()
             time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
@@ -177,12 +175,10 @@ def determine_shift(clock_in_val, is_saturday):
     if is_saturday:
         if 1500 <= jam <= 1900: return 'SHIFT 3'
         elif 1000 <= jam <= 1400: return 'SHIFT 2'
-        # Sisanya (termasuk 400-900 dan anomali jam) masuk Shift 1
         else: return 'SHIFT 1'
     else:
         if jam >= 2000 or jam < 400: return 'SHIFT 3'
         elif 1300 <= jam <= 1700: return 'SHIFT 2'
-        # Sisanya (termasuk 400-1000 dan anomali jam) masuk Shift 1
         else: return 'SHIFT 1'
 
 def _get_aggregated_daily_shift(search_date):
@@ -193,8 +189,6 @@ def _get_aggregated_daily_shift(search_date):
     is_saturday = (datetime.strptime(search_date, "%Y-%m-%d").weekday() == 5)
     default_shifts = ["SHIFT 1", "SHIFT 2", "SHIFT 3"]
     pivot = defaultdict(lambda: {"os": defaultdict(int), "ob": defaultdict(int)})
-    
-    debug_os, debug_ob = 0, 0
 
     for row in att_rows:
         emp_id = str(row['employee_id']).strip()
@@ -205,12 +199,10 @@ def _get_aggregated_daily_shift(search_date):
             info = os_map[emp_id]
             final_cc = _resolve_cc(terminal_cc, info['cc_name'], info['use_cc'])
             pivot[final_cc]["os"][shift_detected] += 1
-            debug_os += 1
         elif emp_id in ob_map:
             info = ob_map[emp_id]
             final_cc = _resolve_cc(terminal_cc, info['cc_name'], 0)
             pivot[final_cc]["ob"][shift_detected] += 1
-            debug_ob += 1
         else:
             continue
 
@@ -233,23 +225,37 @@ def _get_aggregated_daily_shift(search_date):
 
     return report_data, totals_os, totals_ob, grand_total, default_shifts
 
-def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, search_text=''):
-    """ Laporan 3: MP Per Employee (Rentang Tanggal) - KHUSUS OS """
+def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, search_text='', user_email=None):
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
-    
+
+    # =========================================================================
+    # 1. RESOLUSI PASTI UNTUK TARGET COST CENTER (KODE & NAMA)
+    # =========================================================================
+    target_cc_code = None
+    target_cc_name = None
+    if department_id:
+        sql_cc = text("SELECT cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id")
+        cc_res = db.session.execute(sql_cc, {'dept_id': department_id}).fetchone()
+        if cc_res:
+            target_cc_code = str(cc_res[0]).strip()
+            target_cc_name = str(cc_res[1]).strip() if cc_res[1] else None
+        else:
+            target_cc_code = str(department_id).strip()
+
+    # Kueri pencarian data tapping absensi
     sql_attendance = """
         SELECT 
             daily.employee_id, 
             COUNT(daily.clocking_date) AS working_days,
             SUM(TIMESTAMPDIFF(MINUTE, daily.true_clock_in, daily.true_clock_out)) / 60.0 AS working_hours,
-            MAX(daily.terminal_cc) AS terminal_cc,
-            MAX(daily.terminal_cc_id) AS terminal_cc_id
+            MIN(daily.terminal_cc) AS terminal_cc,
+            MIN(daily.terminal_cc_id) AS terminal_cc_id
         FROM (
             SELECT 
                 ta.employee_id, ta.clocking_date, MIN(ta.clock_in) AS true_clock_in, MAX(ta.clock_out) AS true_clock_out,
-                MAX(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc,
-                MAX(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id
+                MIN(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc,
+                MIN(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id
             FROM `db-webapps`.TBL_ATTENDANCE ta
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
             LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
@@ -260,59 +266,86 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
             WHERE ta.clocking_date BETWEEN :start_date AND :end_date
               AND ta.employee_id IS NOT NULL 
               AND ta.card_id != '00000.00000'
-              AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8 -- KUNCI: HANYA KARYAWAN OS
+              AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8
             GROUP BY ta.employee_id, ta.clocking_date
         ) daily
         GROUP BY daily.employee_id
     """
     
     att_rows = db.session.execute(text(sql_attendance), {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
-    os_map, _ = _get_master_dictionaries() # Kita hanya butuh os_map karena sudah di-filter di SQL
+    os_map, _ = _get_master_dictionaries()
     
-    # 2. TWEAK: Logika Filter Sub Company Dinamis (OS / Vendor / Spesifik)
+    # Restriksi Subcompany SSO
     allowed_sub_companies = None
-    if sub_company_id == 'TYPE_OS':
-        sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS').all()
-        allowed_sub_companies = [str(r[0]).strip() for r in sc_rows]
-    elif sub_company_id == 'TYPE_VENDOR':
-        sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'Vendor').all()
-        allowed_sub_companies = [str(r[0]).strip() for r in sc_rows]
-    elif sub_company_id:
-        allowed_sub_companies = [sub_company_id]
+    if user_email:
+        user = User.query.filter_by(email=user_email).first()
+        if user:
+            subco_recs = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+            if subco_recs:
+                allowed_sub_companies = [a.sub_company_id for a in subco_recs]
+
+    if not allowed_sub_companies:
+        if sub_company_id == 'TYPE_OS':
+            sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS').all()
+            allowed_sub_companies = [str(r[0]).strip() for r in sc_rows]
+        elif sub_company_id == 'TYPE_VENDOR':
+            sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'Vendor').all()
+            allowed_sub_companies = [str(r[0]).strip() for r in sc_rows]
+        elif sub_company_id:
+            allowed_sub_companies = [sub_company_id]
         
     report_data = []
 
     for row in att_rows:
         emp_id = str(row['employee_id']).strip()
-        
         if emp_id not in os_map:
             continue
             
         info = os_map[emp_id]
         
-        # Filter Pencarian (Search Bar)
+        # 1. Filter Text Pencarian
         if search_text:
             s_lower = search_text.lower()
             if s_lower not in emp_id.lower() and s_lower not in (info['display_name'] or '').lower():
                 continue
 
-        # Filter Sub Company
+        # 2. Filter Sub Company
         db_sub_com = _clean_cc(info.get('sub_company_id'))
         if allowed_sub_companies is not None and db_sub_com not in allowed_sub_companies:
             continue
 
-        # Filter Department (Cost Center)
+        # =========================================================================
+        # 3. LOGIKA EVALUASI COST CENTER DENGAN DUA LAPIS MATCHING
+        # =========================================================================
         use_cc_flag = int(info.get('use_cc', 0) or 0)
         master_cc_id = _clean_cc(info.get('cost_center_id'))
-        terminal_cc_id = _clean_cc(row.get('terminal_cc_id'))
+        master_cc_name = _clean_cc(info.get('cc_name'))
         
-        final_cc_id = master_cc_id if use_cc_flag == 1 else (terminal_cc_id if terminal_cc_id else master_cc_id)
-            
-        if department_id and final_cc_id != department_id:
-            continue
+        terminal_cc_id = _clean_cc(row.get('terminal_cc_id'))
+        terminal_cc_name = _clean_cc(row.get('terminal_cc'))
+        
+        # Penentuan Nama Tampilan Akhir
+        final_cc_name = _resolve_cc(terminal_cc_name, master_cc_name, use_cc_flag)
 
-        # Data Valid -> Masukkan ke Report
-        final_cc_name = _resolve_cc(row['terminal_cc'], info['cc_name'], use_cc_flag)
+        # EVALUASI FILTER DEPARTMENT (JIKA USER MEMILIH DROPDOWN):
+        if target_cc_code:
+            is_matched = False
+            
+            if use_cc_flag == 1:
+                # Wajib Cocok dengan Master Data (Kode atau Nama)
+                if master_cc_id == target_cc_code or (master_cc_name and target_cc_name and master_cc_name == target_cc_name):
+                    is_matched = True
+            else:
+                # Wajib Cocok dengan Tapping Terminal (Kode atau Nama)
+                if terminal_cc_id == target_cc_code or (terminal_cc_name and target_cc_name and terminal_cc_name == target_cc_name):
+                    is_matched = True
+                # Fallback: Jika tidak pernah tapping di mesin yang valid, gunakan Master CC
+                elif not terminal_cc_id and (master_cc_id == target_cc_code or master_cc_name == target_cc_name):
+                    is_matched = True
+
+            if not is_matched:
+                continue
+
         valid_from = info.get('valid_from')
         valid_to = info.get('valid_to')
 
@@ -435,12 +468,14 @@ def reportMpEmployee():
         end_date = request.args.get('end_date', '').strip()
         page = int(request.args.get('page', 1))
         page_size = int(request.args.get('pageSize', 10))
+        user_email = request.headers.get('X-User-Email')
 
         report_data = _get_mp_employee_data(
             start_date, end_date, 
             request.args.get('sub_company', '').strip(), 
             request.args.get('department', '').strip(),
-            request.args.get('search', '').strip() # TANGKAP SEARCH
+            request.args.get('search', '').strip(),
+            user_email=user_email
         )
 
         total_item = len(report_data)
@@ -460,12 +495,14 @@ def exportMpEmployee():
     try:
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
+        user_email = request.headers.get('X-User-Email')
         
         report_data = _get_mp_employee_data(
             start_date, end_date, 
             request.args.get('sub_company', '').strip(), 
             request.args.get('department', '').strip(),
-            request.args.get('search', '').strip() # TANGKAP SEARCH
+            request.args.get('search', '').strip(),
+            user_email=user_email
         )
         
         if not report_data:

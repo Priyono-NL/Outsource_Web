@@ -7,54 +7,76 @@ from model.alokasi import Alokasi
 from model.employment import OsEmployment
 from model.person import OsPerson
 from model.ob_emp import ObEmployee
-# 1. Import Model Hak Akses SSO
-from model.hr_models import User, UserSubcompanyAccess
+from model.osCostCenter import OsCostCenter
+from model.hr_models import User, UserSubcompanyAccess, UserCostCenterAccess
 
 alokasi_bp = Blueprint('alokasi_bp', __name__)
 
-@alokasi_bp.route('/alokasi')
+@alokasi_bp.route('/alokasi', methods=['GET'])
 def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 100, type=int)
         search = request.args.get('search', '', type=str)
         filter_status = request.args.get('filter', '', type=str)
-        req_subco = request.args.get('subcompany', '', type=str) # Tangkap parameter dari React
+        req_subco = request.args.get('subcompany', '', type=str)
+        req_dept = request.args.get('department', '', type=str)
         
         query = Alokasi.query
         now = datetime.now()
 
         # =================================================================
-        # 2. LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO SECURITY CHECK)
+        # 1. LOGIKA FILTER HAK AKSES SSO (SUBCOMPANY & COST CENTER)
         # =================================================================
         user_email = request.headers.get('X-User-Email')
-        allowed_access = []
+        allowed_subco = []
+        allowed_cc = []
+
         if user_email:
             user = User.query.filter_by(email=user_email).first()
             if user:
-                access_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
-                allowed_access = [a.sub_company_id for a in access_records]
-                
-                # Cegah bypass manual via URL / API tool
-                if allowed_access and req_subco and req_subco not in allowed_access:
-                    return jsonify({"status": "error", "message": "Akses ditolak"}), 403
+                # Access Subcompany Check
+                subco_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
+                allowed_subco = [a.sub_company_id for a in subco_records]
+                if allowed_subco and req_subco and req_subco not in allowed_subco:
+                    return jsonify({"status": "error", "message": "Akses Subcompany ditolak"}), 403
 
-        # Tentukan batasan subcompany (apakah dari DB user atau pilihan dropdown UI)
-        subco_filter_active = allowed_access or ([req_subco] if req_subco else None)
+                # Access Cost Center / Department Check
+                cc_records = UserCostCenterAccess.query.filter_by(user_id=user.id).all()
+                allowed_cc = [c.cost_center_id for c in cc_records]
+                if allowed_cc and req_dept:
+                    try:
+                        if int(req_dept) not in allowed_cc:
+                            return jsonify({"status": "error", "message": "Akses Departemen ditolak"}), 403
+                    except ValueError:
+                        pass
+
+        # Penentuan Filter Aktif
+        subco_filter_active = allowed_subco or ([req_subco] if req_subco else None)
+        cc_filter_active = allowed_cc or ([int(req_dept)] if req_dept and req_dept.isdigit() else None)
+
         subco_emp_ids = None
-        
-        if subco_filter_active:
-            subco_matches = db.session.query(OsEmployment.id).filter(
-                OsEmployment.sub_company_id.in_(subco_filter_active)
-            ).all()
+        if subco_filter_active or cc_filter_active:
+            emp_query = db.session.query(OsEmployment.id)
+            
+            if subco_filter_active:
+                emp_query = emp_query.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
+            
+            if cc_filter_active:
+                emp_query = emp_query.join(OsCostCenter, OsEmployment.id == OsCostCenter.employee_id)\
+                                     .filter(OsCostCenter.org_cc_id.in_(cc_filter_active))
+            
+            subco_matches = emp_query.all()
             subco_emp_ids = [str(row.id) for row in subco_matches]
-        # =================================================================
 
+        # =================================================================
+        # 2. FILTER SEARCH KATA KUNCI & ID KARYAWAN
+        # =================================================================
         if search:
             search_term = f"%{search}%"
             matched_employee_ids = []
 
-            # 1. Cari di OsEmployment dengan filter Subcompany
+            # Search pada OsEmployment
             os_matches_q = db.session.query(OsEmployment.id).join(
                 OsPerson, OsEmployment.person_id == OsPerson.person_id
             ).filter(
@@ -66,12 +88,15 @@ def index():
             
             if subco_filter_active:
                 os_matches_q = os_matches_q.filter(OsEmployment.sub_company_id.in_(subco_filter_active))
-                
+            if cc_filter_active:
+                os_matches_q = os_matches_q.join(OsCostCenter, OsEmployment.id == OsCostCenter.employee_id)\
+                                           .filter(OsCostCenter.org_cc_id.in_(cc_filter_active))
+
             os_matches = os_matches_q.all()
             matched_employee_ids.extend([str(row.id) for row in os_matches])
 
-            # 2. Cari di ObEmployee (hanya jika tidak terhambat filter subcompany spesifik)
-            if not req_subco:
+            # Search pada ObEmployee (Hanya jika tidak ada batasan subcompany / department)
+            if not req_subco and not req_dept and not allowed_subco and not allowed_cc:
                 ob_matches = db.session.query(ObEmployee.employee_id).filter(
                     or_(
                         ObEmployee.employee_id.cast(db.String).ilike(search_term),
@@ -85,7 +110,6 @@ def index():
             else:
                 query = query.filter(False)
         else:
-            # Jika tidak ada kata kunci pencarian, terapkan batasan ID karyawan dari Subcompany
             if subco_emp_ids is not None:
                 query = query.filter(Alokasi.employee_id.in_(subco_emp_ids))
 
@@ -103,11 +127,13 @@ def index():
             "current_page": pagination.page,
             "total_item": pagination.total
         }), 200
+
     except Exception as e:
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
+
 
 @alokasi_bp.route('/alokasi/submit', methods=['POST'])
 def submit():
@@ -126,7 +152,7 @@ def submit():
         new_valid_to = datetime.strptime(valid_to_str, '%Y-%m-%d').date() if valid_to_str else None
 
         # --- LOGIKA HISTORI: Tutup Alokasi Terakhir di H-1 ---
-        old_alokasi = Alokasi.query.filter_by(employee_id=employee_id)\
+        old_alokasi = Alokasi.query.filter_by(employee_id=str(employee_id))\
                                    .order_by(Alokasi.id.desc())\
                                    .first()
 
@@ -158,6 +184,7 @@ def submit():
         db.session.rollback()
         return jsonify({"status": "error", "message": f"Gagal menyimpan: {str(e)}"}), 500
 
+
 @alokasi_bp.route('/alokasi/submit-bulk', methods=['POST'])
 def submit_bulk():
     try:
@@ -180,7 +207,7 @@ def submit_bulk():
         for emp_id in employee_ids:
             emp_id_str = str(emp_id)
 
-            # --- LOGIKA HISTORI UNTUK SETIAP KARYAWAN ---
+            # Logika Histori Setiap Karyawan
             old_alokasi = Alokasi.query.filter_by(employee_id=emp_id_str)\
                                        .order_by(Alokasi.id.desc())\
                                        .first()
@@ -189,7 +216,7 @@ def submit_bulk():
                 if not old_alokasi.valid_from or previous_day >= old_alokasi.valid_from:
                     old_alokasi.valid_to = previous_day
 
-            # --- SIMPAN ALOKASI BARU ---
+            # Simpan Alokasi Baru
             new_alokasi = Alokasi(
                 employee_id=emp_id_str,
                 canteen_id=canteen_id,
@@ -199,7 +226,6 @@ def submit_bulk():
             db.session.add(new_alokasi)
             inserted_count += 1
 
-        # Commit sekali saja di akhir loop untuk efisiensi transaksi database
         db.session.commit()
 
         return jsonify({
@@ -214,6 +240,7 @@ def submit_bulk():
         db.session.rollback()
         return jsonify({"status": "error", "message": f"Gagal simpan massal: {str(e)}"}), 500
 
+
 @alokasi_bp.route('/alokasi/<string:id>', methods=['PUT'])
 def update(id):
     try:
@@ -224,15 +251,20 @@ def update(id):
         data = request.json
         alokasi.employee_id = data.get('employee_id', alokasi.employee_id)
         alokasi.canteen_id = data.get('canteen_id', alokasi.canteen_id)
-        alokasi.valid_from = data.get('valid_from', alokasi.valid_from)
+        
+        if data.get('valid_from'):
+            alokasi.valid_from = datetime.strptime(data.get('valid_from'), '%Y-%m-%d').date()
+            
         if 'valid_to' in data:
             new_valid_to = data.get('valid_to')
-            alokasi.valid_to = new_valid_to if new_valid_to else None
+            alokasi.valid_to = datetime.strptime(new_valid_to, '%Y-%m-%d').date() if new_valid_to else None
+
         db.session.commit()
-        return jsonify({"status": "success", "message": "Data berhasil diupdate!"}), 200
+        return jsonify({"status": "success", "message": "Data alokasi berhasil diupdate!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @alokasi_bp.route('/alokasi/<string:id>', methods=['DELETE'])
 def delete(id):
@@ -243,7 +275,7 @@ def delete(id):
 
         db.session.delete(data)
         db.session.commit()
-        return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200
+        return jsonify({"status": "success", "message": "Data alokasi berhasil dihapus!"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": "Gagal menghapus: " + str(e)}), 500
