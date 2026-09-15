@@ -8,6 +8,7 @@ function CCForm({ onClose, onSuccess, initialData }) {
 
   useEffect(() => {
     if (initialData && formRef.current) {
+      formRef.current.id.value = initialData.id;
       formRef.current.company_id.value = initialData.company_id;
       formRef.current.org_id.value = initialData.org_id;
       formRef.current.org_name.value = initialData.org_name;
@@ -21,7 +22,7 @@ function CCForm({ onClose, onSuccess, initialData }) {
     const data = Object.fromEntries(formData.entries());
     try {
       const response = initialData 
-            ? await api.put(`/costcenter/${initialData.cost_center}`, data) 
+            ? await api.put(`/costcenter/${initialData.id}`, data) 
             : await api.post('/costcenter/submit', data);
       if (response.data.status === 'success') {
         formRef.current.reset();
@@ -55,6 +56,7 @@ function CCForm({ onClose, onSuccess, initialData }) {
             </div>
 
             <form ref={formRef} onSubmit={handleSave}>
+              <input type="hidden" name="id" />
               <div className="modal-body p-3 bg-white">
                 <div className="row g-2">
                   <div className="col-md-6">
