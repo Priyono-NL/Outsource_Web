@@ -150,20 +150,50 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         else:
             target_cc_codes.append(str(department_id).strip())
 
+    # B. Terjemahkan Department dari Hak Akses (SSO) agar dikenali mesin
+    allowed_cc_translated = []
+    if allowed_cc:
+        sql_acc = text("SELECT id, cost_center FROM org_cost_center WHERE id IN :acc OR cost_center IN :acc")
+        acc_res = db.session.execute(sql_acc, {'acc': tuple(allowed_cc)}).fetchall()
+        if acc_res:
+            for r in acc_res:
+                allowed_cc_translated.extend([str(r[0]).strip(), str(r[1]).strip()])
+        else:
+            allowed_cc_translated = allowed_cc
+
+    # C. Tentukan Filter Final: Irisan (Intersection) antara yang diminta vs hak akses
+    filter_cc_list = []
+    if target_cc_codes and allowed_cc_translated:
+        # Hanya filter yang diminta DAN memang diizinkan untuk user
+        filter_cc_list = list(set(target_cc_codes) & set(allowed_cc_translated))
+        if not filter_cc_list:
+            filter_cc_list = ['INVALID_ACCESS'] # Keamanan jika user memanipulasi URL Payload
+    elif target_cc_codes:
+        filter_cc_list = target_cc_codes
+    elif allowed_cc_translated:
+        filter_cc_list = allowed_cc_translated
+
     active_ids = []    
     
-    # 5. Pra-Seleksi Master OS
+    # 5. Pra-Seleksi Master OS (Dengan Perbaikan Filter Subcompany)
     if worker_type in ('all', 'os'):
         os_query = db.session.query(cast(VwMasterOsActive.employee_code, String)).filter(VwMasterOsActive.employee_code.is_not(None))
         
-        if allowed_subco:
-            os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
-        elif sub_company_id == 'TYPE_OS':
+        # Logika Penggabungan Dropdown dan Hak Akses Subcompany
+        if sub_company_id == 'TYPE_OS':
             os_query = os_query.filter(VwMasterOsActive.type_company == 'OS')
+            if allowed_subco: os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
         elif sub_company_id == 'TYPE_VENDOR':
             os_query = os_query.filter(VwMasterOsActive.type_company == 'Vendor')
+            if allowed_subco: os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
         elif sub_company_id:
-            os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
+            # Jika user spesifik mencari subcompany, pastikan dia punya aksesnya!
+            if allowed_subco and sub_company_id not in allowed_subco:
+                os_query = os_query.filter(db.false()) # Tolak akses (blank result)
+            else:
+                os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
+        elif allowed_subco:
+            os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
 
         if search:
             os_query = os_query.filter(or_(
@@ -193,9 +223,7 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
     # =========================================================================
     # 7. LOGIKA HYBRID FILTER DEPARTMENT (SUPER OPTIMIZED)
     # =========================================================================
-    filter_cc_list = allowed_cc or target_cc_codes
-
-    if filter_cc_list and active_ids:
+    if filter_cc_list and filter_cc_list != ['INVALID_ACCESS'] and active_ids:
         # Step A: Cek Flag use_cc di Master OS
         os_info = db.session.query(
             VwMasterOsActive.employee_code, VwMasterOsActive.use_cc, 
@@ -227,7 +255,7 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         group2_tuples = []
         if group2_ids:
             sql_terminal = text("""
-                SELECT DISTINCT ta.card_id, ta.clocking_date
+                SELECT DISTINCT ta.employee_id, ta.clocking_date
                 FROM `db-webapps`.TBL_ATTENDANCE ta
                 LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
                     ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
@@ -257,21 +285,15 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         if group1_ids:
             filters.append(Absensi_all.employee_id.in_(group1_ids))
         if group2_tuples:
-            filters.append(tuple_(Absensi_all.card_id, Absensi_all.clocking_date).in_(group2_tuples))
+            filters.append(tuple_(Absensi_all.employee_id, Absensi_all.clocking_date).in_(group2_tuples))
             
         if filters:
             query = query.filter(or_(*filters))
         else:
             query = query.filter(db.false()) 
 
-    elif active_ids:
-        if search:
-            query = query.filter(or_(
-                Absensi_all.employee_id.in_(active_ids),
-                Absensi_all.card_id.ilike(f"%{search}%")
-            ))
-        else:
-            query = query.filter(Absensi_all.employee_id.in_(active_ids))
+    elif active_ids and filter_cc_list != ['INVALID_ACCESS']:
+        query = query.filter(Absensi_all.employee_id.in_(active_ids))
     else:
         query = query.filter(db.false())
 

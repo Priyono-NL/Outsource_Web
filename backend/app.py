@@ -1,5 +1,6 @@
 from flask import Flask, request, Response
 from datetime import timedelta
+from sqlalchemy.pool import NullPool # <--- 1. IMPORT NULLPOOL DI SINI
 
 from extensions import db
 from config import Config
@@ -32,6 +33,14 @@ from routes.userManagement_bp import userManagement_bp
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)    
+
+    # =========================================================================
+    # 2. KONFIGURASI NULLPOOL (MATIKAN CONNECTION POOLING SLEEP)
+    # =========================================================================
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'poolclass': NullPool
+    }
+
     ALLOWED_ORIGINS = Config.CORS_ORIGINS
     if isinstance(ALLOWED_ORIGINS, str):
         ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGINS.split(',')]
@@ -60,6 +69,13 @@ def create_app():
         return response
 
     db.init_app(app)
+    
+    # =========================================================================
+    # 3. GARANSI PEMBERSIHAN SESI DATABASE SETELAH REQUEST SELESAI
+    # =========================================================================
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        db.session.remove()
     
     # Registrasi Blueprint
     app.register_blueprint(auth_bp, url_prefix='/')
