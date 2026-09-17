@@ -9,11 +9,10 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [empPk, setEmpPk] = useState('');
-  const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
-  const [costCenter, setCostCenter] = useState([]);
-  const [selectCCId, setselectCCId] = useState(null);
+  const [costCenterList, setCostCenterList] = useState([]);
+  const [selectedOrgCcId, setSelectedOrgCcId] = useState(null);
   const formRef = useRef(null);
 
   const isEditMode = !!initialData;
@@ -27,23 +26,23 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
         employee_code: initialData.employee_code,
         name: initialData.employee_name
       });
-      setselectCCId(initialData.cc_id);
-      setFullName(initialData.employee_name || '');
+      // Sinkronkan ke Primary Key Master org_cc_id
+      setSelectedOrgCcId(initialData.org_cc_id || initialData.cc_id);
       setIsEmployeeFound(true);
 
-      // Sinkronisasi data field original bagian bawah Anda
-      formRef.current.valid_from.value = initialData.valid_from;
+      formRef.current.valid_from.value = initialData.valid_from || '';
       formRef.current.valid_to.value = initialData.valid_to || '';
-      const isNoLimitActive = !initialData.valid_to;
-      setIsNoLimit(isNoLimitActive);
+      setIsNoLimit(!initialData.valid_to);
     }
   }, [initialData]);
 
   useEffect(() => {
     const fetchCC = async () => {
       try {
-        const cc_res = await api.get('/costcenter?page=1&pageSize=200');
-        if (cc_res.data.status === 'success') setCostCenter(cc_res.data.data);
+        const cc_res = await api.get('/costcenter?page=1&pageSize=300');
+        if (cc_res.data.status === 'success') {
+          setCostCenterList(cc_res.data.data);
+        }
       } catch (error) {
         console.error("Gagal Mengambil CC:", error);
       }
@@ -51,7 +50,6 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
     fetchCC();
   }, []);
 
-  // Mekanisme Debounce untuk Pencarian Karyawan Autocomplete
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (searchTerm.length >= 3 && !selectedEmployee && !isEditMode) {
@@ -59,7 +57,7 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
       } else {
         setResults([]);
       }
-    }, 500);
+    }, 400);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm, selectedEmployee, isEditMode]);
@@ -68,9 +66,9 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
     setIsSearching(true);
     try {
       const response = await api.get(`/employee/search-autocomplete?q=${searchTerm}`);
-      setResults(response.data.data);
+      setResults(response.data.data || []);
     } catch (err) {
-      Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: "Gagal menghubungi server pencarian" });
+      Toast.fire({ icon: 'error', title: 'Pencarian Gagal' });
     } finally {
       setIsSearching(false);
     }
@@ -79,7 +77,6 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
   const handleSelect = (emp) => {
     setSelectedEmployee(emp);
     setSearchTerm(`${emp.name} (${emp.employee_code})`);
-    setFullName(emp.name);
     setEmpPk(emp.emp_pk_id);
     setIsEmployeeFound(true);
     setResults([]);
@@ -89,7 +86,6 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
     if (isEditMode) return;
     setSelectedEmployee(null);
     setSearchTerm("");
-    setFullName("");
     setEmpPk("");
     setIsEmployeeFound(false);
     setResults([]);
@@ -98,28 +94,32 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
   const handleNoLimitToggle = (e) => {
     const checked = e.target.checked;
     setIsNoLimit(checked);
-    if (checked) {
-        if (formRef.current) formRef.current.valid_to.value = ""; 
+    if (checked && formRef.current) {
+      formRef.current.valid_to.value = ""; 
     }
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!selectedOrgCcId) {
+      Toast.fire({ icon: 'warning', title: 'Pilih Cost Center terlebih dahulu!' });
+      return;
+    }
+
     const formData = new FormData(formRef.current);
-    const data = Object.fromEntries(formData.entries());
     const payload = {
-      ...data,
-      cc_id: selectCCId, 
       employee_id: empPk,
-      valid_to: isNoLimit ? null : (data.valid_to || null) 
+      org_cc_id: selectedOrgCcId,
+      valid_from: formData.get('valid_from'),
+      valid_to: isNoLimit ? null : (formData.get('valid_to') || null) 
     };
 
     try {
-      const response = initialData 
+      const response = isEditMode 
             ? await api.put(`/oscc/${initialData.id_oscc}`, payload) 
             : await api.post('/oscc/submit', payload);
+
       if (response.data.status === 'success') {
-        formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
         onSuccess?.();
         onClose?.();
@@ -129,12 +129,10 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
     }    
   };
 
-  const ccOptions = [
-    ...costCenter.map((item) => ({
-        value: item.cost_center,
-        label: item.org_name
-    }))
-  ]; 
+  const ccOptions = costCenterList.map((item) => ({
+    value: item.id, // Primary Key Unik (org_cc_id)
+    label: `${item.cost_center} - ${item.org_name}`
+  })); 
 
   const customSelectStyles = {
     control: (base) => ({
@@ -146,24 +144,14 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
       height: '31px',
       '&:hover': { borderColor: '#0d6efd' }
     }),
-    valueContainer: (base) => ({
-      ...base,
-      padding: '0px 8px',
-    }),
-    indicatorsContainer: (base) => ({
-      ...base,
-      height: '29px',
-    }),
+    valueContainer: (base) => ({ ...base, padding: '0px 8px' }),
+    indicatorsContainer: (base) => ({ ...base, height: '29px' }),
     menu: (base) => ({ ...base, zIndex: 9999, fontSize: '13px' })
   };
 
   return (
     <>
-      <div 
-        className="modal-backdrop fade show" 
-        style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} 
-        onClick={onClose}
-      ></div>
+      <div className="modal-backdrop fade show" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={onClose}></div>
 
       <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
         <div className="modal-dialog modal-md modal-dialog-centered">
@@ -172,7 +160,7 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-building-gear' : 'bi-plus-circle'} me-2`}></i>
-                {isEditMode ? 'Edit Alokasi CC' : 'Tambah Alokasi CC'}
+                {isEditMode ? 'Edit Alokasi Cost Center' : 'Tambah Alokasi Cost Center'}
               </h6>
               <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
@@ -180,7 +168,7 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
             <form ref={formRef} onSubmit={handleSave}>
               <div className="modal-body p-3 bg-white">
                 
-                {/* Search Section Autocomplete Karyawan */}
+                {/* Autocomplete Karyawan */}
                 <div className="row g-2 mb-3">
                   <div className="col-md-12 position-relative">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cari Karyawan (Nama / NRP)</label>
@@ -206,7 +194,6 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
                       )}
                     </div>
 
-                    {/* Dropdown Hasil Pencarian dengan Max Height & Scrollbar */}
                     {results.length > 0 && (
                       <div className="list-group position-absolute w-100 shadow-lg border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '200px', overflowY: 'auto' }}>
                         {results.map((emp) => (
@@ -233,13 +220,11 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
 
                 <div className="d-flex align-items-center mb-3">
                    <hr className="flex-grow-1 my-0 opacity-25" />
-                   <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Konfigurasi Departemen</span>
+                   <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Konfigurasi Cost Center</span>
                    <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
 
-                {/* ======================================================== */}
-                {/* BAGIAN INPUT ISIAN ASLI COST CENTER (100% ORIGINAL)       */}
-                {/* ======================================================== */}
+                {/* Form Inputs */}
                 <div className="row g-2">
                   <div className="col-md-12 mb-1">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cost Center</label>
@@ -249,8 +234,8 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
                       placeholder="Cari Cost Center..."
                       styles={customSelectStyles}
                       isDisabled={(!isEmployeeFound && !isEditMode) || isSearching} 
-                      value={ccOptions.find(opt => opt.value === selectCCId) || null}
-                      onChange={(opt) => setselectCCId(opt ? opt.value : null)}
+                      value={ccOptions.find(opt => opt.value === selectedOrgCcId) || null}
+                      onChange={(opt) => setSelectedOrgCcId(opt ? opt.value : null)}
                     />
                   </div>
 
@@ -290,12 +275,10 @@ function OsCCForm({ onClose, onSuccess, initialData }) {
                       className="form-control form-control-sm" 
                       required={!isNoLimit}
                       disabled={isNoLimit || (!isEmployeeFound && !isEditMode) || isSearching}
-                      defaultValue={initialData?.valid_to}
                       style={isNoLimit ? { backgroundColor: '#f1f3f5', opacity: 0.6 } : {}}
                     />
                   </div>
                 </div>
-                {/* ======================================================== */}
 
               </div>
 
