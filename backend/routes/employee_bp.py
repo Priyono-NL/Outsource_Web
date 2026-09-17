@@ -83,17 +83,65 @@ def index():
         department_id = request.args.get('department', '', type=str)
         target_date_str = request.args.get('target_date', '', type=str)
 
-        query = OsEmployment.query
+        # 1. Tentukan Titik Waktu (Point-in-Time)
+        if target_date_str:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        else:
+            target_date = datetime.now().date()
 
-        # --- LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO) ---
+        # 2. OPTIMASI ENTERPRISE: POINT-IN-TIME QUERY DENGAN EXPLICIT JOIN
+        query = db.session.query(
+            OsEmployment,
+            OsPerson.name.label('person_name'),
+            costCenter.org_name.label('cc_name'),
+            OsCostCenter.cc_id.label('cc_code'),
+            OsCard.card_number,
+            OsGrade.grade,
+            osType.type_worker,
+            osType.posisi
+        ).join(
+            OsPerson, OsEmployment.person_id == OsPerson.person_id
+        ).outerjoin(
+            OsCostCenter,
+            and_(
+                OsCostCenter.employee_id == OsEmployment.id,
+                OsCostCenter.valid_from <= target_date,
+                or_(OsCostCenter.valid_to >= target_date, OsCostCenter.valid_to == None)
+            )
+        ).outerjoin(
+            costCenter, costCenter.id == OsCostCenter.org_cc_id
+        ).outerjoin(
+            OsCard,
+            and_(
+                OsCard.employee_id == OsEmployment.id,
+                OsCard.valid_from <= target_date,
+                or_(OsCard.valid_to >= target_date, OsCard.valid_to == None)
+            )
+        ).outerjoin(
+            OsGrade,
+            and_(
+                OsGrade.employee_id == OsEmployment.id,
+                OsGrade.valid_from <= target_date,
+                or_(OsGrade.valid_to >= target_date, OsGrade.valid_to == None)
+            )
+        ).outerjoin(
+            osType,
+            and_(
+                osType.employee_id == OsEmployment.id,
+                osType.valid_from <= target_date,
+                or_(osType.valid_to >= target_date, osType.valid_to == None)
+            )
+        )
+
+        # 3. LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO)
         allowed_subcos = get_allowed_subcompanies()
         if allowed_subcos:
             query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
             if sub_company_id and sub_company_id not in allowed_subcos and sub_company_id not in ['TYPE_OS', 'TYPE_VENDOR']:
                 return jsonify({"status": "error", "message": "Akses ditolak"}), 403
 
+        # 4. Filter Pencarian
         if search:
-            query = query.join(OsPerson).outerjoin(OsCard)    
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
@@ -102,26 +150,18 @@ def index():
                 )
             )
 
-        # LOGIKA FILTER AKTIF PER TANGGAL TERTENTU
+        # 5. LOGIKA FILTER AKTIF BERDASARKAN POINT-IN-TIME
         if status == 'active':
-            if target_date_str:
-                query = query.filter(
-                    and_(
-                        or_(OsEmployment.valid_from <= target_date_str, OsEmployment.valid_from == None),
-                        or_(OsEmployment.valid_to >= target_date_str, OsEmployment.valid_to == None)
-                    )
+            query = query.filter(
+                and_(
+                    or_(OsEmployment.valid_from <= target_date, OsEmployment.valid_from == None),
+                    or_(OsEmployment.valid_to >= target_date, OsEmployment.valid_to == None)
                 )
-            else:
-                now = datetime.now()
-                query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
-                
+            )
         elif status == 'inactive':
-            if target_date_str:
-                query = query.filter(OsEmployment.valid_to < target_date_str)
-            else:
-                now = datetime.now()
-                query = query.filter(OsEmployment.valid_to < now)
+            query = query.filter(OsEmployment.valid_to < target_date)
 
+        # 6. FILTER DINAMIS (Subcompany & Department)
         if sub_company_id == 'TYPE_OS':
             subquery_os = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS')
             query = query.filter(OsEmployment.sub_company_id.in_(subquery_os))            
@@ -132,21 +172,39 @@ def index():
             query = query.filter(OsEmployment.sub_company_id == sub_company_id)
 
         if department_id:
-            query = query.join(OsCostCenter)
             query = query.filter(OsCostCenter.org_cc_id == department_id)
         
+        # 7. Eksekusi Pagination (Satu Kueri Tanpa Lazy Load N+1)
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
+
+        # 8. MAPPING DATA (Override Lazy Load to_dict dengan Data Historis Akurat)
+        result_data = []
+        for emp, person_name, cc_name, cc_code, card_number, grade, type_worker, posisi in pagination.items:
+            emp_dict = emp.to_dict() # Ambil atribut dasar (seperti tgl join, tgl terminasi, sub company)
+            
+            # Timpa/Override data fluktuatif dengan hasil dari Explicit JOIN Point-in-Time
+            emp_dict['person_name'] = person_name
+            emp_dict['cc_name'] = cc_name if cc_name else '-'
+            emp_dict['cost_center_id'] = cc_code if cc_code else '-'
+            emp_dict['card_number'] = card_number if card_number else '-'
+            emp_dict['grade'] = grade if grade else '-'
+            emp_dict['type_worker'] = type_worker if type_worker else '-'
+            emp_dict['posisi'] = posisi if posisi else '-'
+            
+            result_data.append(emp_dict)
+
         return jsonify({
             "status": "success",
-            "data": [emp.to_dict() for emp in pagination.items],
+            "data": result_data,
             "total_page": pagination.pages,
             "current_page": pagination.page,
             "total_item": pagination.total
         }), 200
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @employee_bp.route('/employee/search-autocomplete', methods=['GET'])
 def search_autocomplete():
@@ -913,16 +971,71 @@ def export():
         status = request.args.get('status', 'all', type=str)
         sub_company_id = request.args.get('sub_company', '', type=str)
         department_id = request.args.get('department', '', type=str)
+        
+        # 1. TANGKAP TARGET DATE
+        target_date_str = request.args.get('target_date', '', type=str)
+        if target_date_str:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        else:
+            target_date = datetime.now().date()
 
-        query = OsEmployment.query
-        now = datetime.now()
+        # 2. ULTIMATE POINT-IN-TIME EXPORT QUERY (NO N+1 OVERHEAD)
+        query = db.session.query(
+            OsEmployment,
+            OsPerson,
+            costCenter.org_name.label('cc_name'),
+            SubCompany.sub_company_name.label('sub_con_name'),
+            OsGrade.grade,
+            osType.type_worker,
+            osType.posisi,
+            OsCard.card_number,
+            OsCard.valid_from.label('card_from'),
+            OsCard.valid_to.label('card_to')
+        ).join(
+            OsPerson, OsEmployment.person_id == OsPerson.person_id
+        ).outerjoin(
+            SubCompany, OsEmployment.sub_company_id == SubCompany.sub_company_id
+        ).outerjoin(
+            OsCostCenter,
+            and_(
+                OsCostCenter.employee_id == OsEmployment.id,
+                OsCostCenter.valid_from <= target_date,
+                or_(OsCostCenter.valid_to >= target_date, OsCostCenter.valid_to == None)
+            )
+        ).outerjoin(
+            costCenter, costCenter.id == OsCostCenter.org_cc_id
+        ).outerjoin(
+            OsCard,
+            and_(
+                OsCard.employee_id == OsEmployment.id,
+                OsCard.valid_from <= target_date,
+                or_(OsCard.valid_to >= target_date, OsCard.valid_to == None)
+            )
+        ).outerjoin(
+            OsGrade,
+            and_(
+                OsGrade.employee_id == OsEmployment.id,
+                OsGrade.valid_from <= target_date,
+                or_(OsGrade.valid_to >= target_date, OsGrade.valid_to == None)
+            )
+        ).outerjoin(
+            osType,
+            and_(
+                osType.employee_id == OsEmployment.id,
+                osType.valid_from <= target_date,
+                or_(osType.valid_to >= target_date, osType.valid_to == None)
+            )
+        )
 
+        # 3. FILTER HAK AKSES SSO
         allowed_subcos = get_allowed_subcompanies()
         if allowed_subcos:
             query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+            if sub_company_id and sub_company_id not in allowed_subcos and sub_company_id not in ['TYPE_OS', 'TYPE_VENDOR']:
+                return jsonify({"status": "error", "message": "Akses ditolak"}), 403
 
+        # 4. FILTER PENCARIAN
         if search:
-            query = query.join(OsPerson).outerjoin(OsCard)    
             query = query.filter(
                 or_(
                     OsEmployment.employee_code.cast(db.String).ilike(f"%{search}%"),
@@ -931,11 +1044,18 @@ def export():
                 )
             )
 
+        # 5. FILTER AKTIF / INAKTIF (POINT-IN-TIME)
         if status == 'active':
-            query = query.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
+            query = query.filter(
+                and_(
+                    or_(OsEmployment.valid_from <= target_date, OsEmployment.valid_from == None),
+                    or_(OsEmployment.valid_to >= target_date, OsEmployment.valid_to == None)
+                )
+            )
         elif status == 'inactive':
-            query = query.filter(OsEmployment.valid_to < now)
+            query = query.filter(OsEmployment.valid_to < target_date)
 
+        # 6. FILTER DINAMIS (SUB COMPANY & DEPARTMENT)
         if sub_company_id == 'TYPE_OS':
             subquery_os = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == 'OS')
             query = query.filter(OsEmployment.sub_company_id.in_(subquery_os))
@@ -946,50 +1066,56 @@ def export():
             query = query.filter(OsEmployment.sub_company_id == sub_company_id)
 
         if department_id:
-            query = query.join(OsCostCenter)
             query = query.filter(OsCostCenter.org_cc_id == department_id)
         
+        # Eksekusi Database
         filtered_employees = query.all()
         
+        # 7. MAPPING KE ARRAY (Langsung dari hasil JOIN, bukan lazy loading to_dict)
         data = []
-        for m in filtered_employees:
-            d = m.to_dict()
+        for emp, person, cc_name, sub_con_name, grade, type_worker, posisi, card_number, card_from, card_to in filtered_employees:
             data.append({
-                "Name": d.get('person_name', ''),
-                "Gender": d.get('gender', ''),
-                "Religion": d.get('religion', ''),
-                "Place of Birth": d.get('pob', ''),
-                "Date of Birth": d.get('v_dob', ''),                
-                "Resident ID": d.get('resident_id', ''),
-                "Address": d.get('address', ''),
-                "Employee ID": d.get('employee_code', ''),
-                "Sub Company": d.get('sub_con_name', ''),
-                "Department": d.get('cc_name', ''),
-                "Grade": d.get('grade', ''),
-                "Type Worker": d.get('type_worker', ''),
-                "Posisi": d.get('posisi', ''),
-                "Join Date": d.get('v_valid_from', ''),
-                "Termination Date": d.get('valid_to', ''),
-                "Card Number": d.get('card_number', ''),
-                "Card Valid From": d.get('card_number_from', ''),
-                "Card Valid To": d.get('card_number_to', '')
+                "Name": person.name or '',
+                "Gender": person.gender or '',
+                "Religion": person.religion or '',
+                "Place of Birth": person.pob or '',
+                "Date of Birth": person.dob.strftime('%d-%b-%Y').upper() if person.dob else '',                
+                "Resident ID": person.resident_id or '',
+                "Address": person.address or '',
+                "Employee ID": emp.employee_code or '',
+                "Sub Company": sub_con_name or '',
+                "Department": cc_name or '',
+                "Grade": grade or '',
+                "Type Worker": type_worker or '',
+                "Posisi": posisi or '',
+                "Join Date": emp.valid_from.strftime('%d-%b-%Y').upper() if emp.valid_from else '',
+                "Termination Date": emp.valid_to.strftime('%d-%b-%Y').upper() if emp.valid_to else '',
+                "Card Number": card_number or '',
+                "Card Valid From": card_from.strftime('%d-%b-%Y').upper() if card_from else '',
+                "Card Valid To": card_to.strftime('%d-%b-%Y').upper() if card_to else ''
             })
+
         if not data:
-            return jsonify({'status': 'error', 'message': 'tidak ada data'})
+            return jsonify({'status': 'error', 'message': 'Data tidak ditemukan untuk diexport.'}), 400
+
         df = pd.DataFrame(data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data OS')        
+            df.to_excel(writer, index=False, sheet_name='Data_Karyawan')        
         output.seek(0)
+
+        filename_date = target_date.strftime('%Y-%m-%d')
         return send_file(
             output, 
             as_attachment=True, 
-            download_name="Export_OS.xlsx",
+            download_name=f"Export_Data_{filename_date}.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
 
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @employee_bp.route('/employee/deactivate/<int:pk_id>', methods=['PUT'])
 def deactivate_employee(pk_id):

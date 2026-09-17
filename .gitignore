@@ -11,7 +11,8 @@ node_modules
 *.local
 __pycache__
 *.env
-env
+*.development
+*.production
 
 # Editor directories and files
 .vscode/*

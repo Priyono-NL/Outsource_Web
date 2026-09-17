@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/api';
+import { Toast } from '../utils/sweetalert'; // Menggunakan standar UX Enterprise
 
 const RolePermission = () => {
   const [roles, setRoles] = useState([]);
@@ -9,7 +10,6 @@ const RolePermission = () => {
 
   const [loading, setLoading] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   // 1. Load Master Data (Roles & Menus)
   useEffect(() => {
@@ -25,7 +25,7 @@ const RolePermission = () => {
         setMenuList(res.data.data.menus || []);
       }
     } catch (err) {
-      alert('Gagal memuat master data: ' + (err.response?.data?.message || err.message));
+      Toast.fire({ icon: 'error', title: 'Gagal memuat master data', text: err.response?.data?.message || err.message });
     } finally {
       setLoading(false);
     }
@@ -52,36 +52,35 @@ const RolePermission = () => {
         setRolePermissions(permMap);
       }
     } catch (err) {
-      alert('Gagal mengambil detail hak akses role');
+      Toast.fire({ icon: 'error', title: 'Gagal mengambil detail hak akses' });
     } finally {
       setLoading(false);
     }
   };
 
-  // 3. Toggle Checkbox (Dengan Logika Top-Down & Bottom-Up)
+  // 3. Toggle Checkbox (Dengan Logika Top-Down & Bottom-Up IMMUTABLE)
   const handlePermissionChange = (menuId, field, isChecked) => {
     setRolePermissions(prev => {
       const updated = { ...prev };
       
-      // Helper untuk memastikan object state ada
-      const ensureInit = (id) => {
-        if (!updated[id]) updated[id] = { can_view: false, can_create: false, can_edit: false, can_delete: false };
+      // ENTERPRISE FIX: Helper untuk Deep Copy agar Immutability React terjaga
+      const ensureDeepCopy = (id) => {
+        updated[id] = updated[id] 
+            ? { ...updated[id] } 
+            : { can_view: false, can_create: false, can_edit: false, can_delete: false };
       };
 
-      ensureInit(menuId);
-      updated[menuId] = { ...updated[menuId], [field]: isChecked };
+      ensureDeepCopy(menuId);
+      updated[menuId][field] = isChecked;
 
       const currentMenu = menuList.find(m => m.id === menuId);
       const isFolder = !currentMenu.path;
 
       // LOGIKA 1 (TOP-DOWN): Jika FOLDER di-klik 'View'-nya
       if (isFolder && field === 'can_view') {
-        // Cari semua sub-menu di bawah folder ini
         const children = menuList.filter(m => m.parent_id === menuId);
-        
         children.forEach(child => {
-          ensureInit(child.id);
-          // Jika folder dicentang -> centang SEMUA aksi anaknya. Jika dihapus -> hapus semua.
+          ensureDeepCopy(child.id);
           updated[child.id] = {
             can_view: isChecked,
             can_create: isChecked,
@@ -91,7 +90,7 @@ const RolePermission = () => {
         });
       }
 
-      // LOGIKA 2: Jika View dimatikan pada menu biasa, matikan semua aksi CRUD lainnya
+      // LOGIKA 2: Jika View dimatikan pada menu biasa, matikan semua aksi CRUD
       if (field === 'can_view' && !isChecked) {
         updated[menuId].can_create = false;
         updated[menuId].can_edit = false;
@@ -103,9 +102,9 @@ const RolePermission = () => {
         updated[menuId].can_view = true;
       }
 
-      // LOGIKA 4 (BOTTOM-UP FOLDER): Jika anak menu dicentang apapun, pastikan Folder Induknya ikut tercentang View-nya!
+      // LOGIKA 4 (BOTTOM-UP FOLDER): Jika anak menu dicentang apapun, Folder Induknya ikut tercentang View
       if (isChecked && currentMenu.parent_id) {
-        ensureInit(currentMenu.parent_id);
+        ensureDeepCopy(currentMenu.parent_id);
         updated[currentMenu.parent_id].can_view = true;
       }
 
@@ -113,15 +112,15 @@ const RolePermission = () => {
     });
   };
 
-  // 4. LOGIKA CHECKLIST ALL PER KOLOM (View, Create, Edit, Delete)
+  // 4. LOGIKA CHECKLIST ALL PER KOLOM (IMMUTABLE)
   const handleSelectAllColumn = (field, isChecked) => {
     const updated = { ...rolePermissions };
+    
     menuList.forEach(m => {
-      if (!updated[m.id]) {
-        updated[m.id] = { can_view: false, can_create: false, can_edit: false, can_delete: false };
-      }
+      updated[m.id] = updated[m.id] 
+          ? { ...updated[m.id] } 
+          : { can_view: false, can_create: false, can_edit: false, can_delete: false };
 
-      // Khusus folder (tidak ada path), hanya bisa View
       const isFolder = !m.path;
 
       if (field === 'can_view') {
@@ -132,7 +131,6 @@ const RolePermission = () => {
           updated[m.id].can_delete = false;
         }
       } else if (!isFolder) {
-        // Jika centang Create/Edit/Delete, pastikan View-nya ikut aktif
         if (isChecked) updated[m.id].can_view = true;
         updated[m.id][field] = isChecked;
       }
@@ -140,7 +138,7 @@ const RolePermission = () => {
     setRolePermissions(updated);
   };
 
-  // Status Checklist All Header (Checked / Unchecked / Indeterminate)
+  // Status Checklist All Header
   const getColumnCheckStatus = (field) => {
     const targetMenus = field === 'can_view' ? menuList : menuList.filter(m => m.path);
     if (targetMenus.length === 0) return { checked: false, indeterminate: false };
@@ -165,11 +163,10 @@ const RolePermission = () => {
       });
 
       if (res.data.success) {
-        setShowSuccessAlert(true);
-        setTimeout(() => setShowSuccessAlert(false), 3000);
+        Toast.fire({ icon: 'success', title: 'Hak akses berhasil diperbarui!' });
       }
     } catch (err) {
-      alert('Gagal menyimpan konfigurasi: ' + (err.response?.data?.message || err.message));
+      Toast.fire({ icon: 'error', title: 'Gagal menyimpan konfigurasi', text: err.response?.data?.message || err.message });
     } finally {
       setLoading(false);
     }
@@ -189,21 +186,15 @@ const RolePermission = () => {
       if (res.data.success) {
         setRoles([...roles, res.data.data]);
         setNewRoleName('');
+        Toast.fire({ icon: 'success', title: 'Role berhasil dibuat!' });
       }
     } catch (err) {
-      alert('Gagal membuat role baru');
+      Toast.fire({ icon: 'error', title: 'Gagal membuat role baru' });
     }
   };
 
   return (
     <div className="container-fluid py-3">
-      {showSuccessAlert && (
-        <div className="alert alert-success border-0 shadow-sm mb-3 d-flex align-items-center fade show" role="alert">
-          <i className="bi bi-check-circle-fill me-2 fs-5"></i>
-          <div>Hak akses role berhasil diperbarui!</div>
-        </div>
-      )}
-
       <div className="row g-3">
         {/* PANEL KIRI: DAFTAR ROLE */}
         <div className="col-md-4 col-lg-3">
@@ -221,7 +212,7 @@ const RolePermission = () => {
                     value={newRoleName}
                     onChange={(e) => setNewRoleName(e.target.value)}
                   />
-                  <button className="btn btn-primary" type="submit">
+                  <button className="btn btn-primary" type="submit" disabled={!newRoleName.trim()}>
                     <i className="bi bi-plus-lg"></i>
                   </button>
                 </div>
@@ -260,8 +251,11 @@ const RolePermission = () => {
                   onClick={handleSavePermissions}
                   disabled={loading}
                 >
-                  <i className="bi bi-floppy me-2"></i>
-                  {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  {loading ? (
+                    <><span className="spinner-border spinner-border-sm me-2"></span>Menyimpan...</>
+                  ) : (
+                    <><i className="bi bi-floppy me-2"></i>Simpan Perubahan</>
+                  )}
                 </button>
               </div>
 
@@ -271,58 +265,19 @@ const RolePermission = () => {
                     <thead className="table-dark">
                       <tr>
                         <th>Modul / Menu Aplikasi</th>
-
-                        {/* HEADER CHECKLIST ALL: VIEW */}
-                        <th className="text-center" style={{ width: '100px' }}>
-                          View <br />
-                          <input 
-                            type="checkbox" 
-                            className="form-check-input mt-1" 
-                            checked={getColumnCheckStatus('can_view').checked}
-                            ref={el => el && (el.indeterminate = getColumnCheckStatus('can_view').indeterminate)}
-                            onChange={(e) => handleSelectAllColumn('can_view', e.target.checked)} 
-                            title="Checklist All View"
-                          />
-                        </th>
-
-                        {/* HEADER CHECKLIST ALL: CREATE */}
-                        <th className="text-center" style={{ width: '100px' }}>
-                          Create <br />
-                          <input 
-                            type="checkbox" 
-                            className="form-check-input mt-1" 
-                            checked={getColumnCheckStatus('can_create').checked}
-                            ref={el => el && (el.indeterminate = getColumnCheckStatus('can_create').indeterminate)}
-                            onChange={(e) => handleSelectAllColumn('can_create', e.target.checked)} 
-                            title="Checklist All Create"
-                          />
-                        </th>
-
-                        {/* HEADER CHECKLIST ALL: EDIT */}
-                        <th className="text-center" style={{ width: '100px' }}>
-                          Edit <br />
-                          <input 
-                            type="checkbox" 
-                            className="form-check-input mt-1" 
-                            checked={getColumnCheckStatus('can_edit').checked}
-                            ref={el => el && (el.indeterminate = getColumnCheckStatus('can_edit').indeterminate)}
-                            onChange={(e) => handleSelectAllColumn('can_edit', e.target.checked)} 
-                            title="Checklist All Edit"
-                          />
-                        </th>
-
-                        {/* HEADER CHECKLIST ALL: DELETE */}
-                        <th className="text-center" style={{ width: '100px' }}>
-                          Delete <br />
-                          <input 
-                            type="checkbox" 
-                            className="form-check-input mt-1" 
-                            checked={getColumnCheckStatus('can_delete').checked}
-                            ref={el => el && (el.indeterminate = getColumnCheckStatus('can_delete').indeterminate)}
-                            onChange={(e) => handleSelectAllColumn('can_delete', e.target.checked)} 
-                            title="Checklist All Delete"
-                          />
-                        </th>
+                        {['can_view', 'can_create', 'can_edit', 'can_delete'].map(action => (
+                          <th key={action} className="text-center" style={{ width: '100px' }}>
+                            {action.replace('can_', '').charAt(0).toUpperCase() + action.replace('can_', '').slice(1)} <br />
+                            <input 
+                              type="checkbox" 
+                              className="form-check-input mt-1" 
+                              checked={getColumnCheckStatus(action).checked}
+                              ref={el => el && (el.indeterminate = getColumnCheckStatus(action).indeterminate)}
+                              onChange={(e) => handleSelectAllColumn(action, e.target.checked)} 
+                              title={`Checklist All ${action}`}
+                            />
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -333,16 +288,17 @@ const RolePermission = () => {
                         return (
                           <tr key={menu.id} className={isFolder ? 'table-secondary fw-bold' : ''}>
                             <td style={{ paddingLeft: menu.parent_id ? '2.5rem' : '1rem' }}>
-                              <i className={`bi ${menu.icon || 'bi-folder'} me-2`}></i>
+                              <i className={`bi ${menu.icon || 'bi-folder'} me-2 text-primary`}></i>
                               {menu.title}
                               {isFolder && <span className="badge bg-secondary ms-2">Folder</span>}
                             </td>
+                            {/* FIX PADA PARAMETER KETIGA UNTUK MENGIRIMKAN BOOLEAN CHECKED-NYA */}
                             <td className="text-center">
                               <input
                                 type="checkbox"
                                 className="form-check-input"
                                 checked={perm.can_view}
-                                onChange={() => handlePermissionChange(menu.id, 'can_view')}
+                                onChange={(e) => handlePermissionChange(menu.id, 'can_view', e.target.checked)}
                               />
                             </td>
                             <td className="text-center">
@@ -352,7 +308,7 @@ const RolePermission = () => {
                                   className="form-check-input"
                                   disabled={!perm.can_view}
                                   checked={perm.can_create}
-                                  onChange={() => handlePermissionChange(menu.id, 'can_create')}
+                                  onChange={(e) => handlePermissionChange(menu.id, 'can_create', e.target.checked)}
                                 />
                               )}
                             </td>
@@ -363,7 +319,7 @@ const RolePermission = () => {
                                   className="form-check-input"
                                   disabled={!perm.can_view}
                                   checked={perm.can_edit}
-                                  onChange={() => handlePermissionChange(menu.id, 'can_edit')}
+                                  onChange={(e) => handlePermissionChange(menu.id, 'can_edit', e.target.checked)}
                                 />
                               )}
                             </td>
@@ -374,7 +330,7 @@ const RolePermission = () => {
                                   className="form-check-input"
                                   disabled={!perm.can_view}
                                   checked={perm.can_delete}
-                                  onChange={() => handlePermissionChange(menu.id, 'can_delete')}
+                                  onChange={(e) => handlePermissionChange(menu.id, 'can_delete', e.target.checked)}
                                 />
                               )}
                             </td>
@@ -384,15 +340,14 @@ const RolePermission = () => {
                     </tbody>
                   </table>
                 </div>
-
               </div>
             </div>
           ) : (
-            <div className="card shadow-sm border-0 text-center p-5">
+            <div className="card shadow-sm border-0 text-center p-5 h-100 d-flex justify-content-center align-items-center bg-light">
               <div className="card-body">
-                <i className="bi bi-hand-index-thumb text-muted display-4 mb-3 d-block"></i>
-                <h5>Pilih Role Terlebih Dahulu</h5>
-                <p className="text-muted">Klik salah satu role di panel sebelah kiri untuk mengatur hak akses modul aplikasi.</p>
+                <i className="bi bi-person-gear text-secondary display-1 mb-3 d-block"></i>
+                <h4 className="text-dark fw-bold">Pilih Role Terlebih Dahulu</h4>
+                <p className="text-muted">Klik salah satu role di panel sebelah kiri untuk mengatur matrikulasi hak akses modul sistem.</p>
               </div>
             </div>
           )}
