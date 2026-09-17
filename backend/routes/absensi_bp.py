@@ -119,12 +119,9 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         query = query.filter(Absensi_all.flag_anomaly == 1)
     elif status_filter in ('violation_all', 'tidak_lengkap'):
         query = query.filter(and_(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)), non_anomaly))
-    elif status_filter == 'no_in':
-        query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_not(None)))
-    elif status_filter == 'no_out':
-        query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_(None)))
-    elif status_filter == 'no_both':
-        query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
+    # [ENTERPRISE CORE FIX] Penambahan Mode Khusus Template
+    elif status_filter == 'template_revisi':
+        query = query.filter(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
 
     # 4. Restriksi SSO Hak Akses Pengguna
     allowed_subco = []
@@ -309,6 +306,7 @@ def _enrich_with_dynamic_cc(items):
     master_cc_map = {}
     type_map = {} 
     sub_com_map = {}
+    name_map = {} # <-- [ENTERPRISE FIX] Tambahkan pemetaan Nama Karyawan
 
     if not items:
         return []
@@ -317,14 +315,17 @@ def _enrich_with_dynamic_cc(items):
     dates = tuple(set(str(item.clocking_date) for item in items if item.clocking_date))
     emp_ids = tuple(set(str(item.employee_id).strip() for item in items if item.employee_id))
 
+    # A. Ekstraksi Data Master OS (VwMasterOsActive)
     if card_ids or emp_ids:
         os_filters = []
         if card_ids: os_filters.append(VwMasterOsActive.card_number.in_(card_ids))
         if emp_ids:  os_filters.append(VwMasterOsActive.employee_code.in_(emp_ids))
         
+        # [ENTERPRISE FIX] Sertakan VwMasterOsActive.employee_name di dalam SELECT!
         os_info = db.session.query(
             VwMasterOsActive.card_number,
             VwMasterOsActive.employee_code,
+            VwMasterOsActive.employee_name, # <-- DITARIK DI SINI
             VwMasterOsActive.use_cc,
             VwMasterOsActive.cc_name,
             VwMasterOsActive.type_worker,
@@ -336,12 +337,14 @@ def _enrich_with_dynamic_cc(items):
             cc_master_name = getattr(r, 'cc_name', None)
             emp_type = getattr(r, 'type_worker', None)
             sub_com = getattr(r, 'sub_company_name', '-')
+            emp_name = getattr(r, 'employee_name', None)
             
             if r.card_number:
                 card_k = str(r.card_number).strip()
                 use_cc_map[card_k] = val_use_cc
                 if cc_master_name: master_cc_map[card_k] = cc_master_name
                 if emp_type: type_map[card_k] = emp_type
+                if emp_name: name_map[card_k] = emp_name
                 sub_com_map[card_k] = sub_com
                 
             if r.employee_code:
@@ -349,8 +352,10 @@ def _enrich_with_dynamic_cc(items):
                 use_cc_map[emp_k] = val_use_cc
                 if cc_master_name: master_cc_map[emp_k] = cc_master_name
                 if emp_type: type_map[emp_k] = emp_type
+                if emp_name: name_map[emp_k] = emp_name
                 sub_com_map[emp_k] = sub_com
 
+    # B. Ekstraksi Data Karyawan Tetap (ObEmployee)
     if emp_ids:
         ob_info = ObEmployee.query.filter(ObEmployee.employee_id.in_(emp_ids)).all()
         for ob in ob_info:
@@ -359,6 +364,7 @@ def _enrich_with_dynamic_cc(items):
             
             cc_name = ob.cc_master.org_name if ob.cc_master else str(ob.cost_center)
             if cc_name: master_cc_map[emp_k] = cc_name
+            if ob.employee_name: name_map[emp_k] = ob.employee_name
             
             type_map[emp_k] = 'Tetap / Kontrak'
             sub_com_map[emp_k] = '-'
@@ -367,9 +373,11 @@ def _enrich_with_dynamic_cc(items):
                 card_k = str(ob.card_no).strip()
                 use_cc_map[card_k] = 0
                 if cc_name: master_cc_map[card_k] = cc_name
+                if ob.employee_name: name_map[card_k] = ob.employee_name
                 type_map[card_k] = 'Tetap / Kontrak'
                 sub_com_map[card_k] = '-'
 
+    # C. Ekstraksi Terminal Cost Center (Metode Hybrid)
     if card_ids and dates:
         sql_terminal_cc = """
             SELECT 
@@ -390,6 +398,7 @@ def _enrich_with_dynamic_cc(items):
         cc_rows = db.session.execute(text(sql_terminal_cc), {'card_ids': card_ids, 'dates': dates}).mappings().fetchall()
         cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}
 
+    # D. Injeksi Hasil Enrichment ke Dictionary
     for emp in items:
         emp_dict = emp.to_dict() if hasattr(emp, 'to_dict') else emp.__dict__
         
@@ -412,6 +421,8 @@ def _enrich_with_dynamic_cc(items):
                 emp_dict['cc'] = fallback_master
                 emp_dict['cost_center'] = fallback_master
 
+        # [ENTERPRISE FIX] Suntikkan Nama Karyawan Hasil Mapping Ke Objek Akhir
+        emp_dict['employee_name'] = name_map.get(card_key, name_map.get(emp_key, emp_dict.get('employee_name', '-')))
         emp_dict['type'] = type_map.get(card_key, type_map.get(emp_key, emp_dict.get('type', '-')))
         emp_dict['subCom'] = sub_com_map.get(card_key, sub_com_map.get(emp_key, '-'))
 
@@ -530,38 +541,69 @@ def update_bac():
 @AbsenOs_bp.route('/absensi/template', methods=['GET'])
 def template():
     try:
-        start_date_raw = request.args.get('start_date')
-        end_date_raw = request.args.get('end_date')
+        start_date_raw = request.args.get('start_date', '', type=str)
+        end_date_raw = request.args.get('end_date', '', type=str)
+        search = request.args.get('search', '', type=str).strip()
+        sub_company_id = request.args.get('sub_company', '', type=str).strip()
+        department_id = request.args.get('department', '', type=str).strip()
+        worker_type = request.args.get('worker_type', 'all', type=str).strip()
+        user_email = request.headers.get('X-User-Email', '')
 
         if not start_date_raw or not end_date_raw:
             return jsonify({"status": "error", "message": "Parameter start_date dan end_date wajib diisi."}), 400
 
+        query = build_filtered_absensi_query(
+            start_date=start_date_raw,
+            end_date=end_date_raw,
+            status_filter='template_revisi', 
+            search=search,
+            sub_company_id=sub_company_id,
+            department_id=department_id,
+            worker_type=worker_type,
+            user_email=user_email
+        )
+
         already_revised_subquery = db.session.query(
             BAC_os.employee_id, 
             BAC_os.clock_date
+        ).filter(
+            BAC_os.employee_id.is_not(None),
+            BAC_os.clock_date.is_not(None)
         ).subquery()
 
-        query_results = Absensi_all.query.filter(
-            func.char_length(cast(Absensi_all.employee_id, String)) < 8,
-            Absensi_all.clocking_date >= start_date_raw,
-            Absensi_all.clocking_date <= end_date_raw,
-            or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)),
+        query = query.filter(
             ~tuple_(Absensi_all.employee_id, Absensi_all.clocking_date).in_(already_revised_subquery)
-        ).order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
+        )
+
+        query = query.options(
+            selectinload(Absensi_all.os_active),
+            selectinload(Absensi_all.ob_employee).selectinload(ObEmployee.cc_master)
+        )
+
+        query_results = query.order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
 
         if not query_results:
-            return jsonify({"status": "error", "message": "Tidak ditemukan data absensi tidak lengkap pada periode ini."}), 404
+            return jsonify({"status": "error", "message": "Tidak ditemukan data absensi tidak lengkap pada filter ini."}), 404
+
+        # Pre-Selection Enrichment untuk Nama dan CC
+        enriched_results = _enrich_with_dynamic_cc(query_results)
 
         dynamic_data = []
-        for att in query_results:
-            row_dict = att.to_dict()
+        for d in enriched_results:
+            # [ENTERPRISE FIX] Ambil employee_name yang sudah di-enrich oleh _enrich_with_dynamic_cc
+            emp_name = d.get('employee_name')
+            if not emp_name or str(emp_name).strip() in ('', '-', 'None', 'null'):
+                emp_name = d.get('name') or '-'
+
             dynamic_data.append({
-                "Employee ID": att.employee_id,
-                "Kode Karyawan": row_dict.get('employee_code'),
-                "Nama Karyawan": row_dict.get('employee_name') or '-',
-                "Tanggal Absen": format_dt(att.clocking_date, is_time=False),
-                "Clocking In": format_dt(att.clock_in, is_time=True),
-                "Clocking Out": format_dt(att.clock_out, is_time=True),
+                "Employee ID": str(d.get('employee_id')),
+                "Kode Karyawan": d.get('employee_code') or d.get('employee_id'),
+                "Nama Karyawan": emp_name,
+                "Sub Company": d.get('subCom') or d.get('sub_company_name') or '-',
+                "Cost Center": d.get('cc') or '-',
+                "Tanggal Absen": format_dt(d.get('v_clocking_date') or d.get('clocking_date'), is_time=False),
+                "Clocking In": format_dt(d.get('clock_in'), is_time=True) if d.get('clock_in') else 'KOSONG',
+                "Clocking Out": format_dt(d.get('clock_out'), is_time=True) if d.get('clock_out') else 'KOSONG',
                 "No BAC": "",
                 "Keterangan BAC": ""
             })
@@ -580,7 +622,8 @@ def template():
             dv.errorTitle = 'Pilihan Tidak Valid'
 
             worksheet.add_data_validation(dv)
-            dv.add(f"H2:H{num_rows + 100}")
+            # Kolom 'J' (Index ke-10) untuk Keterangan BAC
+            dv.add(f"J2:J{num_rows + 100}") 
 
         output.seek(0)
         return send_file(
@@ -590,6 +633,8 @@ def template():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         db.session.close()

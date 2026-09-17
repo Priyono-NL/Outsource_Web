@@ -6,16 +6,16 @@ import { getCookie, removeCookie, redirectToSSOLogin, redirectToSSOLogout } from
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('sso_user_cache') || 'null'));
+  const [role, setRole] = useState(() => localStorage.getItem('sso_role_cache') || null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'CRSHR';
 
   useEffect(() => {
-    if (sessionStorage.getItem('is_logging_out') === 'true') {
-      sessionStorage.removeItem('is_logging_out');
+    // Abaikan jika sedang berada di halaman Callback agar tidak bentrok
+    if (window.location.pathname.includes('/auth/callback')) {
       setLoading(false);
       return;
     }
@@ -24,42 +24,41 @@ export const AuthProvider = ({ children }) => {
 
     const verifyAndSyncSSO = async () => {
       try {
-        // 1. Ambil token dari URL, Cookie, atau Backup LocalStorage
+        // 1. Tangkap Token dari URL (Jika SSO melempar langsung ke root '/')
         const urlParams = new URLSearchParams(window.location.search);
         const tokenFromUrl = urlParams.get('token');
-        let token = getCookie('sso_token');
 
+        let token = getCookie('sso_token') || localStorage.getItem('sso_token_backup');
+
+        // Jika ada token di URL, jadikan sebagai sumber utama dan amankan ke Storage
         if (tokenFromUrl) {
           token = tokenFromUrl;
+          
+          import('./sso').then(({ setCookie }) => setCookie('sso_token', token));
           localStorage.setItem('sso_token_backup', token);
+          
+          // Bersihkan URL dari token agar terlihat rapi dan tidak memicu infinite loop
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
+        // 2. Validasi Ketersediaan Token
         if (!token) {
-          token = localStorage.getItem('sso_token_backup');
+          throw new Error('Token tidak ditemukan di Cookie maupun LocalStorage.');
         }
 
-        if (!token) {
-          redirectToSSOLogin();
-          return;
-        }
-
-        // 2. Dekode & Validasi Token
+        // 3. Decode Token dengan Base64Url Fix (Mencegah DOMException)
         const payloadBase64 = token.split('.')[1];
-        const payload = JSON.parse(atob(payloadBase64));
+        const base64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(base64));
 
         const currentTime = Math.floor(Date.now() / 1000);
         if (payload.exp && payload.exp < currentTime) {
-          throw new Error('Token SSO Expired');
-        }
-
-        if (payload.module_access && payload.module_access[MODULE_CODE] === false) {
-          throw new Error(`Unauthorized: User tidak memiliki akses modul ${MODULE_CODE}`);
+          throw new Error('Token JWT SSO sudah Expired.');
         }
 
         const ssoRole = payload.module_roles?.[MODULE_CODE] || payload.role || 'viewer';
 
-        // 3. Tembak API Backend dengan Async/Await
+        // 4. Hit-and-Run API sso-sync
         const response = await api.post('/api/auth/sso-sync', {
           sso_user_id: payload.user_id || payload.sub || payload.email,
           email: payload.email,
@@ -70,73 +69,48 @@ export const AuthProvider = ({ children }) => {
 
         if (!isMounted) return;
 
-        const res = response.data;
-        if (res.success) {
+        if (response.data && response.data.success) {
+          const userData = response.data.user;
+          const userRole = userData.role_app || userData.role || ssoRole;
+
           setIsAuthenticated(true);
-          setUser(res.user);
-          setRole(res.user.role_app);
+          setUser(userData);
+          setRole(userRole);
+
+          localStorage.setItem('sso_user_cache', JSON.stringify(userData));
+          localStorage.setItem('sso_role_cache', userRole);
+        } else {
+          throw new Error('Backend berhasil dihubungi, tapi respons sukses bernilai false.');
         }
       } catch (error) {
-        console.error('SSO Validation Error:', error);
         removeCookie('sso_token');
         localStorage.removeItem('sso_token_backup');
-        
+        localStorage.removeItem('sso_user_cache');
+        localStorage.removeItem('sso_role_cache');
+
         if (isMounted) {
           redirectToSSOLogin();
         }
       } finally {
-        // PASTI DIEKSEKUSI: Matikan loading apapun yang terjadi
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     };
 
     verifyAndSyncSSO();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
-  // Polling Cookie untuk Single Sign-Out Sync
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const interval = setInterval(() => {
-      let token = getCookie('sso_token') || localStorage.getItem('sso_token_backup');
-
-      if (!token) {
-        console.log("Sesi terhapus, mengembalikan ke SSO...");
-        setIsAuthenticated(false);
-        setUser(null);
-        redirectToSSOLogin();
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
-
   const logout = () => {
-    setIsAuthenticated(false);
-    setUser(null);
     removeCookie('sso_token');
-    removeCookie('sso_user');
     localStorage.clear();
     sessionStorage.clear();    
-    sessionStorage.setItem('is_logging_out', 'true'); 
     redirectToSSOLogout();
   };
   
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
-        <div className="text-center">
-          <div className="spinner-border text-primary mb-3" role="status" style={{ width: '3rem', height: '3rem' }}>
-            <span className="visually-hidden">Loading...</span>
-          </div>
-          <h5 className="fw-bold">Memverifikasi Sesi SSO...</h5>
-        </div>
+        <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }} />
       </div>
     );
   }
@@ -148,10 +122,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);

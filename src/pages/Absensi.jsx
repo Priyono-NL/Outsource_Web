@@ -177,15 +177,43 @@ const Absensi = () => {
   };
 
   const handleDownloadTemplate = async () => {
+    // 1. Validasi UX: Minta user apply filter dulu jika ada perubahan yang belum di-apply
+    if (isFilterDirty) {
+      Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengunduh template.' });
+      return;
+    }
+
     setIsDownloadingTemplate(true);
     try {
+      // 2. Susun Parameter LENGKAP menggunakan state 'applied' agar sinkron dengan tabel
+      const params = {
+        start_date: appliedStartDate || '',
+        end_date: appliedEndDate || '',
+        search: crud.appliedSearch || '',
+        sub_company: appliedSubCompany || '',
+        department: appliedDepartment || '',
+        // status_filter tidak perlu dikirim karena backend sudah mem-force 'template_revisi'
+      };
+
+      // 3. Tembak API dengan parameter lengkap
       const { data } = await api.get('/absensi/template', { 
-        params: { start_date: startDate, end_date: endDate },
+        params: params,
         responseType: 'blob' 
       });
-      saveAs(data, `Template_Mass_Update_${startDate}_to_${endDate}.xlsx`);
-    } catch {
-      Toast.fire({ icon: 'error', title: 'Gagal download template' });
+      
+      saveAs(data, `Template_Mass_Update_${appliedStartDate}_to_${appliedEndDate}.xlsx`);
+    } catch (error) {
+      // Parsing pesan error dari Blob JSON jika ada
+      if (error.response && error.response.data && error.response.data.type === 'application/json') {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const errData = JSON.parse(reader.result);
+          Toast.fire({ icon: 'error', title: 'Gagal', text: errData.message });
+        };
+        reader.readAsText(error.response.data);
+      } else {
+        Toast.fire({ icon: 'error', title: 'Gagal mengunduh template Excel' });
+      }
     } finally {
       setIsDownloadingTemplate(false);
     }

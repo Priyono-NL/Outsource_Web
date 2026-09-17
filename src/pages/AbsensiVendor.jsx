@@ -17,7 +17,6 @@ const AbsensiVendor = () => {
   const lastScannedRef = useRef({ card: '', time: 0 });
 
   const inputRef = useRef(null);
-  const clearTimerRef = useRef(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -115,15 +114,7 @@ const AbsensiVendor = () => {
       setLastScanData(null);
       const errorMsg = error.response?.data?.message || 'Koneksi ke server terputus atau terjadi kesalahan';
       setStatusMsg({ type: 'error', text: errorMsg });
-    } finally {
-      setScanInput('');
-      
-      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-      clearTimerRef.current = setTimeout(() => {
-        setLastScanData(null);
-        setStatusMsg({ type: '', text: '' });
-      }, 4000);
-    }
+    } 
   };
 
   return (
