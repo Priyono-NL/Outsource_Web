@@ -10,6 +10,13 @@ from model.subCompany import SubCompany
 AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 
 # =============================================================================
+# CONFIGURATION CONSTANTS (CLEAN & MAINTAINABLE)
+# Masukkan nomor Node Hybrid di sini. Contoh: ['175'] atau ['175', '173', '188']
+# =============================================================================
+HYBRID_NODES = ['161', '162', '166', '167', '191', '192', '188', '189', '175', '173']
+MAX_BREAK_MINUTES = 240
+
+# =============================================================================
 # ZERO-ZOMBIE CONNECTION POLICY (TEARDOWN HOOK)
 # =============================================================================
 @AbsenBreak_bp.teardown_request
@@ -22,6 +29,12 @@ def teardown_request(exception=None):
 # =============================================================================
 # REUSABLE HELPERS (DRY CORE)
 # =============================================================================
+
+def _get_hybrid_pattern():
+    """Mengonversi array HYBRID_NODES menjadi pola REGEXP MySQL (misal: '175|173')"""
+    if not HYBRID_NODES:
+        return "^$"  # Regex yang tidak akan match dengan apapun jika array kosong
+    return "|".join(HYBRID_NODES)
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
     """Membangun filter WHERE clause dinamis dan dictionary parameter SQL"""
@@ -101,29 +114,31 @@ def _paginate_data(report_data, page, page_size):
 # =============================================================================
 def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data'):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
+    params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
 
-    # DYNAMIC TYPE FILTER: Menarik data dengan tipe 'Break' dan 'Access' secara langsung
+    # Tarik kolom datetime asli (c.raw_out dan c.raw_in) untuk kalkulasi presisi
     sql_query = f"""
         {base_cte},
         ClockData AS (
             SELECT 
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
                 clocking_date as clock_date,
-                MIN(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out,
-                MAX(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in,
+                MIN(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out_dt,
+                MAX(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in_dt,
                 MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out,
                 MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in
             FROM VW_TACTIVITIES_STAGING_VALID
             WHERE clocking_date BETWEEN :start_date AND :end_date
-              AND clocking_type IN ('Break', 'Access')
+              AND (clocking_type = 'Break' OR CAST(node_id AS CHAR) REGEXP :hybrid_pattern)
             GROUP BY employee_id, clocking_date
         ),
         MakanData AS (
             SELECT 
                 CONVERT(EMPLOYEE_ID USING utf8mb4) COLLATE utf8mb4_general_ci as emp_id, 
                 TANGGAL_MAKAN as tanggal_makan, 
-                MIN(JAM_MAKAN) as raw_makan
+                MIN(JAM_MAKAN) as raw_makan_time,
+                MIN(STR_TO_DATE(CONCAT(DATE_FORMAT(TANGGAL_MAKAN, '%Y-%m-%d'), ' ', JAM_MAKAN), '%Y-%m-%d %H:%i:%s')) as raw_makan_dt
             FROM `db-webapps`.`KANTIN_KARYAWAN_MAKAN_TBL`
             WHERE TANGGAL_MAKAN BETWEEN :start_date AND :end_date
             GROUP BY EMPLOYEE_ID, TANGGAL_MAKAN
@@ -135,20 +150,20 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
 
             COALESCE(c.clock_date, m.tanggal_makan) AS ref_date,
 
-            IF(c.raw_out IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out, '%d-%b-%Y %H:%i')), '-') as waktu_out,
-            IF(m.raw_makan IS NOT NULL, UPPER(CONCAT(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y'), ' ', DATE_FORMAT(m.raw_makan, '%H:%i'))), '-') as waktu_makan,
-            IF(c.raw_in IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in, '%d-%b-%Y %H:%i')), '-') as waktu_in,
-            
-            DATE_FORMAT(c.raw_out, '%H:%i') as jam_out,
-            DATE_FORMAT(m.raw_makan, '%H:%i') as jam_makan,
-            DATE_FORMAT(c.raw_in, '%H:%i') as jam_in,
+            c.raw_out_dt,
+            m.raw_makan_dt,
+            c.raw_in_dt,
+
+            IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y %H:%i')), '-') as waktu_out,
+            IF(m.raw_makan_time IS NOT NULL, UPPER(CONCAT(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y'), ' ', DATE_FORMAT(m.raw_makan_time, '%H:%i'))), '-') as waktu_makan,
+            IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y %H:%i')), '-') as waktu_in,
             
             c.node_out,
             c.node_in
         FROM Karyawan k
         LEFT JOIN ClockData c ON k.emp_id = c.emp_id
         LEFT JOIN MakanData m ON k.emp_id = m.emp_id AND c.clock_date = m.tanggal_makan
-        WHERE (c.raw_out IS NOT NULL OR m.raw_makan IS NOT NULL OR c.raw_in IS NOT NULL)
+        WHERE (c.raw_out_dt IS NOT NULL OR m.raw_makan_dt IS NOT NULL OR c.raw_in_dt IS NOT NULL)
         {filter_clause}
     """
     
@@ -164,41 +179,54 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if node_str in ('188', '189'): return 'Access 86'
         if node_str in ('175', '173'): return 'Access Gerbang 92'
         if node_str in ('114', '115', '215', '216'): return 'Access Bike'
-        return f"{node_str}"
+        return f"Node {node_str}"
 
     seen_records = set()
     for row in rows:
         unique_key = f"{row['emp_id']}_{row['ref_date']}"        
         if unique_key in seen_records:
             continue
-        seen_records.add(unique_key)
         
-        jam_out_str = row['jam_out']
-        jam_makan_str = row['jam_makan']
-        jam_in_str = row['jam_in']
-        
-        start_break_str = min(filter(None, [jam_out_str, jam_makan_str]), default=None)        
+        # Tentukan titik mulai istirahat dari datetime paling awal (antara OUT Tapping atau Makan)
+        out_dt = row['raw_out_dt']
+        makan_dt = row['raw_makan_dt']
+        in_dt = row['raw_in_dt']
+
+        valid_start_dts = [dt for dt in [out_dt, makan_dt] if dt is not None]
+        start_break_dt = min(valid_start_dts) if valid_start_dts else None
+
         total_mins = 0
         status = "Normal Break"
         
-        if not start_break_str and not jam_in_str:
+        if not start_break_dt and not in_dt:
             status = "No Both"
-        elif not start_break_str:
+        elif not start_break_dt:
             status = "No Clocking OUT"
-        elif not jam_in_str:
+        elif not in_dt:
             status = "No Clocking IN"
         else:
-            dt_in = datetime.strptime(jam_in_str, '%H:%M')
-            dt_start = datetime.strptime(start_break_str, '%H:%M')
-            total_mins = max(0, int((dt_in - dt_start).total_seconds() // 60))
-            
-            if total_mins == 0: status = "0 Menit"
-            elif total_mins > 60: status = ">60"
+            # Hitung selisih waktu riil berbasis objek datetime
+            if in_dt > start_break_dt:
+                diff_seconds = (in_dt - start_break_dt).total_seconds()
+                total_mins = max(0, int(diff_seconds // 60))
+            else:
+                total_mins = 0
+
+            # ELIMINASI ANOMALI: Jika durasi istirahat > 240 menit (4 jam), SKIP RECORD INI!
+            if total_mins > MAX_BREAK_MINUTES:
+                continue
+
+            if total_mins == 0: 
+                status = "0 Menit"
+            elif total_mins > 60: 
+                status = ">60"
 
         if status_filter != 'all_data':
             if status_filter == 'lengkap' and status != 'Normal Break': continue
             elif status_filter == 'overbreak' and status != '>60': continue
             elif status_filter == 'tidak_lengkap' and status not in ('No Clocking IN', 'No Clocking OUT', 'No Both', '0 Menit'): continue
+
+        seen_records.add(unique_key)
 
         report_data.append({
             "emp_id": row['emp_id'], 
@@ -217,9 +245,10 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
 
 def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
+    params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
 
-    # DYNAMIC TYPE FILTER: Menarik data dengan tipe 'Access' dan 'Break' secara langsung
+    # CLEAN SQL: Menggunakan REGEXP dengan parameter dari HYBRID_NODES array
     sql_query = f"""
         {base_cte},
         ClockData AS (
@@ -232,7 +261,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
                 MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out
             FROM VW_TACTIVITIES_STAGING_VALID
             WHERE clocking_date BETWEEN :start_date AND :end_date
-              AND clocking_type IN ('Access')
+              AND (clocking_type = 'Access' OR CAST(node_id AS CHAR) REGEXP :hybrid_pattern)
             GROUP BY employee_id, clocking_date
         )
         SELECT 
