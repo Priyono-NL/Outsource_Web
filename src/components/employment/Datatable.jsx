@@ -11,12 +11,11 @@ const Datatable = ({
   filterStatus, 
   filterSubCompany, 
   filterDepartment,
+  targetDate, // Ditambahkan props targetDate jika UI memilih titik tanggal historis
   isFilterApplied 
 }) => {
   const [employees, setEmployees] = useState([]);
   const [error, setError]         = useState(null);
-  
-  // STATE BARU: Indikator Loading
   const [loading, setLoading]     = useState(false);
   
   const [currentPage, setCurrentPage] = useState(1);
@@ -25,7 +24,7 @@ const Datatable = ({
 
   const fetchData = async () => {
     try {
-      setLoading(true); // Nyalakan loading sebelum memanggil API
+      setLoading(true);
       setError(null);
       
       const params = new URLSearchParams({
@@ -35,6 +34,7 @@ const Datatable = ({
         status: filterStatus || 'all',
         sub_company: filterSubCompany || '', 
         department: filterDepartment || '',
+        target_date: targetDate || ''
       }).toString();
       
       const res = await api.get(`/employee?${params}`);
@@ -46,22 +46,45 @@ const Datatable = ({
       }
     } catch (err) { 
       setError(err.message); 
-      setEmployees([]); // Kosongkan data jika terjadi error
+      setEmployees([]); 
       setTotalPages(0);
     } finally {
-      setLoading(false); // Matikan loading setelah request selesai
+      setLoading(false);
     }
   };
 
   useEffect(() => { 
     if (!isFilterApplied) return;
     setCurrentPage(1); 
-  }, [searchTerm, filterStatus, filterSubCompany, filterDepartment, isFilterApplied]);
+  }, [searchTerm, filterStatus, filterSubCompany, filterDepartment, targetDate, isFilterApplied]);
 
   useEffect(() => { 
     if (!isFilterApplied) return;
     fetchData(); 
-  }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment, isFilterApplied]);
+  }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment, targetDate, isFilterApplied]);
+
+  // Helper Pembanding Status Aktif Presisi (Strict Date Zero-Time Comparison)
+  const checkIsActive = (validFromStr, validToStr) => {
+    if (!validFromStr) return false; // Sesuai aturan backend: valid_from WAJIB terisi
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const refDate = targetDate ? new Date(targetDate) : today;
+    refDate.setHours(0, 0, 0, 0);
+
+    const vFrom = new Date(validFromStr);
+    vFrom.setHours(0, 0, 0, 0);
+
+    if (vFrom > refDate) return false;
+
+    if (!validToStr) return true; // valid_to NULL artinya aktif tanpa batas
+
+    const vTo = new Date(validToStr);
+    vTo.setHours(0, 0, 0, 0);
+
+    return vTo >= refDate;
+  };
 
   const handleDeactivate = async (pkId, empCode) => {
     const res = await Confirm.fire({
@@ -108,7 +131,6 @@ const Datatable = ({
             </tr>
           </thead>
           <tbody>
-            {/* 1. Kondisi Filter Belum Diterapkan */}
             {!isFilterApplied ? (
               <tr>
                 <td colSpan="11" className="empty-state text-center py-5 text-muted">
@@ -126,53 +148,64 @@ const Datatable = ({
               </tr>
 
             ) : employees.length > 0 ? (
-              employees.map((emp, i) => (
-                <tr key={emp.id || i}>
-                  <td><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{emp.employee_code}</span></td>
-                  <td style={{ fontWeight: 500 }}>{emp.person_name}</td>
-                  <td>{emp.gender}</td>
-                  <td>{emp.sub_con_name}</td>
-                  <td>{emp.cc_name ? emp.cc_name : '-'}</td>
-                  <td>{emp.card_number ? emp.card_number : '-'}</td>
-                  <td>{emp.type_worker ? emp.type_worker : '-'}</td>
-                  <td>{emp.posisi ? emp.posisi : '-'}</td>
-                  <td>{emp.valid_from ? emp.v_valid_from : '-'}</td>
-                  <td>
-                    {emp.valid_to
-                      ? <span className={new Date(emp.valid_to) < new Date() ? 'badge-inactive' : ''}>{emp.v_valid_to}</span>
-                      : <span className="badge-active">Aktif</span>}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                      <button 
-                        className="btn-app btn-ghost-app btn-sm-app" 
-                        onClick={() => onViewClick(emp)}
-                        title="Lihat Detail"
-                      >
-                        <i className="bi bi-eye" />
-                      </button>
+              employees.map((emp, i) => {
+                const isActive = checkIsActive(emp.valid_from, emp.valid_to);
 
-                      <button 
-                        className="btn-app btn-ghost-app btn-sm-app" 
-                        onClick={() => onEditClick(emp)}
-                        title="Edit Data"
-                      >
-                        <i className="bi bi-pencil-square" />
-                      </button>
-
-                      {(emp.valid_to === null || new Date(emp.valid_to) >= new Date()) && (
-                        <button 
-                          className="btn-app btn-danger-app btn-sm-app" 
-                          onClick={() => handleDeactivate(emp.id, emp.employee_code)}
-                          title="Nonaktifkan Karyawan"
-                        >
-                          <i className="bi bi-person-x" />
-                        </button>
+                return (
+                  <tr key={emp.id || i}>
+                    <td><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{emp.employee_code}</span></td>
+                    <td style={{ fontWeight: 500 }}>{emp.person_name}</td>
+                    <td>{emp.gender}</td>
+                    <td>{emp.sub_con_name}</td>
+                    <td>{emp.cc_name ? emp.cc_name : '-'}</td>
+                    <td>{emp.card_number ? emp.card_number : '-'}</td>
+                    <td>{emp.type_worker ? emp.type_worker : '-'}</td>
+                    <td>{emp.posisi ? emp.posisi : '-'}</td>
+                    <td>{emp.valid_from ? (emp.v_valid_from || emp.valid_from) : '-'}</td>
+                    <td>
+                      {isActive ? (
+                        <span className="badge-active">
+                          {emp.valid_to ? (emp.v_valid_to || emp.valid_to) : 'Aktif (No Limit)'}
+                        </span>
+                      ) : (
+                        <span className="badge-inactive">
+                          {emp.valid_to ? (emp.v_valid_to || emp.valid_to) : 'Non-Aktif'}
+                        </span>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <button 
+                          className="btn-app btn-ghost-app btn-sm-app" 
+                          onClick={() => onViewClick(emp)}
+                          title="Lihat Detail"
+                        >
+                          <i className="bi bi-eye" />
+                        </button>
+
+                        <button 
+                          className="btn-app btn-ghost-app btn-sm-app" 
+                          onClick={() => onEditClick(emp)}
+                          title="Edit Data"
+                        >
+                          <i className="bi bi-pencil-square" />
+                        </button>
+
+                        {/* Tombol Nonaktifkan hanya muncul jika Karyawan berstatus AKTIF */}
+                        {isActive && (
+                          <button 
+                            className="btn-app btn-danger-app btn-sm-app" 
+                            onClick={() => handleDeactivate(emp.id, emp.employee_code)}
+                            title="Nonaktifkan Karyawan"
+                          >
+                            <i className="bi bi-person-x" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
 
             ) : (
               <tr>

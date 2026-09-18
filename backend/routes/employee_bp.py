@@ -172,15 +172,22 @@ def index():
             )
 
         # 5. LOGIKA FILTER AKTIF BERDASARKAN POINT-IN-TIME
+        
         if status == 'active':
             query = query.filter(
                 and_(
-                    or_(OsEmployment.valid_from <= target_date, OsEmployment.valid_from == None),
+                    OsEmployment.valid_from.is_not(None),
+                    OsEmployment.valid_from <= target_date,
                     or_(OsEmployment.valid_to >= target_date, OsEmployment.valid_to == None)
                 )
             )
         elif status == 'inactive':
-            query = query.filter(OsEmployment.valid_to < target_date)
+            query = query.filter(
+                or_(
+                    OsEmployment.valid_from.is_(None),
+                    OsEmployment.valid_to < target_date
+                )
+            )
 
         # 6. FILTER DINAMIS
         if sub_company_id == 'TYPE_OS':
@@ -1077,12 +1084,18 @@ def export():
         if status == 'active':
             query = query.filter(
                 and_(
-                    or_(OsEmployment.valid_from <= target_date, OsEmployment.valid_from == None),
+                    OsEmployment.valid_from.is_not(None),
+                    OsEmployment.valid_from <= target_date,
                     or_(OsEmployment.valid_to >= target_date, OsEmployment.valid_to == None)
                 )
             )
         elif status == 'inactive':
-            query = query.filter(OsEmployment.valid_to < target_date)
+            query = query.filter(
+                or_(
+                    OsEmployment.valid_from.is_(None),
+                    OsEmployment.valid_to < target_date
+                )
+            )
 
         # 6. FILTER DINAMIS (SUB COMPANY & DEPARTMENT)
         if sub_company_id == 'TYPE_OS':
@@ -1103,24 +1116,16 @@ def export():
         data = []
         for emp, person, cc_name, sub_con_name, grade, type_worker, posisi, card_number, card_from, card_to in filtered_employees:
             data.append({
+                "Employee ID": emp.employee_code or '',
                 "Name": person.name or '',
                 "Gender": person.gender or '',
-                "Religion": person.religion or '',
-                "Place of Birth": person.pob or '',
-                "Date of Birth": person.dob.strftime('%d-%b-%Y').upper() if person.dob else '',                
-                "Resident ID": person.resident_id or '',
-                "Address": person.address or '',
-                "Employee ID": emp.employee_code or '',
                 "Sub Company": sub_con_name or '',
                 "Department": cc_name or '',
-                "Grade": grade or '',
+                "Card Number": card_number or '',
                 "Type Worker": type_worker or '',
                 "Posisi": posisi or '',
                 "Join Date": emp.valid_from.strftime('%d-%b-%Y').upper() if emp.valid_from else '',
                 "Termination Date": emp.valid_to.strftime('%d-%b-%Y').upper() if emp.valid_to else '',
-                "Card Number": card_number or '',
-                "Card Valid From": card_from.strftime('%d-%b-%Y').upper() if card_from else '',
-                "Card Valid To": card_to.strftime('%d-%b-%Y').upper() if card_to else ''
             })
 
         if not data:
