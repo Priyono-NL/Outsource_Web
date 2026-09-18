@@ -6,6 +6,7 @@ class terminal(db.Model, AuditMixin):
     id = db.Column(db.Integer, primary_key=True)
     node_id = db.Column(db.Integer)
     cost_center = db.Column(db.Integer)
+    org_cc_id = db.Column(db.Integer)
     terminal_id = db.Column(db.String(10))
     terminal_name = db.Column(db.String(255))
     company_id = db.Column(db.String(50))
@@ -23,7 +24,8 @@ class terminal(db.Model, AuditMixin):
             'terminal_type': self.terminal_type,
             'node_id': self.node_id,
             'cost_center': self.cost_center,
-            'server_loc': self.server_loc
+            'server_loc': self.server_loc,
+            'org_cc_id': self.org_cc_id
         }
 
 AuditMixin.register_audit_events(terminal)

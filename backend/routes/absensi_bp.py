@@ -119,7 +119,12 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         query = query.filter(Absensi_all.flag_anomaly == 1)
     elif status_filter in ('violation_all', 'tidak_lengkap'):
         query = query.filter(and_(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)), non_anomaly))
-    # [ENTERPRISE CORE FIX] Penambahan Mode Khusus Template
+    elif status_filter == 'no_in':
+        query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_not(None)))
+    elif status_filter == 'no_out':
+        query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_(None)))
+    elif status_filter == 'no_both':
+        query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
     elif status_filter == 'template_revisi':
         query = query.filter(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
 
@@ -136,47 +141,56 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             cc_records = UserCostCenterAccess.query.filter_by(user_id=user.id).all()
             allowed_cc = [str(c.cost_center_id).strip() for c in cc_records]
 
-    # Translate Department ID ke Kode Cost Center
+    # =========================================================================
+    # [ENTERPRISE FIX] PEMISAHAN PRESISI: DEPT ID (PRIMARY KEY) vs CC CODES (STRING)
+    # =========================================================================
+    target_dept_ids = []
     target_cc_codes = []
     if department_id:
         sql_cc = text("SELECT id, cost_center FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id")
         cc_res = db.session.execute(sql_cc, {'dept_id': department_id}).fetchall()
         if cc_res:
             for r in cc_res:
-                target_cc_codes.extend([str(r[0]).strip(), str(r[1]).strip()])
+                target_dept_ids.append(str(r[0]).strip())
+                target_cc_codes.append(str(r[1]).strip())
         else:
+            target_dept_ids.append(str(department_id).strip())
             target_cc_codes.append(str(department_id).strip())
 
-    # B. Terjemahkan Department dari Hak Akses (SSO) agar dikenali mesin
-    allowed_cc_translated = []
+    allowed_dept_ids = []
+    allowed_cc_codes = []
     if allowed_cc:
         sql_acc = text("SELECT id, cost_center FROM org_cost_center WHERE id IN :acc OR cost_center IN :acc")
         acc_res = db.session.execute(sql_acc, {'acc': tuple(allowed_cc)}).fetchall()
         if acc_res:
             for r in acc_res:
-                allowed_cc_translated.extend([str(r[0]).strip(), str(r[1]).strip()])
+                allowed_dept_ids.append(str(r[0]).strip())
+                allowed_cc_codes.append(str(r[1]).strip())
         else:
-            allowed_cc_translated = allowed_cc
+            allowed_dept_ids = [str(x) for x in allowed_cc]
+            allowed_cc_codes = [str(x) for x in allowed_cc]
 
-    # C. Tentukan Filter Final: Irisan (Intersection) antara yang diminta vs hak akses
-    filter_cc_list = []
-    if target_cc_codes and allowed_cc_translated:
-        # Hanya filter yang diminta DAN memang diizinkan untuk user
-        filter_cc_list = list(set(target_cc_codes) & set(allowed_cc_translated))
-        if not filter_cc_list:
-            filter_cc_list = ['INVALID_ACCESS'] # Keamanan jika user memanipulasi URL Payload
-    elif target_cc_codes:
-        filter_cc_list = target_cc_codes
-    elif allowed_cc_translated:
-        filter_cc_list = allowed_cc_translated
+    final_dept_ids = []
+    final_cc_codes = []
+
+    if target_dept_ids and allowed_dept_ids:
+        final_dept_ids = list(set(target_dept_ids) & set(allowed_dept_ids))
+        final_cc_codes = list(set(target_cc_codes) & set(allowed_cc_codes))
+        if not final_dept_ids and not final_cc_codes:
+            final_dept_ids = ['INVALID_ACCESS']
+    elif target_dept_ids:
+        final_dept_ids = target_dept_ids
+        final_cc_codes = target_cc_codes
+    elif allowed_dept_ids:
+        final_dept_ids = allowed_dept_ids
+        final_cc_codes = allowed_cc_codes
 
     active_ids = []    
     
-    # 5. Pra-Seleksi Master OS (Dengan Perbaikan Filter Subcompany)
+    # 5. Pra-Seleksi Master OS
     if worker_type in ('all', 'os'):
         os_query = db.session.query(cast(VwMasterOsActive.employee_code, String)).filter(VwMasterOsActive.employee_code.is_not(None))
         
-        # Logika Penggabungan Dropdown dan Hak Akses Subcompany
         if sub_company_id == 'TYPE_OS':
             os_query = os_query.filter(VwMasterOsActive.type_company == 'OS')
             if allowed_subco: os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
@@ -184,9 +198,8 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             os_query = os_query.filter(VwMasterOsActive.type_company == 'Vendor')
             if allowed_subco: os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
         elif sub_company_id:
-            # Jika user spesifik mencari subcompany, pastikan dia punya aksesnya!
             if allowed_subco and sub_company_id not in allowed_subco:
-                os_query = os_query.filter(db.false()) # Tolak akses (blank result)
+                os_query = os_query.filter(db.false())
             else:
                 os_query = os_query.filter(VwMasterOsActive.sub_company_id == sub_company_id)
         elif allowed_subco:
@@ -216,19 +229,17 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             ob_res = ob_query.all()
             active_ids.extend([str(r[0]).strip() for r in ob_res])
 
-
     # =========================================================================
-    # 7. LOGIKA HYBRID FILTER DEPARTMENT (SUPER OPTIMIZED)
+    # 7. LOGIKA HYBRID FILTER DEPARTMENT (FILTER DUA LAPIS PRESISI)
     # =========================================================================
-    if filter_cc_list and filter_cc_list != ['INVALID_ACCESS'] and active_ids:
-        # Step A: Cek Flag use_cc di Master OS
+    if final_dept_ids and final_dept_ids != ['INVALID_ACCESS'] and active_ids:
         os_info = db.session.query(
             VwMasterOsActive.employee_code, VwMasterOsActive.use_cc, 
             VwMasterOsActive.org_cc_id, VwMasterOsActive.cost_center_id
         ).filter(VwMasterOsActive.employee_code.in_(active_ids)).all()
         
-        group1_ids = [] # Karyawan yang ikut Master Data (use_cc = 1)
-        group2_ids = [] # Karyawan yang ikut Lokasi Tapping Mesin (use_cc = 0)
+        group1_ids = [] 
+        group2_ids = [] 
         
         os_handled = set()
         for r in os_info:
@@ -237,18 +248,19 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             use_cc = int(r.use_cc or 0)
             
             if use_cc == 1:
-                # Wajib Cocok dengan Filter
-                if str(r.org_cc_id).strip() in filter_cc_list or str(r.cost_center_id).strip() in filter_cc_list:
+                # Prioritaskan pencocokan org_cc_id
+                if r.org_cc_id is not None and str(r.org_cc_id).strip() in final_dept_ids:
+                    group1_ids.append(eid)
+                elif str(r.cost_center_id).strip() in final_cc_codes:
                     group1_ids.append(eid)
             else:
-                # Sisihkan untuk di-cek ke tabel Tapping Mesin
                 group2_ids.append(eid)
                 
         for eid in active_ids:
             if eid not in os_handled:
                 group2_ids.append(eid)
 
-        # Step B: Kueri Tapping Mesin KHUSUS untuk Karyawan Group 2
+        # Step B: Kueri Tapping Mesin dengan Pengecekan org_cc_id Eksklusif
         group2_tuples = []
         if group2_ids:
             sql_terminal = text("""
@@ -265,19 +277,24 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
                 WHERE ta.employee_id IN :g2_ids
                   AND (:sd = '' OR ta.clocking_date >= :sd)
                   AND (:ed = '' OR ta.clocking_date <= :ed)
-                  AND (tm_in.cost_center IN :cc_list OR tm_out.cost_center IN :cc_list)
+                  AND (
+                      (tm_in.org_cc_id IS NOT NULL AND CAST(tm_in.org_cc_id AS CHAR) IN :dept_ids)
+                      OR (tm_in.org_cc_id IS NULL AND tm_in.cost_center IN :cc_codes)
+                      OR (tm_out.org_cc_id IS NOT NULL AND CAST(tm_out.org_cc_id AS CHAR) IN :dept_ids)
+                      OR (tm_out.org_cc_id IS NULL AND tm_out.cost_center IN :cc_codes)
+                  )
             """)
             
             res_terminal = db.session.execute(sql_terminal, {
                 'g2_ids': tuple(group2_ids),
                 'sd': start_date or '',
                 'ed': end_date or '',
-                'cc_list': tuple(str(x) for x in filter_cc_list)
+                'dept_ids': tuple(str(x) for x in final_dept_ids) if final_dept_ids else ('INVALID_ACCESS',),
+                'cc_codes': tuple(str(x) for x in final_cc_codes) if final_cc_codes else ('INVALID_ACCESS',)
             }).fetchall()
             
             group2_tuples = [(r[0], r[1]) for r in res_terminal]
 
-        # Step C: Gabungkan Hasil Pengecekan
         filters = []
         if group1_ids:
             filters.append(Absensi_all.employee_id.in_(group1_ids))
@@ -289,7 +306,7 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         else:
             query = query.filter(db.false()) 
 
-    elif active_ids and filter_cc_list != ['INVALID_ACCESS']:
+    elif active_ids and final_dept_ids != ['INVALID_ACCESS']:
         query = query.filter(Absensi_all.employee_id.in_(active_ids))
     else:
         query = query.filter(db.false())
@@ -381,10 +398,15 @@ def _enrich_with_dynamic_cc(items):
     if card_ids and dates:
         sql_terminal_cc = """
             SELECT 
-                sub.card_id, sub.clocking_date, COALESCE(occ.org_name, sub.raw_cc, 'TIDAK ADA CC') AS terminal_cc
+                sub.card_id, 
+                sub.clocking_date, 
+                COALESCE(occ.org_name, sub.raw_cc, 'TIDAK ADA CC') AS terminal_cc
             FROM (
                 SELECT 
-                    ta.card_id, ta.clocking_date, MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS raw_cc
+                    ta.card_id, 
+                    ta.clocking_date, 
+                    MAX(COALESCE(tm_in.org_cc_id, tm_out.org_cc_id)) AS raw_org_cc_id,
+                    MAX(COALESCE(tm_in.cost_center, tm_out.cost_center)) AS raw_cc
                 FROM `db-webapps`.TBL_ATTENDANCE ta
                 LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
                 LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
@@ -393,7 +415,7 @@ def _enrich_with_dynamic_cc(items):
                 WHERE ta.card_id IN :card_ids AND ta.clocking_date IN :dates
                 GROUP BY ta.card_id, ta.clocking_date
             ) sub
-            LEFT JOIN org_cost_center occ ON occ.cost_center = sub.raw_cc
+            LEFT JOIN org_cost_center occ ON occ.id = sub.raw_org_cc_id OR (sub.raw_org_cc_id IS NULL AND occ.cost_center = sub.raw_cc)
         """
         cc_rows = db.session.execute(text(sql_terminal_cc), {'card_ids': card_ids, 'dates': dates}).mappings().fetchall()
         cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}

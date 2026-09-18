@@ -10,7 +10,17 @@ from model.subCompany import SubCompany
 AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 
 # =============================================================================
-# REUSABLE HELPERS (Mencegah pengulangan kode / DRY)
+# ZERO-ZOMBIE CONNECTION POLICY (TEARDOWN HOOK)
+# =============================================================================
+@AbsenBreak_bp.teardown_request
+def teardown_request(exception=None):
+    try:
+        db.session.remove()
+    except Exception:
+        pass
+
+# =============================================================================
+# REUSABLE HELPERS (DRY CORE)
 # =============================================================================
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
@@ -39,7 +49,6 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
         filters.append("k.cost_center = :department_id")
         params['department_id'] = department_id
         
-    # Tambahan filter untuk Search Bar
     if search_text:
         filters.append("(k.emp_id LIKE :search OR k.display_name LIKE :search OR k.card_number LIKE :search)")
         params['search'] = f"%{search_text}%"
@@ -94,6 +103,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     base_cte = _get_base_karyawan_cte()
 
+    # DYNAMIC TYPE FILTER: Menarik data dengan tipe 'Break' dan 'Access' secara langsung
     sql_query = f"""
         {base_cte},
         ClockData AS (
@@ -106,7 +116,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
                 MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in
             FROM VW_TACTIVITIES_STAGING_VALID
             WHERE clocking_date BETWEEN :start_date AND :end_date
-              AND clocking_type = 'Break'
+              AND clocking_type IN ('Break', 'Access')
             GROUP BY employee_id, clocking_date
         ),
         MakanData AS (
@@ -154,7 +164,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if node_str in ('188', '189'): return 'Access 86'
         if node_str in ('175', '173'): return 'Access Gerbang 92'
         if node_str in ('114', '115', '215', '216'): return 'Access Bike'
-        return f"Node {node_str}"
+        return f"{node_str}"
 
     seen_records = set()
     for row in rows:
@@ -209,6 +219,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     base_cte = _get_base_karyawan_cte()
 
+    # DYNAMIC TYPE FILTER: Menarik data dengan tipe 'Access' dan 'Break' secara langsung
     sql_query = f"""
         {base_cte},
         ClockData AS (
@@ -221,8 +232,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
                 MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out
             FROM VW_TACTIVITIES_STAGING_VALID
             WHERE clocking_date BETWEEN :start_date AND :end_date
-              AND clocking_type = 'Access'
-            GROUP BY employee_id, clocking_date -- <- Tetap masukkan clocking_date
+              AND clocking_type IN ('Access')
+            GROUP BY employee_id, clocking_date
         )
         SELECT 
             k.emp_id, k.display_name, k.card_number, k.cc_name,
@@ -308,7 +319,7 @@ def exportBreak():
             request.args.get('sub_company', '').strip(), 
             request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
-            request.args.get('status_filter', 'all_data').strip() # <--- TANGKAP FILTER STATUS UNTUK EXPORT
+            request.args.get('status_filter', 'all_data').strip()
         )
 
         if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
@@ -328,7 +339,6 @@ def exportBreak():
         return send_file(output, as_attachment=True, download_name=f"Employee_Break_Report_{start}_to_{end}.xlsx")
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @AbsenBreak_bp.route('/exportAccess')
 def exportAccess():
     try:
@@ -340,7 +350,6 @@ def exportAccess():
 
         df = pd.DataFrame(report_data)
         
-        # Rename dengan kolom yang sudah digabungkan dan dipisah Node-nya
         df.rename(columns={
             'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center',
             'card_number': 'Absence Card No', 'waktu_in': 'Waktu IN', 'waktu_out': 'Waktu OUT', 

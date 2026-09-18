@@ -104,13 +104,12 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
         LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
         LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-        LEFT JOIN org_cost_center occ ON occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)
+        LEFT JOIN org_cost_center occ ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
         
         WHERE ta.clocking_date = :search_date
           AND ta.employee_id IS NOT NULL 
           AND ta.card_id != '00000.00000'
     """
-    
     if worker_type == 'os':
         sql += " AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8 "
     elif worker_type == 'tetap':
@@ -230,38 +229,42 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
     # =========================================================================
-    # 1. RESOLUSI PASTI UNTUK TARGET COST CENTER (KODE & NAMA)
+    # 1. RESOLUSI PASTI UNTUK TARGET COST CENTER (ID, KODE, & NAMA)
     # =========================================================================
+    target_dept_id = None
     target_cc_code = None
     target_cc_name = None
     if department_id:
-        sql_cc = text("SELECT cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id")
+        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id")
         cc_res = db.session.execute(sql_cc, {'dept_id': department_id}).fetchone()
         if cc_res:
-            target_cc_code = str(cc_res[0]).strip()
-            target_cc_name = str(cc_res[1]).strip() if cc_res[1] else None
+            target_dept_id = str(cc_res[0]).strip()
+            target_cc_code = str(cc_res[1]).strip()
+            target_cc_name = str(cc_res[2]).strip() if cc_res[2] else None
         else:
+            target_dept_id = str(department_id).strip()
             target_cc_code = str(department_id).strip()
 
-    # Kueri pencarian data tapping absensi
     sql_attendance = """
         SELECT 
             daily.employee_id, 
             COUNT(daily.clocking_date) AS working_days,
             SUM(TIMESTAMPDIFF(MINUTE, daily.true_clock_in, daily.true_clock_out)) / 60.0 AS working_hours,
             MIN(daily.terminal_cc) AS terminal_cc,
-            MIN(daily.terminal_cc_id) AS terminal_cc_id
+            MIN(daily.terminal_cc_id) AS terminal_cc_id,
+            MIN(daily.terminal_org_cc_id) AS terminal_org_cc_id
         FROM (
             SELECT 
                 ta.employee_id, ta.clocking_date, MIN(ta.clock_in) AS true_clock_in, MAX(ta.clock_out) AS true_clock_out,
                 MIN(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc,
-                MIN(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id
+                MIN(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id,
+                MIN(CAST(COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) AS CHAR)) AS terminal_org_cc_id
             FROM `db-webapps`.TBL_ATTENDANCE ta
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
             LEFT JOIN `db-it-andreas`.terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
             LEFT JOIN `db-it-andreas`.terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-            LEFT JOIN org_cost_center occ ON occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)
+            LEFT JOIN org_cost_center occ ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
             
             WHERE ta.clocking_date BETWEEN :start_date AND :end_date
               AND ta.employee_id IS NOT NULL 
@@ -275,7 +278,6 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
     att_rows = db.session.execute(text(sql_attendance), {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
     os_map, _ = _get_master_dictionaries()
     
-    # Restriksi Subcompany SSO
     allowed_sub_companies = None
     if user_email:
         user = User.query.filter_by(email=user_email).first()
@@ -315,32 +317,31 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
             continue
 
         # =========================================================================
-        # 3. LOGIKA EVALUASI COST CENTER DENGAN DUA LAPIS MATCHING
+        # 3. EVALUASI COST CENTER DENGAN DUA LAPIS MATCHING
         # =========================================================================
         use_cc_flag = int(info.get('use_cc', 0) or 0)
         master_cc_id = _clean_cc(info.get('cost_center_id'))
         master_cc_name = _clean_cc(info.get('cc_name'))
         
+        terminal_org_cc_id = _clean_cc(row.get('terminal_org_cc_id'))
         terminal_cc_id = _clean_cc(row.get('terminal_cc_id'))
         terminal_cc_name = _clean_cc(row.get('terminal_cc'))
         
-        # Penentuan Nama Tampilan Akhir
         final_cc_name = _resolve_cc(terminal_cc_name, master_cc_name, use_cc_flag)
 
-        # EVALUASI FILTER DEPARTMENT (JIKA USER MEMILIH DROPDOWN):
-        if target_cc_code:
+        if target_dept_id:
             is_matched = False
             
             if use_cc_flag == 1:
-                # Wajib Cocok dengan Master Data (Kode atau Nama)
                 if master_cc_id == target_cc_code or (master_cc_name and target_cc_name and master_cc_name == target_cc_name):
                     is_matched = True
             else:
-                # Wajib Cocok dengan Tapping Terminal (Kode atau Nama)
-                if terminal_cc_id == target_cc_code or (terminal_cc_name and target_cc_name and terminal_cc_name == target_cc_name):
+                # Prioritaskan pencocokan org_cc_id
+                if terminal_org_cc_id and terminal_org_cc_id == target_dept_id:
                     is_matched = True
-                # Fallback: Jika tidak pernah tapping di mesin yang valid, gunakan Master CC
-                elif not terminal_cc_id and (master_cc_id == target_cc_code or master_cc_name == target_cc_name):
+                elif not terminal_org_cc_id and (terminal_cc_id == target_cc_code or (terminal_cc_name and target_cc_name and terminal_cc_name == target_cc_name)):
+                    is_matched = True
+                elif not terminal_org_cc_id and not terminal_cc_id and (master_cc_id == target_cc_code or master_cc_name == target_cc_name):
                     is_matched = True
 
             if not is_matched:
