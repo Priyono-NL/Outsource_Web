@@ -1,9 +1,18 @@
 // src/utils/useAuth.jsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import api from '../api/api';
-import { getCookie, removeCookie, redirectToSSOLogin, redirectToSSOLogout } from './sso';
+import { getCookie, removeCookie, redirectToSSOLogin, redirectToSSOLogout, setCookie } from './sso';
 
 const AuthContext = createContext(null);
+
+// DAFTAR EMAIL USER KHUSUS DISPLAY / MONITORING (NEVER EXPIRE)
+const INFINITE_SESSION_USERS = [
+  'security'
+];
+
+// KONFIGURASI DURASI SESI (DALAM DETIK)
+const NORMAL_USER_MAX_AGE   = 3600;     // 1 Jam
+const INFINITE_USER_MAX_AGE = 315360000; // 10 Tahun (315.360.000 Detik)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('sso_user_cache') || 'null'));
@@ -14,7 +23,6 @@ export const AuthProvider = ({ children }) => {
   const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'CRSHR';
 
   useEffect(() => {
-    // Abaikan jika sedang berada di halaman Callback agar tidak bentrok
     if (window.location.pathname.includes('/auth/callback')) {
       setLoading(false);
       return;
@@ -24,41 +32,41 @@ export const AuthProvider = ({ children }) => {
 
     const verifyAndSyncSSO = async () => {
       try {
-        // 1. Tangkap Token dari URL (Jika SSO melempar langsung ke root '/')
         const urlParams = new URLSearchParams(window.location.search);
         const tokenFromUrl = urlParams.get('token');
 
         let token = getCookie('sso_token') || localStorage.getItem('sso_token_backup');
 
-        // Jika ada token di URL, jadikan sebagai sumber utama dan amankan ke Storage
         if (tokenFromUrl) {
           token = tokenFromUrl;
-          
-          import('./sso').then(({ setCookie }) => setCookie('sso_token', token));
           localStorage.setItem('sso_token_backup', token);
-          
-          // Bersihkan URL dari token agar terlihat rapi dan tidak memicu infinite loop
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // 2. Validasi Ketersediaan Token
         if (!token) {
           throw new Error('Token tidak ditemukan di Cookie maupun LocalStorage.');
         }
 
-        // 3. Decode Token dengan Base64Url Fix (Mencegah DOMException)
+        // Decode Payload JWT
         const payloadBase64 = token.split('.')[1];
         const base64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
         const payload = JSON.parse(atob(base64));
 
+        const userEmail = payload.email || payload.sub || payload.user_id;
+        const isInfiniteUser = INFINITE_SESSION_USERS.includes(userEmail);
+
+        // Validasi Expired (Bypass jika user khusus)
         const currentTime = Math.floor(Date.now() / 1000);
-        if (payload.exp && payload.exp < currentTime) {
+        if (!isInfiniteUser && payload.exp && payload.exp < currentTime) {
           throw new Error('Token JWT SSO sudah Expired.');
         }
 
+        const cookieMaxAge = isInfiniteUser ? INFINITE_USER_MAX_AGE : NORMAL_USER_MAX_AGE;
+        setCookie('sso_token', token, cookieMaxAge);
+        localStorage.setItem('sso_token_backup', token);
+
         const ssoRole = payload.module_roles?.[MODULE_CODE] || payload.role || 'viewer';
 
-        // 4. Hit-and-Run API sso-sync
         const response = await api.post('/api/auth/sso-sync', {
           sso_user_id: payload.user_id || payload.sub || payload.email,
           email: payload.email,

@@ -54,8 +54,8 @@ const MainLayout = () => {
   return (
     <div id="app-shell">
 
-      <header id="app-topbar">
-        {role !== 'vendor_app' && (
+      {role !== 'vendor_app' && (
+        <header id="app-topbar">
           <button
             className="topbar-toggle"
             onClick={() => setSidebarExpanded(v => !v)}
@@ -63,47 +63,33 @@ const MainLayout = () => {
           >
             <i className={`bi ${sidebarExpanded ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}`} />
           </button>
-        )}
 
-        <span className="topbar-brand" style={{ marginLeft: role === 'vendor_app' ? '15px' : '0' }}>
-          Manajemen OS
-        </span>
+          <span className="topbar-brand">Manajemen OS</span>
 
-        <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
-          <div className="topbar-user-name">
-            {user?.nama || user?.email || 'User'}
+          <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
+            <div className="topbar-user-name">{user?.nama || user?.email || 'User'}</div>
+            <div className="topbar-user-role">{role || 'user'}</div>
           </div>
-          <div className="topbar-user-role">
-            {role || 'user'}
-          </div>
-        </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            
-            {/* Tombol Kembali ke Portal SSO */}
-            {role !== 'vendor_app' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button 
               className="btn btn-sm btn-outline-secondary d-flex align-items-center shadow-sm" 
               onClick={handleBackToSSO}
               style={{ fontWeight: '500', borderRadius: '6px' }}
-              title="Kembali ke Menu Utama SSO"
             >
-              <i className="bi bi-grid-3x3-gap-fill" style={{ marginRight: '6px' }} />
-              Portal SSO
-            </button> )}
+              <i className="bi bi-grid-3x3-gap-fill me-1" /> Portal SSO
+            </button> 
 
-            {/* Tombol Logout Existing */}
             <button 
               className="btn-logout shadow-sm" 
               onClick={logout}
               style={{ borderRadius: '6px' }}
             >
-              <i className="bi bi-box-arrow-right" style={{ marginRight: '5px' }} />
-              Keluar
+              <i className="bi bi-box-arrow-right me-1" /> Keluar
             </button>
-
           </div>
-      </header>
+        </header>
+      )}
 
       <EnvBanner />
 

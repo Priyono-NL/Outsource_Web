@@ -2,17 +2,15 @@
 
 export const getCookieDomain = () => {
   const hostname = window.location.hostname;
-  // Deteksi localhost atau IP Address (172.16.x.x) agar browser tidak memblokir cookie
   if (hostname === 'localhost' || /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)) {
     return '';
   }
   return hostname.includes('ceresnl.com') ? '.ceresnl.com' : hostname;
 };
 
-export const setCookie = (name, value, maxAge = 86400) => {
+export const setCookie = (name, value, maxAge = 3600) => {
   const domain = getCookieDomain();
   const domainAttr = domain ? `; domain=${domain}` : '';
-  // SameSite=Lax wajib agar aman dalam perpindahan SSO
   document.cookie = `${name}=${value}; path=/; max-age=${maxAge}; SameSite=Lax${domainAttr}`;
 };
 
@@ -45,6 +43,7 @@ export const redirectToSSOLogin = () => {
 };
 
 export const redirectToSSOLogout = () => {
+  const currentUrl = window.location.origin + window.location.pathname;
   const ssoUrl = import.meta.env.VITE_SSO_URL || 'https://account.ceresnl.com';
-  window.location.href = `${ssoUrl}/logout`;
+  window.location.href = `${ssoUrl}/logout?redirect_url=${encodeURIComponent(currentUrl)}`;
 };
