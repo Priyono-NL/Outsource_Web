@@ -11,14 +11,34 @@ const INFINITE_SESSION_USERS = [
 ];
 
 // KONFIGURASI DURASI SESI (DALAM DETIK)
-const NORMAL_USER_MAX_AGE   = 3600;     // 1 Jam
-const INFINITE_USER_MAX_AGE = 315360000; // 10 Tahun (315.360.000 Detik)
+const NORMAL_USER_MAX_AGE   = 3600;      // 1 Jam
+const INFINITE_USER_MAX_AGE = 315360000;  // 10 Tahun (315.360.000 Detik)
+
+/**
+ * HELPER: Memeriksa Izin Akses Modul berdasarkan Payload JWT
+ */
+const validateModuleAccess = (moduleAccessMap, targetModuleCode) => {
+  if (!moduleAccessMap || typeof moduleAccessMap !== 'object') {
+    return false;
+  }
+
+  const accessVal = moduleAccessMap[targetModuleCode];
+
+  if (accessVal === undefined || accessVal === null) return false;
+  if (accessVal === false || accessVal === 0) return false;
+
+  const strVal = String(accessVal).trim().toUpperCase();
+  const forbiddenValues = ['NO', 'FALSE', '0', 'NONE', 'DISABLED', ''];
+  
+  return !forbiddenValues.includes(strVal);
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('sso_user_cache') || 'null'));
   const [role, setRole] = useState(() => localStorage.getItem('sso_role_cache') || null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [accessDeniedError, setAccessDeniedError] = useState(null);
 
   const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'CRSHR';
 
@@ -47,7 +67,7 @@ export const AuthProvider = ({ children }) => {
           throw new Error('Token tidak ditemukan di Cookie maupun LocalStorage.');
         }
 
-        // Decode Payload JWT
+        // 1. Decode Payload JWT
         const payloadBase64 = token.split('.')[1];
         const base64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
         const payload = JSON.parse(atob(base64));
@@ -55,18 +75,30 @@ export const AuthProvider = ({ children }) => {
         const userEmail = payload.email || payload.sub || payload.user_id;
         const isInfiniteUser = INFINITE_SESSION_USERS.includes(userEmail);
 
-        // Validasi Expired (Bypass jika user khusus)
+        // 2. Validasi Expired (Bypass jika user khusus)
         const currentTime = Math.floor(Date.now() / 1000);
         if (!isInfiniteUser && payload.exp && payload.exp < currentTime) {
           throw new Error('Token JWT SSO sudah Expired.');
         }
 
+        // 3. ATURAN KETAT: VALIDASI HAK AKSES MODUL
+        const hasAccess = validateModuleAccess(payload.module_access, MODULE_CODE);
+        if (!hasAccess) {
+          const errorMessage = `Akun Anda (${userEmail}) tidak memiliki hak akses untuk modul [${MODULE_CODE}].`;
+          if (isMounted) {
+            setAccessDeniedError(errorMessage);
+          }
+          throw new Error(errorMessage);
+        }
+
+        // 4. Set Cookie & Role SSO untuk Modul Spesifik
         const cookieMaxAge = isInfiniteUser ? INFINITE_USER_MAX_AGE : NORMAL_USER_MAX_AGE;
         setCookie('sso_token', token, cookieMaxAge);
         localStorage.setItem('sso_token_backup', token);
 
         const ssoRole = payload.module_roles?.[MODULE_CODE] || payload.role || 'viewer';
 
+        // 5. Tembak Backend untuk Sinkronisasi Sesi
         const response = await api.post('/api/auth/sso-sync', {
           sso_user_id: payload.user_id || payload.sub || payload.email,
           email: payload.email,
@@ -97,7 +129,10 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('sso_role_cache');
 
         if (isMounted) {
-          redirectToSSOLogin();
+          // Jika penyebab error BUKAN karena ditolak modul, kembalikan ke Login SSO
+          if (!error.message.includes('tidak memiliki hak akses')) {
+            redirectToSSOLogin();
+          }
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -119,6 +154,31 @@ export const AuthProvider = ({ children }) => {
     return (
       <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
         <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }} />
+      </div>
+    );
+  }
+
+  // TAMPILAN ELEGAN JIKA AKSES MODUL DITOLAK (MENCEGAH INFINITE REDIRECT LOOP)
+  if (accessDeniedError) {
+    const ssoUrl = import.meta.env.VITE_SSO_URL || 'https://account.ceresnl.com';
+
+    return (
+      <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
+        <div className="card shadow-sm border-0 p-4 text-center" style={{ maxWidth: '480px', borderRadius: '12px' }}>
+          <div className="mb-3 text-danger">
+            <i className="bi bi-shield-lock-fill" style={{ fontSize: '3.5rem' }}></i>
+          </div>
+          <h4 className="fw-bold text-dark mb-2">403 - Akses Modul Ditolak</h4>
+          <p className="text-muted mb-4">{accessDeniedError}</p>
+          <div className="d-grid gap-2">
+            <a href={ssoUrl} className="btn btn-primary fw-bold py-2" style={{ borderRadius: '8px' }}>
+              <i className="bi bi-grid-3x3-gap-fill me-2"></i> Kembali ke Portal SSO
+            </a>
+            <button onClick={logout} className="btn btn-outline-secondary py-2" style={{ borderRadius: '8px' }}>
+              <i className="bi bi-box-arrow-right me-2"></i> Keluar / Ganti Akun
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

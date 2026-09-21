@@ -12,6 +12,7 @@ const AbsensiVendor = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [scanInput, setScanInput] = useState('');
   const [lastScanData, setLastScanData] = useState(null);
+  const [lastScannedCard, setLastScannedCard] = useState(''); // State penampung nomor kartu
   const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
   const [counter, setCounter] = useState({ in: 0, out: 0 });
   const lastScannedRef = useRef({ card: '', time: 0 });
@@ -23,11 +24,11 @@ const AbsensiVendor = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Auto Focus Kiosk Input
   useEffect(() => {
     const focusInput = (e) => {
       if (e && e.target) {
         const targetTag = e.target.tagName.toUpperCase();
-        
         if (['SELECT', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(targetTag)) {
           return;
         }
@@ -44,36 +45,62 @@ const AbsensiVendor = () => {
     return () => document.removeEventListener('click', focusInput);
   }, []);
 
+  // Helper Penjamin Format 11 Karakter Presisi (XXXXX.XXXXX)
+  const format11Digits = (p1, p2) => {
+    const clean1 = (String(p1).replace(/\D/g, '') || '0').padStart(5, '0').slice(-5);
+    const clean2 = (String(p2).replace(/\D/g, '') || '0').padStart(5, '0').slice(-5);
+    return `${clean1}.${clean2}`;
+  };
+
+  // Logika Konversi & Parsing Kartu Presisi 11 Karakter
   const parseCardNumber = (rawInput) => {
-    const N = rawInput.trim();
-    
-    if (N.includes('.')) {
-      return { raw: N, converted: N }; 
+    const inputStr = String(rawInput || '').trim();
+    if (!inputStr) return { raw: '', converted: '' };
+
+    if (inputStr.includes('.')) {
+      const parts = inputStr.split('.');
+      const formatted = format11Digits(parts[0], parts[1]);
+      return { raw: formatted, converted: formatted };
     }
 
-    let convertedFormat = N;
-    try {
-      if (!isNaN(N)) {
-        const hexStr = parseInt(N, 10).toString(16).toLowerCase();
-        
+    let convertedFormat = inputStr;
+
+    if (!isNaN(inputStr) && inputStr !== '') {
+      try {
+        const num = BigInt(inputStr);
+        const hexStr = num.toString(16).toLowerCase();
+
+        let p1Dec = '0';
+        let p2Dec = '0';
+
         if (hexStr.length <= 4) {
-          const part2Dec = parseInt(hexStr, 16).toString().padStart(5, '0');
-          convertedFormat = `00000.${part2Dec}`;
+          p2Dec = parseInt(hexStr, 16).toString();
         } else {
-          const part1Hex = hexStr.substring(0, hexStr.length - 4);
-          const part2Hex = hexStr.substring(hexStr.length - 4);
-
-          const part1Dec = parseInt(part1Hex, 16).toString();
-          const part2Dec = parseInt(part2Hex, 16).toString();
-
-          convertedFormat = `${part1Dec.padStart(5, '0')}.${part2Dec.padStart(5, '0')}`;
+          const p1Hex = hexStr.substring(0, hexStr.length - 4);
+          const p2Hex = hexStr.substring(hexStr.length - 4);
+          p1Dec = parseInt(p1Hex, 16).toString();
+          p2Dec = parseInt(p2Hex, 16).toString();
         }
+
+        convertedFormat = format11Digits(p1Dec, p2Dec);
+      } catch (error) {
+        console.error("Gagal konversi Wiegand kartu:", error);
       }
-    } catch (error) {
-      console.error("Gagal konversi kartu:", error);
     }
 
-    return { raw: N, converted: convertedFormat };
+    const cleanDigits = inputStr.replace(/\D/g, '');
+    let rawFormatted = inputStr;
+    if (cleanDigits) {
+      if (cleanDigits.length >= 10) {
+        rawFormatted = format11Digits(cleanDigits.slice(-10, -5), cleanDigits.slice(-5));
+      } else if (cleanDigits.length > 5) {
+        rawFormatted = format11Digits(cleanDigits.slice(0, -5), cleanDigits.slice(-5));
+      } else {
+        rawFormatted = format11Digits('0', cleanDigits);
+      }
+    }
+
+    return { raw: rawFormatted, converted: convertedFormat };
   };
 
   const handleScanSubmit = async (e) => {
@@ -81,14 +108,17 @@ const AbsensiVendor = () => {
     const currentInput = scanInput.trim();
     if (!currentInput) return;
 
+    // Debounce Tapping Berulang < 3 Detik
     const now = Date.now();
     if (lastScannedRef.current.card === currentInput && (now - lastScannedRef.current.time) < 3000) {
-        setScanInput('');
-        return; 
+      setScanInput('');
+      return; 
     }
     lastScannedRef.current = { card: currentInput, time: now };
 
     const cardData = parseCardNumber(currentInput);
+    setLastScannedCard(cardData.raw);
+
     try {
       const response = await api.post('/absensiVendor/tap', {
         card_no: cardData.converted,
@@ -114,7 +144,9 @@ const AbsensiVendor = () => {
       setLastScanData(null);
       const errorMsg = error.response?.data?.message || 'Koneksi ke server terputus atau terjadi kesalahan';
       setStatusMsg({ type: 'error', text: errorMsg });
-    } 
+    } finally {
+      setScanInput('');
+    }
   };
 
   return (
@@ -140,7 +172,7 @@ const AbsensiVendor = () => {
         </div>
       </PageHeader>
 
-     <form 
+      <form 
         onSubmit={handleScanSubmit} 
         style={
           isDevMode 
@@ -151,12 +183,12 @@ const AbsensiVendor = () => {
         <input 
           ref={inputRef}
           type="text" 
-          className={isDevMode ? "form-control text-center shadow" : ""}
-          placeholder={isDevMode ? "Dev Mode: Ketik No Kartu lalu tekan Enter..." : ""}
+          className="form-control text-center shadow"
+          placeholder="Scan Kartu/Ketik No Kartu..."
           value={scanInput} 
           onChange={(e) => setScanInput(e.target.value)} 
           autoComplete="off" 
-          style={isDevMode ? { border: '2px solid #0d6efd' } : {}}
+          style={{ border: '2px solid #0d6efd' }}
         />
       </form>
 
@@ -190,8 +222,7 @@ const AbsensiVendor = () => {
         </div>
       )}
 
-       <div className="app-card" style={{ padding: '30px', minHeight: '60vh', display: 'flex', gap: '30px' }}>
-        
+      <div className="app-card" style={{ padding: '30px', minHeight: '60vh', display: 'flex', gap: '30px' }}>
         <div style={{ flex: 2, borderRight: '2px dashed #eee', paddingRight: '20px' }}>
           {statusMsg.text && (
             <div className={`alert ${statusMsg.type === 'success' ? 'alert-success' : 'alert-danger'}`} style={{ fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center' }}>
@@ -201,8 +232,15 @@ const AbsensiVendor = () => {
 
           <table className="table table-borderless" style={{ fontSize: '1.4rem' }}>
             <tbody>
+              {/* ITEM TAMBAHAN: INFORMASI NO. KARTU TAP */}
               <tr>
-                <td style={{ width: '35%', color: '#6c757d' }}>N R P</td>
+                <td style={{ width: '35%', color: '#6c757d' }}>No. Kartu</td>
+                <td style={{ fontWeight: 'bold', color: '#198754' }}>
+                  : {lastScanData?.card_no || lastScanData?.card_number || lastScannedCard || '-'}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ color: '#6c757d' }}>N R P</td>
                 <td style={{ fontWeight: 'bold' }}>: {lastScanData?.emp_id || '-'}</td>
               </tr>
               <tr>
@@ -238,7 +276,6 @@ const AbsensiVendor = () => {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );

@@ -1,69 +1,125 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 function AsetTab({ initialData }) {
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [autoConvert, setAutoConvert] = useState(true); 
+  const rawCardRef = useRef(''); // Menyimpan nilai asli sebelum diberi titik untuk switch toggle
+  
   const [formData, setFormData] = useState({
     card_number: '',
     c_valid_from: '',
     c_valid_to: ''
   });
 
+  // Helper Penjamin 11 Digit Presisi (XXXXX.XXXXX)
+  const format11Digits = (p1, p2) => {
+    const clean1 = (String(p1).replace(/\D/g, '') || '0').padStart(5, '0').slice(-5);
+    const clean2 = (String(p2).replace(/\D/g, '') || '0').padStart(5, '0').slice(-5);
+    return `${clean1}.${clean2}`;
+  };
+
+  // Fungsi Pemroses Format Kartu (Wiegand vs Raw)
+  const processCardFormat = (rawInput, isWiegandMode) => {
+    const inputStr = String(rawInput || '').trim();
+    if (!inputStr) return '';
+
+    // 1. Jika input dari awal sudah punya titik (misal: 56.46807)
+    if (inputStr.includes('.')) {
+      const parts = inputStr.split('.');
+      return format11Digits(parts[0], parts[1]);
+    }
+
+    // 2. Mode Auto-Convert Wiegand (Desimal -> Hex -> Split -> Desimal)
+    if (isWiegandMode && !isNaN(inputStr) && inputStr !== '') {
+      try {
+        const num = BigInt(inputStr);
+        const hexStr = num.toString(16).toLowerCase();
+
+        let p1Dec = '0';
+        let p2Dec = '0';
+
+        if (hexStr.length <= 4) {
+          p2Dec = parseInt(hexStr, 16).toString();
+        } else {
+          const p1Hex = hexStr.substring(0, hexStr.length - 4);
+          const p2Hex = hexStr.substring(hexStr.length - 4);
+          p1Dec = parseInt(p1Hex, 16).toString();
+          p2Dec = parseInt(p2Hex, 16).toString();
+        }
+
+        return format11Digits(p1Dec, p2Dec);
+      } catch (error) {
+        console.error("Gagal konversi Wiegand:", error);
+      }
+    }
+
+    // 3. Mode Format Asli / Raw (Tanpa Hitungan Hex -> Angka Mentah Langsung Dipisah Titik)
+    const cleanDigits = inputStr.replace(/\D/g, '');
+    if (!cleanDigits) return inputStr;
+
+    if (cleanDigits.length >= 10) {
+      return format11Digits(cleanDigits.slice(-10, -5), cleanDigits.slice(-5));
+    } else if (cleanDigits.length > 5) {
+      return format11Digits(cleanDigits.slice(0, -5), cleanDigits.slice(-5));
+    } else {
+      return format11Digits('0', cleanDigits);
+    }
+  };
+
   useEffect(() => {
     if (initialData) {
+      const initCard = initialData.card_number || '';
+      rawCardRef.current = initCard;
+
+      const hasDot = String(initCard).includes('.');
+      setAutoConvert(hasDot);
+
       setFormData({
-        card_number: initialData.card_number || '',
+        card_number: processCardFormat(initCard, hasDot),
         c_valid_from: initialData.c_valid_from || '',
         c_valid_to: initialData.c_valid_to || ''
       });
       setIsNoLimit(!initialData.c_valid_to);
-      if (initialData.card_number) {
-        const hasDot = String(initialData.card_number).includes('.');
-        setAutoConvert(hasDot);
-      }
     }
   }, [initialData]);
 
-  // Logika Konversi Wiegand
-  const parseCardNumber = (rawInput) => {
-    const N = String(rawInput).trim();
-    if (!N) return '';
-    if (N.includes('.')) return N; 
-
-    try {
-      if (!isNaN(N)) {
-        const hexStr = parseInt(N, 10).toString(16).toLowerCase();
-        
-        if (hexStr.length <= 4) {
-          const part2Dec = parseInt(hexStr, 16).toString().padStart(5, '0');
-          return `00000.${part2Dec}`;
-        } else {
-          const part1Hex = hexStr.substring(0, hexStr.length - 4);
-          const part2Hex = hexStr.substring(hexStr.length - 4);
-
-          const part1Dec = parseInt(part1Hex, 16).toString();
-          const part2Dec = parseInt(part2Hex, 16).toString();
-
-          return `${part1Dec.padStart(5, '0')}.${part2Dec.padStart(5, '0')}`;
-        }
-      }
-    } catch (error) {
-      console.error("Gagal konversi kartu:", error);
+  // Handler saat toggle di-switch ON/OFF
+  const handleToggleConvert = (e) => {
+    const isChecked = e.target.checked;
+    setAutoConvert(isChecked);
+    
+    // Format ulang dari nilai rawCardRef
+    const sourceVal = rawCardRef.current || formData.card_number;
+    if (sourceVal) {
+      const newFormatted = processCardFormat(sourceVal, isChecked);
+      setFormData(prev => ({ ...prev, card_number: newFormatted }));
     }
-    return N; 
   };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && e.target.name === 'card_number') {
       e.preventDefault(); 
-      const rawValue = e.target.value;
-      const finalCardValue = autoConvert ? parseCardNumber(rawValue) : String(rawValue).trim();
-      setFormData(prev => ({ ...prev, card_number: finalCardValue }));
+      const val = e.target.value;
+      rawCardRef.current = val; // Simpan nilai mentah hasil scan
+      const formatted = processCardFormat(val, autoConvert);
+      setFormData(prev => ({ ...prev, card_number: formatted }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    if (e.target.name === 'card_number' && e.target.value) {
+      const val = e.target.value;
+      rawCardRef.current = val; // Simpan nilai mentah saat blur
+      const formatted = processCardFormat(val, autoConvert);
+      setFormData(prev => ({ ...prev, card_number: formatted }));
     }
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'card_number') {
+      rawCardRef.current = value;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -83,14 +139,14 @@ function AsetTab({ initialData }) {
                 htmlFor="toggleConvertCard" 
                 style={{ fontSize: '0.7rem', cursor: 'pointer' }}
               >
-                {autoConvert ? "Format XXXXX.XXXXX (Wiegand)" : "Format Asli (XXXXXXXXXX)"}
+                {autoConvert ? "Format Wiegand (Converted)" : "Format Asli (Vendor)"}
               </label>
               <input 
                 className="form-check-input ms-1 mt-0" 
                 type="checkbox" 
                 id="toggleConvertCard"
                 checked={autoConvert}
-                onChange={(e) => setAutoConvert(e.target.checked)}
+                onChange={handleToggleConvert}
                 style={{ cursor: 'pointer' }}
               />
             </div>
@@ -108,6 +164,7 @@ function AsetTab({ initialData }) {
               value={formData.card_number}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown} 
+              onBlur={handleBlur}
               autoComplete="off"        
               required
             />
