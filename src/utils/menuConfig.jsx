@@ -34,6 +34,7 @@ import Report_MpEmp from '../pages/Report_MpEmp';
 import Report_Break from '../pages/Report_Break';
 import Report_Access from '../pages/Report_Access';
 import ReportAbsenVendor from '../pages/ReportAbsenVendor';
+import Guest from '../pages/Guest';
 
 // Import Halaman Khusus SSO & Approval
 import AuthCallback from '../pages/AuthCallback';
@@ -62,6 +63,7 @@ export const componentRegistry = {
   '/os-medical': <OsMedical />,
   '/os-training': <OsTraining />,
   '/bac-os': <Absensi />,
+  '/guest': <Guest />,
 
   // --- Report ---
   '/os-active': <ReportAktif />,

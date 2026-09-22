@@ -174,11 +174,7 @@ const AbsensiVendor = () => {
 
       <form 
         onSubmit={handleScanSubmit} 
-        style={
-          isDevMode 
-            ? { position: 'relative', marginBottom: '20px', zIndex: 10 } 
-            : { position: 'absolute', opacity: 0, pointerEvents: 'none' } 
-        }
+        style={{ position: 'relative', marginBottom: '20px', zIndex: 10 }}
       >
         <input 
           ref={inputRef}

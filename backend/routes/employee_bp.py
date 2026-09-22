@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, func, and_
 from PIL import Image, ImageOps
+from openpyxl import Workbook
+from openpyxl.worksheet.datavalidation import DataValidation
+
 
 from extensions import db
 
@@ -27,6 +30,13 @@ employee_bp = Blueprint('employee_bp', __name__)
 UPLOAD_FOLDER = 'static/uploads/photos'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+@employee_bp.teardown_request
+def teardown_request(exception=None):
+    try:
+        db.session.remove()
+    except Exception:
+        pass
 
 def clean_str(val):
     if val is None or pd.isna(val):
@@ -90,7 +100,6 @@ def process_and_save_photo(file_storage, target_folder, filename_without_ext, ma
     except Exception as e:
         print(f"[ERROR] Gagal mengompresi foto: {str(e)}")
         return None
-
 
 @employee_bp.route('/employee')
 def index():
@@ -758,43 +767,112 @@ def edit(id):
         db.session.rollback()
         return jsonify({"status": "error", "message": "Terjadi kesalahan pada server: " + str(e)}), 500
 
-
 @employee_bp.route('/employee/template', methods=['GET'])
 def template():
     try:
-        example_data = [{
-            "Nama": "Budi Contoh",
-            "Gender": "L",
-            "Tempat Lahir": "Bandung",
-            "Tanggal Lahir": "2026-03-20",
-            "Agama": "Islam",
-            "NIK": "32xxxx",
-            "Alamat": "Alamat Rumah",
-            "Employee Code": "123456",
-            "Grade": "1",
-            "Sub Company":"PRO/GLB/...",
-            "Department": "",
-            "Type Worker": "DAILYWAGE / PIECERATE",
-            "Posisi": "",
-            "Join Date": "2026-03-10",
-            "Termination Date": "2026-03-11",
-            "Card Number": "12345.12345",
-            "Card Valid From": "2026-03-10",
-            "Card Valid To": "2026-03-11"
-        }]
-        df = pd.DataFrame(example_data)
+        # 1. Tarik Master Data Sub Company (Terfilter Hak Akses SSO jika ada)
+        allowed_subcos = get_allowed_subcompanies()
+        sub_query = db.session.query(SubCompany.sub_company_name).filter(SubCompany.sub_company_name.is_not(None))
+        if allowed_subcos:
+            sub_query = sub_query.filter(SubCompany.sub_company_id.in_(allowed_subcos))
+        sub_company_names = [r[0].strip() for r in sub_query.order_by(SubCompany.sub_company_name.asc()).all() if r[0]]
+
+        # 2. Tarik Master Data Department / Cost Center
+        dept_query = db.session.query(costCenter.org_name).filter(costCenter.org_name.is_not(None))
+        department_names = [r[0].strip() for r in dept_query.order_by(costCenter.org_name.asc()).all() if r[0]]
+
+        # 3. Inisialisasi Workbook Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Template_Import'
+
+        # Header Kolom Excel
+        headers = [
+            "Nama", "Gender", "Tempat Lahir", "Tanggal Lahir", "Agama", 
+            "NIK", "Alamat", "Employee Code", "Grade", "Sub Company", 
+            "Cost Center", "Type Worker", "Posisi", "Join Date", 
+            "Termination Date", "Card Number", "Card Valid From", "Card Valid To"
+        ]
+        ws.append(headers)
+
+        # Baris Contoh Data
+        sample_subco = sub_company_names[0] if sub_company_names else "GLB"
+        sample_dept = department_names[0] if department_names else "PRODUCTION"
+        sample_row = [
+            "Budi Contoh", "L", "Bandung", "1995-03-20", "Islam",
+            "3201234567890001", "Jl. Mawar No. 12", "123456", "1", sample_subco,
+            sample_dept, "DAILYWAGE", "OPERATOR", "2026-03-10",
+            "", "00012.34567", "2026-03-10", ""
+        ]
+        ws.append(sample_row)
+
+        # 4. Buat Hidden Sheet "Master_Data" untuk Lookup Range
+        ws_master = wb.create_sheet(title='Master_Data')
+
+        ws_master.cell(row=1, column=1, value="Sub Company")
+        for idx, name in enumerate(sub_company_names, start=2):
+            ws_master.cell(row=idx, column=1, value=name)
+
+        ws_master.cell(row=1, column=2, value="Department")
+        for idx, name in enumerate(department_names, start=2):
+            ws_master.cell(row=idx, column=2, value=name)
+
+        # Sembunyikan Sheet Master_Data agar Tampilan Rapi
+        ws_master.sheet_state = 'hidden'
+
+        max_subco_row = max(len(sub_company_names) + 1, 2)
+        max_dept_row = max(len(department_names) + 1, 2)
+
+        # 5. Pasang Data Validation (Dropdown)
+
+        # A. Dropdown Gender (Kolom B)
+        dv_gender = DataValidation(type="list", formula1='"L,P"', allow_blank=True)
+        dv_gender.error = 'Pilih Gender L (Laki-laki) atau P (Perempuan).'
+        dv_gender.errorTitle = 'Input Tidak Valid'
+        ws.add_data_validation(dv_gender)
+        dv_gender.add("B2:B1000")
+        # B. Dropdown Agama (Kolom E)
+        dv_agama = DataValidation(
+            type="list", 
+            formula1='"Islam,Kristen,Katolik,Hindu,Budha,Khonghucu"', 
+            allow_blank=True
+        )
+        dv_agama.error = 'Pilih Agama dari list dropdown yang tersedia.'
+        dv_agama.errorTitle = 'Agama Tidak Valid'
+        ws.add_data_validation(dv_agama)
+        dv_agama.add("E2:E1000")
+        # C. Dropdown Sub Company (Kolom J) - Mengacu ke Sheet Master_Data
+        dv_subco = DataValidation(type="list", formula1=f"Master_Data!$A$2:$A${max_subco_row}", allow_blank=True)
+        dv_subco.error = 'Pilih Sub Company dari list dropdown yang tersedia.'
+        dv_subco.errorTitle = 'Sub Company Tidak Valid'
+        ws.add_data_validation(dv_subco)
+        dv_subco.add("J2:J1000")
+        # D. Dropdown Department (Kolom K) - Mengacu ke Sheet Master_Data
+        dv_dept = DataValidation(type="list", formula1=f"Master_Data!$B$2:$B${max_dept_row}", allow_blank=True)
+        dv_dept.error = 'Pilih Department dari list dropdown yang tersedia.'
+        dv_dept.errorTitle = 'Department Tidak Valid'
+        ws.add_data_validation(dv_dept)
+        dv_dept.add("K2:K1000")
+        # E. Dropdown Type Worker (Kolom L)
+        dv_type = DataValidation(type="list", formula1='"DAILYWAGE,PIECERATE"', allow_blank=True)
+        dv_type.error = 'Pilih Type Worker dari list dropdown.'
+        dv_type.errorTitle = 'Type Worker Tidak Valid'
+        ws.add_data_validation(dv_type)
+        dv_type.add("L2:L1000")
+
+        # 6. Stream File Excel Ke Client
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Template_Import')
+        wb.save(output)
         output.seek(0)
+
         return send_file(
-            output, 
-            as_attachment=True, 
-            download_name="Template_Import.xlsx"
+            output,
+            as_attachment=True,
+            download_name="Template_Import_Karyawan.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
+        return jsonify({"status": "error", "message": f"Gagal membuat template: {str(e)}"}), 500
 
 @employee_bp.route('/employee/upload', methods=['POST'])
 def upload():
@@ -810,7 +888,7 @@ def upload():
                 return None
             return val
 
-        required_columns = ['Nama', 'NIK', 'Employee Code', 'Sub Company', 'Department', 'Join Date']
+        required_columns = ['Nama', 'NIK', 'Employee Code', 'Sub Company', 'Cost Center', 'Join Date']
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
             return jsonify({"message": f"Format Excel salah. Kolom berikut tidak ditemukan: {', '.join(missing_cols)}"}), 400
@@ -880,10 +958,10 @@ def upload():
                     if not exist_subCom:
                         raise ValueError(f"Sub Company '{subCom_name}' tidak terdaftar.")
                     
-                    cc_name = str(row['Department']).strip() if clean(row.get('Department')) else ""
+                    cc_name = str(row['Cost Center']).strip() if clean(row.get('Cost Center')) else ""
                     exist_cc = costCenter.query.filter(costCenter.org_name.ilike(cc_name)).first()
                     if not exist_cc:
-                        raise ValueError(f"Department/CC '{cc_name}' tidak ditemukan.")
+                        raise ValueError(f"Cost Center/CC '{cc_name}' tidak ditemukan.")
 
                     existing_active_emp = OsEmployment.query.filter(
                         OsEmployment.employee_code == emp_code_input,

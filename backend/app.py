@@ -29,6 +29,7 @@ from routes.absenReport_bp import AbsenReport_bp
 from routes.absenBreak_bp import AbsenBreak_bp
 from routes.absenVendor_bp import absenVendor_bp
 from routes.userManagement_bp import userManagement_bp
+from routes.guest_bp import guest_bp
 
 def create_app():
     app = Flask(__name__)
@@ -105,7 +106,7 @@ def create_app():
     app.register_blueprint(AbsenReport_bp, url_prefix='/')
     app.register_blueprint(AbsenBreak_bp, url_prefix='/')
     app.register_blueprint(absenVendor_bp, url_prefix='/')
-    
+    app.register_blueprint(guest_bp, url_prefix='/')    
     return app
 
 if __name__ == '__main__':
