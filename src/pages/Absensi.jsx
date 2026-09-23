@@ -315,16 +315,7 @@ const Absensi = () => {
           setIsFilterDirty(true);
         }}
         onSearch={handleApplyFilters}
-      >
-        <button
-          type="button"
-          className="btn-app btn-primary-app shadow-sm"
-          onClick={handleCreateNew}
-        >
-          <i className="bi bi-plus-circle me-1" />
-          Tambah BAC
-        </button>
-
+      >      
         <LoadingButton
           loading={isDownloadingTemplate}
           loadingText="Menyiapkan..."
@@ -350,19 +341,18 @@ const Absensi = () => {
           icon="bi bi-upload"
           onClick={() => fileInputRef.current?.click()}
         >
-          Import
+          Upload
         </LoadingButton>
 
-        <LoadingButton
-          loading={isExporting}
-          loadingText="Mengeksport..."
-          className="btn-app btn-success-app"
-          icon="bi bi-file-earmark-excel"
-          onClick={handleExport}
-          disabled={isFilterDirty}
+        <button
+          type="button"
+          className="btn-app btn-primary-app shadow-sm"
+          onClick={handleCreateNew}
         >
-          Export
-        </LoadingButton>        
+          <i className="bi bi-plus-circle me-1" />
+          Tambah BAC
+        </button>
+
       </PageHeader>
 
       {crud.showForm && <AbsensiForm onClose={handleCloseForm} onSuccess={crud.handleRefresh} initialData={editData} />}

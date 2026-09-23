@@ -1257,55 +1257,49 @@ def deactivate_employee(pk_id):
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @employee_bp.route("/employee/stats", methods=['GET'])
 def get_employee_stats():
     try:
         now = datetime.now()
         allowed_subcos = get_allowed_subcompanies()
-
-        # 1. Base Query Employment (Terfilter Hak Akses SSO)
+        TARGET_SUBCO_NAMES = ['PRO', 'GLB', 'ISS', '911', 'RENTOKIL']
+        master_sub_rows = SubCompany.query.filter(SubCompany.sub_company_name.in_(TARGET_SUBCO_NAMES)).all()
+        sub_id_to_name = {str(sub.sub_company_id): sub.sub_company_name for sub in master_sub_rows}
+        target_sub_ids = list(sub_id_to_name.keys())
+        if allowed_subcos:
+            allowed_subcos_str = [str(x) for x in allowed_subcos]
+            valid_subcos = list(set(target_sub_ids) & set(allowed_subcos_str))
+        else:
+            valid_subcos = target_sub_ids
         base_emp = OsEmployment.query
         if allowed_subcos:
             base_emp = base_emp.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
-
-        # Total Aktif & Tidak Aktif
-        total_active = base_emp.filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None)).count()
+        total_active = base_emp.filter(or_(OsEmployment.valid_to >= now, OsEmployment.valid_to == None)).count()
         total_inactive = base_emp.filter(OsEmployment.valid_to < now).count()
-
-        # 2. Total per Cost Center (Di-JOIN langsung ke OsEmployment agar filter Subcompany presisi)
         cc_query = db.session.query(
             OsCostCenter.org_cc_id, 
             func.count(OsCostCenter.id).label('total')
         ).join(OsEmployment, OsCostCenter.employee_id == OsEmployment.id)\
-         .filter((OsCostCenter.valid_to >= now) | (OsCostCenter.valid_to == None))
-        
+         .filter(or_(OsCostCenter.valid_to >= now, OsCostCenter.valid_to == None))
         if allowed_subcos:
             cc_query = cc_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
-            
         stats_cc = {row.org_cc_id: row.total for row in cc_query.group_by(OsCostCenter.org_cc_id).all()}
-
-        # 3. Total per Subcompany
         sub_query = db.session.query(
             OsEmployment.sub_company_id,
             func.count(OsEmployment.id).label('total')
-        ).filter((OsEmployment.valid_to >= now) | (OsEmployment.valid_to == None))
-        
-        if allowed_subcos:
-            sub_query = sub_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
-            
-        stats_sub = {row.sub_company_id: row.total for row in sub_query.group_by(OsEmployment.sub_company_id).all()}
-
-        # Map Ke Nama Master (Satu kali query massal tanpa loop individual query)
+        ).filter(or_(OsEmployment.valid_to >= now, OsEmployment.valid_to == None))
+        if not valid_subcos:
+            sub_query = sub_query.filter(db.false())
+        else:
+            sub_query = sub_query.filter(OsEmployment.sub_company_id.in_(valid_subcos))
+        stats_sub = {str(row.sub_company_id): row.total for row in sub_query.group_by(OsEmployment.sub_company_id).all()}
         all_cc = costCenter.query.all()
-        
-        sub_query_master = SubCompany.query.filter(SubCompany.type_company == 'OS')
-        if allowed_subcos:
-            sub_query_master = sub_query_master.filter(SubCompany.sub_company_id.in_(allowed_subcos))
-        all_sub = sub_query_master.all()
-
-        cc_aktif = {cc.org_name: stats_cc.get(cc.id, 0) for cc in all_cc if stats_cc.get(cc.id, 0) > 0}
-        sub_aktif = {sub.sub_company_name: stats_sub.get(sub.sub_company_id, 0) for sub in all_sub}
+        cc_aktif = {cc.org_name: stats_cc.get(cc.id, 0) for cc in all_cc if stats_cc.get(cc.id, 0) > 0}        
+        sub_aktif = {
+            sub_name: stats_sub.get(sub_id, 0)
+            for sub_id, sub_name in sub_id_to_name.items()
+            if sub_id in valid_subcos
+        }
 
         return jsonify({
             "status": "success",
@@ -1318,4 +1312,9 @@ def get_employee_stats():
         }), 200
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        # Zero-Zombie Connection Policy
+        db.session.close()

@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Select from 'react-select'; 
+import { saveAs } from 'file-saver';
 import api from '../api/api'; 
+import { Toast, Confirm } from '../utils/sweetalert';
+import { downloadLogFile } from '../utils/logDownloader';
 import { useCrudPage } from '../utils/useCrudPage';
 import { useAuth } from '../utils/useAuth';
 
@@ -32,9 +35,15 @@ const OsCC = () => {
   const [isFilterDirty, setIsFilterDirty]     = useState(false);
   const [isApplyingFilter, setIsApplyingFilter] = useState(false);
 
+  // --- ACTION LOADING STATES (TEMPLATE & IMPORT) ---
+  const [isUploading, setIsUploading]             = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+
   // --- MASTER DATA STATES ---
   const [subCompanies, setSubCompanies] = useState([]); 
   const [departments, setDepartments]   = useState([]);
+
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
@@ -50,7 +59,6 @@ const OsCC = () => {
         setSubCompanies(subData);
         setDepartments(deptData);
 
-        // Auto-select Subcompany jika user dibatasi SSO
         if (isSubCompanyRestricted && subData.length > 0) {
           const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
           const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
@@ -58,7 +66,6 @@ const OsCC = () => {
           setAppliedSubCompany(defaultSub);
         }
 
-        // Auto-select Cost Center jika user dibatasi SSO
         if (isDeptRestricted && deptData.length > 0) {
           const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
           const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
@@ -104,6 +111,113 @@ const OsCC = () => {
     setIsFilterDirty(false);
   };
 
+  // --- HANDLER DOWNLOAD TEMPLATE EXCEL ---
+  const handleDownloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
+    try {
+      const { data } = await api.get('/oscc/template', { responseType: 'blob' });
+      saveAs(data, 'Template_Import_Mutasi_CostCenter.xlsx');
+    } catch {
+      Toast.fire({ icon: 'error', title: 'Gagal mengunduh template import' });
+    } finally {
+      setIsDownloadingTemplate(false);
+    }
+  };
+
+  // --- HANDLER UPLOAD MASSAL ---
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const res = await api.post('/oscc/upload', formData, { 
+        headers: { 'Content-Type': 'multipart/form-data' } 
+      });
+      
+      const { status, message, errors, notes } = res.data; 
+
+      const notesHtml = notes && notes.length > 0 
+      ? `<div style="text-align:left; margin-top:10px; max-height:100px; overflow-y:auto; background:#e9ecef; padding:10px; border-radius:5px; font-size:.85em; color:#495057;">
+          <strong><i class="bi bi-info-circle"></i> Catatan Sistem (${notes.length}):</strong><br/>
+          ${notes.slice(0, 5).join('<br/>')} ${notes.length > 5 ? '<br/><i>... (download log)</i>' : ''}
+        </div>`
+      : '';
+
+      if (status === 'partial_success') {
+        const errorsHtml = `<div style="text-align:left; max-height:100px; overflow-y:auto; background:#fff3f3; padding:10px; border-radius:5px; font-size:.85em; color:#d32f2f;">
+                            <strong><i class="bi bi-exclamation-triangle"></i> Daftar Error (${errors.length}):</strong><br/>
+                            ${errors.slice(0, 5).join('<br>')} ${errors.length > 5 ? '<br/><i>... (download log)</i>' : ''}
+                          </div>`;
+        Confirm.fire({ 
+          icon: 'warning', 
+          title: 'Import Selesai dengan Catatan', 
+          html: `<p>${message}</p>${errorsHtml}${notesHtml}`, 
+          confirmButtonText: 'Tutup', 
+          showDenyButton: true,
+          denyButtonText: '<i class="bi bi-file-earmark-text"></i> Download Log',
+          denyButtonColor: '#17a2b8'
+        }).then((result) => {
+          if (result.isDenied) downloadLogFile(errors, notes); 
+        });
+      } else {
+        if (notes && notes.length > 0) {
+          Confirm.fire({ 
+            icon: 'success', 
+            title: 'Import Berhasil', 
+            html: `<p>${message}</p>${notesHtml}`, 
+            confirmButtonText: 'Tutup', 
+            showDenyButton: true,
+            denyButtonText: '<i class="bi bi-file-earmark-text"></i> Download Log',
+            denyButtonColor: '#17a2b8'
+          }).then((result) => {
+            if (result.isDenied) downloadLogFile([], notes);
+          });
+        } else {
+          Toast.fire({ icon: 'success', title: message });
+        }
+      }
+      crud.handleRefresh();
+      
+    } catch (error) {
+      const errList = error.response?.data?.errors;
+      const noteList = error.response?.data?.notes; 
+
+      const notesHtml = noteList?.length > 0 
+      ? `<div style="text-align:left; margin-top:10px; max-height:100px; overflow-y:auto; background:#e9ecef; padding:10px; border-radius:5px; font-size:.85em; color:#495057;">
+          <strong>Catatan Sistem (${noteList.length}):</strong><br/>
+          ${noteList.slice(0, 5).join('<br/>')} ${noteList.length > 5 ? '<br/><i>... (download log)</i>' : ''}
+        </div>`
+      : '';
+
+      if (errList?.length) {
+        const errorsHtml = `<div style="text-align:left; max-height:100px; overflow-y:auto; background:#fff3f3; padding:10px; border-radius:5px; font-size:.85em; color:#d32f2f;">
+                            <strong>Daftar Error (${errList.length}):</strong><br/>
+                            ${errList.slice(0, 5).join('<br>')} ${errList.length > 5 ? '<br/><i>... (download log)</i>' : ''}
+                          </div>`;
+        Confirm.fire({ 
+          icon: 'error', 
+          title: 'Gagal Import', 
+          html: `${errorsHtml}${notesHtml}`, 
+          confirmButtonText: 'Perbaiki Excel',
+          showDenyButton: true,
+          denyButtonText: '<i class="bi bi-file-earmark-text"></i> Download Log',
+          denyButtonColor: '#17a2b8'
+        }).then((result) => {
+          if (result.isDenied) downloadLogFile(errList, noteList);
+        });
+      } else {
+        Toast.fire({ icon: 'error', title: error.response?.data?.message || 'Terjadi kesalahan saat upload' });
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // --- DYNAMIC OPTIONS (SSO RESTRICTED) ---
   const subCompanyOptions = isSubCompanyRestricted
     ? subCompanies
@@ -135,6 +249,34 @@ const OsCC = () => {
         }}
         onSearch={handleApplyFilters}
       >
+        <LoadingButton
+          loading={isDownloadingTemplate}
+          loadingText="Menyiapkan..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-download"
+          onClick={handleDownloadTemplate}
+        >
+          Template
+        </LoadingButton>
+
+        <input 
+          type="file" 
+          hidden 
+          ref={fileInputRef} 
+          onChange={handleImport} 
+          accept=".xlsx,.xls" 
+          disabled={isUploading} 
+        />
+        <LoadingButton
+          loading={isUploading}
+          loadingText="Proses..."
+          className="btn-app btn-ghost-app"
+          icon="bi bi-upload"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Import
+        </LoadingButton>
+
         <button
           className={`btn-app ${crud.showForm ? 'btn-danger-app' : 'btn-primary-app'}`}
           onClick={crud.showForm ? crud.handleClose : crud.handleAdd}
@@ -156,7 +298,6 @@ const OsCC = () => {
         {/* --- FILTER BAR CONTAINER --- */}
         <div className="filter-bar d-flex flex-wrap gap-3 mb-3">
           
-          {/* Status Filter */}
           <div className="filter-group m-0">
             <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Status</label>
             <select 
@@ -171,7 +312,6 @@ const OsCC = () => {
             </select>
           </div>
 
-          {/* Sub Company Filter */}
           <div className="filter-group m-0" style={{ minWidth: 180 }}>
             <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
             <Select
@@ -189,7 +329,6 @@ const OsCC = () => {
             />
           </div>
 
-          {/* Cost Center Filter */}
           <div className="filter-group m-0" style={{ minWidth: 180 }}>
             <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Cost Center</label>
             <Select
@@ -207,7 +346,6 @@ const OsCC = () => {
             />
           </div>
 
-          {/* Filter Action Buttons */}
           <div style={{ marginLeft: 'auto', alignSelf: 'flex-end', display: 'flex', gap: '8px' }}>
             {isFilterApplied && (
               <button 
@@ -232,7 +370,6 @@ const OsCC = () => {
           
         </div>
 
-        {/* --- DIRTY FILTER WARNING / DATATABLE --- */}
         {isFilterDirty ? (
           <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>

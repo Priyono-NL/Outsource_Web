@@ -11,7 +11,6 @@ AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 
 # =============================================================================
 # CONFIGURATION CONSTANTS (CLEAN & MAINTAINABLE)
-# Masukkan nomor Node Hybrid di sini. Contoh: ['175'] atau ['175', '173', '188']
 # =============================================================================
 HYBRID_NODES = ['161', '162', '166', '167', '191', '192', '188', '189', '175', '173']
 MAX_BREAK_MINUTES = 240
@@ -31,19 +30,20 @@ def teardown_request(exception=None):
 # =============================================================================
 
 def _get_hybrid_pattern():
-    """Mengonversi array HYBRID_NODES menjadi pola REGEXP MySQL (misal: '175|173')"""
+    """Mengonversi array HYBRID_NODES menjadi pola REGEXP MySQL"""
     if not HYBRID_NODES:
-        return "^$"  # Regex yang tidak akan match dengan apapun jika array kosong
+        return "^$"  
     return "|".join(HYBRID_NODES)
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
-    """Membangun filter WHERE clause dinamis dan dictionary parameter SQL"""
+    """Membangun filter WHERE clause dinamis (Sangat Cepat Berkat Normalisasi CTE)"""
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
     filters = []
     params = {'start_date': start_date, 'end_date': end_date}
     
+    # 1. Filter Sub Company
     if sub_company_id:
         if sub_company_id in ('TYPE_OS', 'TYPE_VENDOR'):
             target_type = 'OS' if sub_company_id == 'TYPE_OS' else 'Vendor'
@@ -57,11 +57,13 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
         else:
             filters.append("k.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
-        
+            
+    # 2. Filter Cost Center (SEKARANG LANGSUNG TEMBAK KE ID NUMERIK)
     if department_id:
-        filters.append("k.cost_center = :department_id")
+        filters.append("k.cost_center_id = :department_id")
         params['department_id'] = department_id
-        
+            
+    # 3. Filter Pencarian Teks
     if search_text:
         filters.append("(k.emp_id LIKE :search OR k.display_name LIKE :search OR k.card_number LIKE :search)")
         params['search'] = f"%{search_text}%"
@@ -70,17 +72,19 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     return filter_clause, params
 
 def _get_base_karyawan_cte():
-    """Mengembalikan CTE dasar untuk menggabungkan master karyawan & OS"""
+    """CTE TERNORMALISASI: Mengubah string code Karyawan Tetap menjadi ID numerik org_cost_center"""
     return """
         WITH Karyawan AS (
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS display_name, 
-                CONVERT(card_no USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center, 
-                CONVERT(dept_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
-                CONVERT(company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id
-            FROM vw_master_karyawan
+                CONVERT(k.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
+                CONVERT(k.employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS display_name, 
+                CONVERT(k.card_no USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
+                -- NORMALISASI: Ubah kode text jadi ID numerik
+                CONVERT(CAST(COALESCE(occ.id, k.cost_center) AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center_id, 
+                CONVERT(COALESCE(occ.org_name, k.dept_name) USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
+                CONVERT(k.company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id
+            FROM vw_master_karyawan k
+            LEFT JOIN org_cost_center occ ON occ.cost_center = k.cost_center
             
             UNION
             
@@ -88,7 +92,7 @@ def _get_base_karyawan_cte():
                 CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
                 CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS display_name, 
                 CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center, 
+                CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center_id, 
                 CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
                 CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id
             FROM vw_master_os_active
@@ -96,7 +100,6 @@ def _get_base_karyawan_cte():
     """
 
 def _paginate_data(report_data, page, page_size):
-    """Helper untuk memotong data sesuai pagination yang diminta"""
     total_item = len(report_data)
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
@@ -110,14 +113,13 @@ def _paginate_data(report_data, page, page_size):
     }
 
 # =============================================================================
-# DATA PROCESSORS
+# DATA PROCESSORS DENGAN CONTEXT MANAGER (HIT-AND-RUN)
 # =============================================================================
 def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data'):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
 
-    # Tarik kolom datetime asli (c.raw_out dan c.raw_in) untuk kalkulasi presisi
     sql_query = f"""
         {base_cte},
         ClockData AS (
@@ -146,18 +148,15 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         SELECT 
             k.emp_id, 
             k.display_name, 
+            k.cc_name,
             k.card_number,
-
             COALESCE(c.clock_date, m.tanggal_makan) AS ref_date,
-
             c.raw_out_dt,
             m.raw_makan_dt,
             c.raw_in_dt,
-
             IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y %H:%i')), '-') as waktu_out,
             IF(m.raw_makan_time IS NOT NULL, UPPER(CONCAT(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y'), ' ', DATE_FORMAT(m.raw_makan_time, '%H:%i'))), '-') as waktu_makan,
             IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y %H:%i')), '-') as waktu_in,
-            
             c.node_out,
             c.node_in
         FROM Karyawan k
@@ -167,7 +166,10 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         {filter_clause}
     """
     
-    rows = db.session.execute(text(sql_query), params).mappings().fetchall()
+    # EKSEKUSI RAW QUERY ZERO-ZOMBIE
+    with db.engine.connect() as conn:
+        rows = conn.execute(text(sql_query), params).mappings().fetchall()
+        
     report_data = []
 
     def get_break_area(node_id):
@@ -187,7 +189,6 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if unique_key in seen_records:
             continue
         
-        # Tentukan titik mulai istirahat dari datetime paling awal (antara OUT Tapping atau Makan)
         out_dt = row['raw_out_dt']
         makan_dt = row['raw_makan_dt']
         in_dt = row['raw_in_dt']
@@ -205,14 +206,12 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         elif not in_dt:
             status = "No Clocking IN"
         else:
-            # Hitung selisih waktu riil berbasis objek datetime
             if in_dt > start_break_dt:
                 diff_seconds = (in_dt - start_break_dt).total_seconds()
                 total_mins = max(0, int(diff_seconds // 60))
             else:
                 total_mins = 0
 
-            # ELIMINASI ANOMALI: Jika durasi istirahat > 240 menit (4 jam), SKIP RECORD INI!
             if total_mins > MAX_BREAK_MINUTES:
                 continue
 
@@ -231,6 +230,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
+            "cc_name": row['cc_name'] or '-',
             "card_number": row['card_number'] or '-', 
             "waktu_out": row['waktu_out'],
             "node_out": get_break_area(row['node_out']),
@@ -248,7 +248,6 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
     params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
 
-    # CLEAN SQL: Menggunakan REGEXP dengan parameter dari HYBRID_NODES array
     sql_query = f"""
         {base_cte},
         ClockData AS (
@@ -275,9 +274,13 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         WHERE 1=1 {filter_clause}
     """
     
-    rows = db.session.execute(text(sql_query), params).mappings().fetchall()
+    # EKSEKUSI RAW QUERY ZERO-ZOMBIE
+    with db.engine.connect() as conn:
+        rows = conn.execute(text(sql_query), params).mappings().fetchall()
+        
     report_data = []
     seen_records = set()
+    
     def get_access_area(node_id):
         if not node_id: return "-"
         node_str = str(node_id).split('-')[-1]
@@ -356,9 +359,9 @@ def exportBreak():
         df = pd.DataFrame(report_data)
         
         df.rename(columns={
-            'emp_id': 'Employee Id', 'display_name': 'Display Name', 'card_number': 'Absence Card No',
-            'waktu_out': 'Waktu OUT', 'waktu_makan': 'Waktu Makan', 'waktu_in': 'Waktu IN',
-            'node_out': 'Node OUT', 'node_in': 'Node IN', 'total': 'Total Menit', 'status': 'Status'
+            'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center', 'card_number': 'Absence Card No',
+            'waktu_out': 'Waktu OUT', 'node_out': 'Node OUT', 'waktu_makan': 'Waktu Makan', 
+            'waktu_in': 'Waktu IN', 'node_in': 'Node IN', 'total': 'Total Menit', 'status': 'Status'
         }, inplace=True)
         
         output = BytesIO()
@@ -381,8 +384,8 @@ def exportAccess():
         
         df.rename(columns={
             'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center',
-            'card_number': 'Absence Card No', 'waktu_in': 'Waktu IN', 'waktu_out': 'Waktu OUT', 
-            'node_in': 'Node IN', 'node_out': 'Node OUT'
+            'card_number': 'Absence Card No', 'waktu_in': 'Waktu IN', 'node_in': 'Node IN', 
+            'waktu_out': 'Waktu OUT', 'node_out': 'Node OUT'
         }, inplace=True)
         
         output = BytesIO()

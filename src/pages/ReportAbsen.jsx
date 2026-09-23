@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { saveAs } from 'file-saver';
 import Select from 'react-select';
 
@@ -41,6 +41,7 @@ const ReportAbsen = () => {
   // --- STATE FORM FILTER (DRAFT) ---
   const [workerType, setWorkerType]             = useState(isSubCompanyRestricted ? 'os' : 'all');
   const [statusFilter, setStatusFilter]         = useState('all_data');
+  const [shiftFilter, setShiftFilter]           = useState(''); 
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [departmentInput, setDepartmentInput]   = useState('');
   const [startDate, setStartDate]               = useState(getFirstDayOfMonth());
@@ -49,6 +50,7 @@ const ReportAbsen = () => {
   // --- STATE APPLIED FILTER (TERAPAN) ---
   const [appliedWorkerType, setAppliedWorkerType]     = useState(isSubCompanyRestricted ? 'os' : 'all');
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
+  const [appliedShiftFilter, setAppliedShiftFilter]   = useState(''); 
   const [appliedSubCompany, setAppliedSubCompany]     = useState('');
   const [appliedDepartment, setAppliedDepartment]     = useState('');
   const [appliedStartDate, setAppliedStartDate]       = useState(getFirstDayOfMonth());
@@ -76,7 +78,6 @@ const ReportAbsen = () => {
         setSubCompanies(subData);
         setDepartments(deptData);
 
-        // Auto-select Subcompany jika user dibatasi SSO
         if (isSubCompanyRestricted && subData.length > 0) {
           const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
           const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
@@ -86,7 +87,6 @@ const ReportAbsen = () => {
           setAppliedWorkerType('os');
         }
 
-        // Auto-select Cost Center jika user dibatasi SSO
         if (isDeptRestricted && deptData.length > 0) {
           const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
           const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
@@ -111,6 +111,7 @@ const ReportAbsen = () => {
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
     setAppliedStatusFilter(statusFilter);
+    setAppliedShiftFilter(shiftFilter); 
     setAppliedWorkerType(workerType);
 
     setIsFilterApplied(true);
@@ -123,6 +124,7 @@ const ReportAbsen = () => {
   const handleResetFilters = () => {
     setWorkerType(isSubCompanyRestricted ? 'os' : 'all');
     setStatusFilter('all_data');
+    setShiftFilter(''); 
     setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
     setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
     setStartDate(getFirstDayOfMonth());
@@ -131,6 +133,7 @@ const ReportAbsen = () => {
 
     setAppliedWorkerType(isSubCompanyRestricted ? 'os' : 'all');
     setAppliedStatusFilter('all_data');
+    setAppliedShiftFilter(''); 
     if (!isSubCompanyRestricted) setAppliedSubCompany('');
     if (!isDeptRestricted) setAppliedDepartment('');
     setAppliedStartDate(getFirstDayOfMonth());
@@ -155,12 +158,13 @@ const ReportAbsen = () => {
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
         status_filter: appliedStatusFilter || 'all_data',
+        shift: appliedShiftFilter || '', 
         worker_type: appliedWorkerType || 'all'
       }).toString();
       
       const res = await api.get(`/absensi/export?${params}`, { responseType: 'blob' });
       
-      const fileName = `Absensi_${appliedWorkerType.toUpperCase()}_Filtered.xlsx`;
+      const fileName = `Absensi_${appliedWorkerType.toUpperCase()}_Filtered_${appliedStartDate}_to_${appliedEndDate}.xlsx`;
       saveAs(res.data, fileName);
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
@@ -169,11 +173,9 @@ const ReportAbsen = () => {
     }
   };
 
-  // --- DYNAMIC OPTIONS (SSO RESTRICTED) ---
+  // --- DYNAMIC OPTIONS ---
   const workerTypeOptions = isSubCompanyRestricted
-    ? [
-        { value: 'os', label: 'Outsourcing (OS)' }
-      ]
+    ? [ { value: 'os', label: 'Outsourcing (OS)' } ]
     : [
         { value: 'all', label: 'Semua Karyawan (All)' },
         { value: 'tetap', label: 'Tetap / Kontrak' },
@@ -209,8 +211,15 @@ const ReportAbsen = () => {
     { value: 'no_both', label: 'Clock In & Out Kosong' }
   ];
 
-  const compactSelectStyle = {
-    control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
+  const shiftOptions = [
+    { value: '', label: 'Semua Shift' },
+    { value: 'SHIFT 1', label: 'SHIFT 1' },
+    { value: 'SHIFT 2', label: 'SHIFT 2' },
+    { value: 'SHIFT 3', label: 'SHIFT 3' }
+  ];
+
+  const selectStyle = {
+    control: b => ({ ...b, minHeight: 34, fontSize: '0.8rem' }),
     menuPortal: base => ({ ...base, zIndex: 9999 })
   };
 
@@ -218,7 +227,7 @@ const ReportAbsen = () => {
     <div>
       <PageHeader
         title="Report Absensi Employee"
-        searchPlaceholder="Cari ID Karyawan / Nama ..."
+        searchPlaceholder="Cari ID / Nama Karyawan..."
         searchValue={crud.searchInput}
         onSearchChange={(val) => {
           crud.setSearchInput(val);
@@ -234,132 +243,152 @@ const ReportAbsen = () => {
           onClick={handleExport}
           disabled={isFilterDirty}
         >
-          Export
+          Export Excel
         </LoadingButton>        
       </PageHeader>
 
       <div className="app-card">
-        {/* --- FILTER BAR CONTAINER --- */}
-        <div className="filter-bar d-flex flex-wrap gap-2 align-items-end mb-3">
+        
+        {/* --- GRID CARD FILTER CONTAINER --- */}
+        <div className="card border-0 bg-light p-3 mb-3 rounded-3 shadow-sm">
+          <div className="row g-3 align-items-end">
 
-          {/* Filter Tipe Karyawan */}
-          <div className="filter-group m-0" style={{ minWidth: 160, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Tipe Karyawan</label>
-            <Select 
-              options={workerTypeOptions} 
-              value={workerTypeOptions.find(o => o.value === workerType) || workerTypeOptions[0]} 
-              onChange={o => handleFilterChange(setWorkerType, o?.value || 'all')} 
-              isSearchable={false}
-              isDisabled={isSubCompanyRestricted}
-              menuPortalTarget={document.body}
-              styles={compactSelectStyle}
-            />
-          </div>
-
-          {/* Violation Status Filter */}
-          <div className="filter-group m-0" style={{ minWidth: 200, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
-            <Select 
-              options={statusOptions} 
-              value={statusOptions.find(o => o.value === statusFilter)} 
-              onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
-              menuPortalTarget={document.body}
-              styles={compactSelectStyle}
-            />
-          </div>
-
-          {/* Sub Company Filter */}
-          <div className="filter-group m-0" style={{ minWidth: 180, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
-            <Select
-              options={subCompanyOptions}
-              placeholder="Cari..."
-              value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
-              isClearable={!isSubCompanyRestricted}
-              isSearchable
-              menuPortalTarget={document.body}
-              styles={compactSelectStyle}
-            />
-          </div>
-
-          {/* Cost Center Filter */}
-          <div className="filter-group m-0" style={{ minWidth: 180, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Cost Center</label>
-            <Select
-              options={departmentOptions}
-              placeholder="Cari Cost Center..."
-              value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
-              onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
-              isClearable={!isDeptRestricted}
-              isSearchable
-              menuPortalTarget={document.body}
-              styles={compactSelectStyle}
-            />
-          </div>
-
-          {/* Date Range Filters */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-            <div className="filter-group m-0">
-              <label style={{ fontSize: 13, display: 'block', marginBottom: '4px' }}>Dari Tanggal</label>
-              <input 
-                type="date" 
-                className="form-control-app"
-                value={startDate}
-                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
-                style={{ fontSize: 13, height: 34, width: '130px' }}
+            {/* --- BARIS 1 --- */}
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-people me-1"></i> Tipe Karyawan
+              </label>
+              <Select 
+                options={workerTypeOptions} 
+                value={workerTypeOptions.find(o => o.value === workerType) || workerTypeOptions[0]} 
+                onChange={o => handleFilterChange(setWorkerType, o?.value || 'all')} 
+                isSearchable={false}
+                isDisabled={isSubCompanyRestricted}
+                menuPortalTarget={document.body}
+                styles={selectStyle}
               />
             </div>
 
-            <span style={{ paddingBottom: '6px', fontSize: 14, fontWeight: 'bold' }}>-</span>
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-shield-exclamation me-1"></i> Violation Status
+              </label>
+              <Select 
+                options={statusOptions} 
+                value={statusOptions.find(o => o.value === statusFilter)} 
+                onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
+                menuPortalTarget={document.body}
+                styles={selectStyle}
+              />
+            </div>
 
-            <div className="filter-group m-0">
-              <label style={{ fontSize: 13, display: 'block', marginBottom: '4px' }}>Sampai Tanggal</label>
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-building me-1"></i> Sub Company
+              </label>
+              <Select
+                options={subCompanyOptions}
+                placeholder="Cari Subcompany..."
+                value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
+                onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
+                isClearable={!isSubCompanyRestricted}
+                isSearchable
+                menuPortalTarget={document.body}
+                styles={selectStyle}
+              />
+            </div>
+
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-diagram-3 me-1"></i> Cost Center
+              </label>
+              <Select
+                options={departmentOptions}
+                placeholder="Cari Cost Center..."
+                value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
+                onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
+                isClearable={!isDeptRestricted}
+                isSearchable
+                menuPortalTarget={document.body}
+                styles={selectStyle}
+              />
+            </div>
+
+            {/* --- BARIS 2 --- */}
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-clock-history me-1"></i> Shift Kerja
+              </label>
+              <Select 
+                options={shiftOptions} 
+                value={shiftOptions.find(o => o.value === shiftFilter) || shiftOptions[0]} 
+                onChange={o => handleFilterChange(setShiftFilter, o?.value || '')} 
+                menuPortalTarget={document.body}
+                styles={selectStyle}
+              />
+            </div>
+
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-calendar-event me-1"></i> Dari Tanggal
+              </label>
               <input 
                 type="date" 
-                className="form-control-app"
+                className="form-control form-control-sm"
+                value={startDate}
+                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
+                style={{ fontSize: '0.8rem', height: '34px' }}
+              />
+            </div>
+
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-calendar-check me-1"></i> Sampai Tanggal
+              </label>
+              <input 
+                type="date" 
+                className="form-control form-control-sm"
                 value={endDate}
                 onChange={(e) => handleFilterChange(setEndDate, e.target.value)}
                 min={startDate}
-                style={{ fontSize: 13, height: 34, width: '130px' }}
+                style={{ fontSize: '0.8rem', height: '34px' }}
               />
             </div>
-          </div>
 
-          {/* Filter Action Buttons */}
-          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end', display: 'flex', gap: '8px' }}>
-            {isFilterApplied && (
-              <button 
-                type="button" 
-                className="btn-app btn-ghost-app" 
-                style={{ height: '34px', fontSize: '13px' }}
-                onClick={handleResetFilters}
+            <div className="col-md-3 col-sm-12 d-flex justify-content-end align-items-end gap-2">
+              {isFilterApplied && (
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-secondary px-3" 
+                  onClick={handleResetFilters}
+                  style={{ height: '34px', fontSize: '0.8rem' }}
+                >
+                  <i className="bi bi-x-circle me-1" /> Clear
+                </button>
+              )}
+
+              <LoadingButton
+                loading={isApplyingFilter}
+                loadingText="Memfilter..."
+                className="btn btn-sm btn-primary px-3 shadow-sm"
+                style={{ height: '34px', fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
+                icon="bi bi-funnel"
+                onClick={handleApplyFilters}
               >
-                <i className="bi bi-x-circle me-1" /> Clear Filter
-              </button>
-            )}
+                Terapkan Filter
+              </LoadingButton>
+            </div>
 
-            <LoadingButton
-              loading={isApplyingFilter}
-              loadingText="Memfilter..."
-              className="btn-app btn-primary-app"
-              style={{ height: '34px', fontSize: '13px', display: 'flex', alignItems: 'center' }}
-              icon="bi bi-funnel"
-              onClick={handleApplyFilters}
-            >
-              Terapkan Filter
-            </LoadingButton>
           </div>
-
         </div>
         
         {/* --- DIRTY FILTER WARNING / DATATABLE --- */}
         {isFilterDirty ? (
-          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+          <div className="alert alert-warning text-center mt-2 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
-            <span style={{ fontSize: '14px' }}>
+            <span style={{ fontSize: '13px' }}>
               <strong>Filter Sedang Diubah!</strong><br />
-              Silakan klik tombol <b>Terapkan Filter</b> di pojok kanan atas untuk memuat ulang data.
+              Silakan klik tombol <b>Terapkan Filter</b> di pojok kanan bawah area filter untuk memuat ulang data.
             </span>
           </div>
         ) : (
@@ -372,6 +401,7 @@ const ReportAbsen = () => {
             startDate={appliedStartDate}
             endDate={appliedEndDate}
             statusFilter={appliedStatusFilter}
+            shiftFilter={appliedShiftFilter} 
           />
         )}
       </div>
