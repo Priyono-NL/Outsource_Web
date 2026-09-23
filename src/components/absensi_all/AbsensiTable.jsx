@@ -7,10 +7,12 @@ const AbsensiTable = ({
     onEditClick, 
     searchTerm, 
     subCompany, 
-    department, // PROPS BARU: Untuk filter Department / Cost Center
+    department,
     startDate, 
     endDate, 
-    statusFilter 
+    statusFilter,
+    shiftFilter,
+    isFilterApplied
 }) => { 
     
     const [absensi, setAbsensi] = useState([]);   
@@ -31,10 +33,11 @@ const AbsensiTable = ({
                 pageSize: itemsPerPage,
                 search: searchTerm || '',
                 sub_company: subCompany || '',
-                department: department || '', // Disuntikkan ke parameter endpoint Flask
+                department: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
+                shift: shiftFilter || '', // Disuntikkan ke backend Flask
                 worker_type: 'os'
             }).toString();
 
@@ -56,18 +59,15 @@ const AbsensiTable = ({
         }
     };
 
-    // Reset ke halaman 1 saat filter terapan berubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter]);
+    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter]);
     
-    // Fetch data saat pagination atau filter berubah
     useEffect(() => {
-        if (!startDate || !endDate) return;
+        if (!startDate || !endDate || !isFilterApplied) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, isFilterApplied]);
 
-    // Helper formatter jam
     const formatTime = (timeStr) => {
         if (!timeStr || timeStr === 'null' || timeStr === 'None') return null;
         if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
@@ -89,6 +89,7 @@ const AbsensiTable = ({
                     <th>Absence Card</th>
                     <th>Cost Center</th>
                     <th>Type</th>
+                    <th>Shift</th>
                     <th>Clocking Date</th>
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
@@ -100,10 +101,9 @@ const AbsensiTable = ({
                 </tr>
             </thead>
             <tbody>
-                {/* 1. Filter belum diisi */}
                 {(!startDate || !endDate) ? (
                     <tr>
-                        <td colSpan="15" className="empty-state text-center py-5 text-muted">
+                        <td colSpan="16" className="empty-state text-center py-5 text-muted">
                             <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
                             Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                         </td>
@@ -111,7 +111,7 @@ const AbsensiTable = ({
                 
                 ) : loading ? (
                     <tr>
-                        <td colSpan="15" className="text-center py-4 text-muted">
+                        <td colSpan="16" className="text-center py-4 text-muted">
                             <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                             Memuat data absensi...
                         </td>
@@ -127,7 +127,6 @@ const AbsensiTable = ({
                         let isClockInFromBAC = false;
                         let isClockOutFromBAC = false;
 
-                        // 1. EVALUASI CLOCK IN
                         if (emp.bac_clock_in) {
                             displayClockIn = formatTime(emp.bac_clock_in);
                             isClockInFromBAC = true;
@@ -137,7 +136,6 @@ const AbsensiTable = ({
                             displayClockIn = formatTime(emp.clock_in);
                         }
 
-                        // 2. EVALUASI CLOCK OUT
                         if (emp.bac_clock_out) {
                             displayClockOut = formatTime(emp.bac_clock_out);
                             isClockOutFromBAC = true;
@@ -151,12 +149,10 @@ const AbsensiTable = ({
                         let statusElement = null;
                         let actionElement = null;
 
-                        // 3. BADGE STATUS DAN AKSI KOREKSI
                         if (hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
-                                    <i className="bi bi-shield-check me-1"></i>
-                                    BAC Found
+                                    <i className="bi bi-shield-check me-1"></i> BAC Found
                                 </span>
                             );                        
                             actionElement = (
@@ -166,15 +162,13 @@ const AbsensiTable = ({
                                     onClick={() => onEditClick(emp)}
                                     title="Koreksi Data Absensi"
                                 >
-                                    <i className="bi bi-pencil-square me-1"></i>
-                                    Koreksi
+                                    <i className="bi bi-pencil-square me-1"></i> Koreksi
                                 </button>
                             );
                         } else if (isAnomaly) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
-                                    Tidak Lengkap
+                                    <i className="bi bi-exclamation-triangle-fill me-1"></i> Tidak Lengkap
                                 </span>
                             );
                             actionElement = (
@@ -184,23 +178,20 @@ const AbsensiTable = ({
                                     onClick={() => onEditClick(emp)}
                                     title="Koreksi Data Absensi Tidak Lengkap"
                                 >
-                                    <i className="bi bi-pencil-square me-1"></i>
-                                    Koreksi
+                                    <i className="bi bi-pencil-square me-1"></i> Koreksi
                                 </button>
                             );
                         } else if (!isViolation) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
-                                    <i className="bi bi-check-circle-fill me-1"></i>
-                                    Lengkap
+                                    <i className="bi bi-check-circle-fill me-1"></i> Lengkap
                                 </span>
                             );
                             actionElement = statusElement;
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-x-circle-fill me-1"></i>
-                                    BAC not found
+                                    <i className="bi bi-x-circle-fill me-1"></i> BAC not found
                                 </span>
                             );
                             actionElement = (
@@ -210,8 +201,7 @@ const AbsensiTable = ({
                                     onClick={() => onEditClick(emp)}
                                     title="Koreksi Data Absensi"
                                 >
-                                    <i className="bi bi-pencil-square me-1"></i>
-                                    Koreksi
+                                    <i className="bi bi-pencil-square me-1"></i> Koreksi
                                 </button>
                             );
                         }
@@ -228,6 +218,11 @@ const AbsensiTable = ({
                                 <td>{emp.card || '-'}</td>
                                 <td>{emp.cc || '-'}</td>
                                 <td>{emp.type || '-'}</td>
+                                <td>
+                                    <span className="badge bg-light text-dark border fw-normal" style={{ fontSize: '0.7rem' }}>
+                                        {emp.shift || 'SHIFT 1'}
+                                    </span>
+                                </td>
                                 <td>{emp.v_clocking_date || emp.clocking_date || '-'}</td>
 
                                 <td style={{ 
@@ -261,7 +256,7 @@ const AbsensiTable = ({
                 
                 ) : (
                     <tr>
-                        <td colSpan="15" className="empty-state text-center py-4 text-muted">
+                        <td colSpan="16" className="empty-state text-center py-4 text-muted">
                             <i className="bi bi-inbox d-block mb-1 fs-4 text-secondary"></i>
                             Data absensi tidak ditemukan untuk filter tersebut.
                         </td>

@@ -43,6 +43,7 @@ const Absensi = () => {
 
   // --- STATE FORM FILTER (DRAFT) ---
   const [statusFilter, setStatusFilter]         = useState('all_data');
+  const [shiftFilter, setShiftFilter]           = useState('');
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [departmentInput, setDepartmentInput]   = useState('');
   const [startDate, setStartDate]               = useState(getFirstDayOfMonth());
@@ -50,6 +51,7 @@ const Absensi = () => {
 
   // --- STATE APPLIED FILTER (TERAPAN) ---
   const [appliedStatusFilter, setAppliedStatusFilter] = useState('all_data');
+  const [appliedShiftFilter, setAppliedShiftFilter]   = useState('');
   const [appliedSubCompany, setAppliedSubCompany]     = useState('');
   const [appliedDepartment, setAppliedDepartment]     = useState('');
   const [appliedStartDate, setAppliedStartDate]       = useState(getFirstDayOfMonth());
@@ -81,7 +83,6 @@ const Absensi = () => {
         setSubCompanies(subData);
         setDepartments(deptData);
 
-        // Auto-select Subcompany jika user dibatasi SSO
         if (isSubCompanyRestricted && subData.length > 0) {
           const allowedSubList = subData.filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id));
           const defaultSub = allowedSubList.length > 0 ? allowedSubList[0].sub_company_id : subData[0].sub_company_id;
@@ -89,7 +90,6 @@ const Absensi = () => {
           setAppliedSubCompany(defaultSub);
         }
 
-        // Auto-select Department jika user dibatasi SSO
         if (isDeptRestricted && deptData.length > 0) {
           const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
           const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
@@ -114,6 +114,7 @@ const Absensi = () => {
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
     setAppliedStatusFilter(statusFilter);
+    setAppliedShiftFilter(shiftFilter);
     
     setIsFilterApplied(true);
     setIsFilterDirty(false);
@@ -124,6 +125,7 @@ const Absensi = () => {
 
   const handleResetFilters = () => {
     setStatusFilter('all_data');
+    setShiftFilter('');
     setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
     setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
     setStartDate(getFirstDayOfMonth());
@@ -131,6 +133,7 @@ const Absensi = () => {
     crud.setSearchInput('');
 
     setAppliedStatusFilter('all_data');
+    setAppliedShiftFilter('');
     if (!isSubCompanyRestricted) setAppliedSubCompany('');
     if (!isDeptRestricted) setAppliedDepartment('');
     setAppliedStartDate(getFirstDayOfMonth());
@@ -138,6 +141,11 @@ const Absensi = () => {
 
     setIsFilterApplied(false);
     setIsFilterDirty(false);
+  };
+
+  const handleCreateNew = () => {
+    setEditData(null);
+    crud.handleAdd();
   };
 
   const handleEdit = (data) => {
@@ -164,11 +172,12 @@ const Absensi = () => {
         department: appliedDepartment || '',
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
-        status_filter: appliedStatusFilter || 'all_data'
+        status_filter: appliedStatusFilter || 'all_data',
+        shift: appliedShiftFilter || ''
       }).toString();
 
       const res = await api.get(`/absensi/export?${params}`, { responseType: 'blob' });
-      saveAs(res.data, 'Absensi_OS_Filtered.xlsx');
+      saveAs(res.data, `Absensi_OS_Filtered_${appliedStartDate}_to_${appliedEndDate}.xlsx`);
     } catch {
       Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
     } finally {
@@ -177,7 +186,6 @@ const Absensi = () => {
   };
 
   const handleDownloadTemplate = async () => {
-    // 1. Validasi UX: Minta user apply filter dulu jika ada perubahan yang belum di-apply
     if (isFilterDirty) {
       Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengunduh template.' });
       return;
@@ -185,17 +193,14 @@ const Absensi = () => {
 
     setIsDownloadingTemplate(true);
     try {
-      // 2. Susun Parameter LENGKAP menggunakan state 'applied' agar sinkron dengan tabel
       const params = {
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
         search: crud.appliedSearch || '',
         sub_company: appliedSubCompany || '',
         department: appliedDepartment || '',
-        // status_filter tidak perlu dikirim karena backend sudah mem-force 'template_revisi'
       };
 
-      // 3. Tembak API dengan parameter lengkap
       const { data } = await api.get('/absensi/template', { 
         params: params,
         responseType: 'blob' 
@@ -203,7 +208,6 @@ const Absensi = () => {
       
       saveAs(data, `Template_Mass_Update_${appliedStartDate}_to_${appliedEndDate}.xlsx`);
     } catch (error) {
-      // Parsing pesan error dari Blob JSON jika ada
       if (error.response && error.response.data && error.response.data.type === 'application/json') {
         const reader = new FileReader();
         reader.onload = () => {
@@ -263,7 +267,7 @@ const Absensi = () => {
     }
   };
 
-  // --- DYNAMIC OPTIONS (SSO RESTRICTED) ---
+  // --- DYNAMIC OPTIONS ---
   const subCompanyOptions = isSubCompanyRestricted
     ? subCompanies
         .filter(sc => user.allowed_subcompanies.includes(sc.sub_company_id))
@@ -285,12 +289,19 @@ const Absensi = () => {
       ];
 
   const statusOptions = [
-    { value: 'all_data', label: 'Semua Data Absensi' },
+    { value: 'all_data', label: 'Semua Status Absensi' },
     { value: 'lengkap', label: 'Data Lengkap' },
     { value: 'anomali', label: 'Semua Pelanggaran (Violation)' },
     { value: 'no_in', label: 'Clock In Kosong' },
     { value: 'no_out', label: 'Clock Out Kosong' },
     { value: 'no_both', label: 'Clock In & Out Kosong' }
+  ];
+
+  const shiftOptions = [
+    { value: '', label: 'Semua Shift' },
+    { value: 'SHIFT 1', label: 'SHIFT 1' },
+    { value: 'SHIFT 2', label: 'SHIFT 2' },
+    { value: 'SHIFT 3', label: 'SHIFT 3' }
   ];
 
   return (
@@ -305,6 +316,15 @@ const Absensi = () => {
         }}
         onSearch={handleApplyFilters}
       >
+        <button
+          type="button"
+          className="btn-app btn-primary-app shadow-sm"
+          onClick={handleCreateNew}
+        >
+          <i className="bi bi-plus-circle me-1" />
+          Tambah BAC
+        </button>
+
         <LoadingButton
           loading={isDownloadingTemplate}
           loadingText="Menyiapkan..."
@@ -349,119 +369,141 @@ const Absensi = () => {
 
       <div className="app-card">
 
-        {/* --- FILTER BAR CONTAINER --- */}
-        <div className="filter-bar d-flex flex-wrap gap-3 align-items-end mb-3">
+        {/* --- RAPI: GRID CARD FILTER CONTAINER --- */}
+        <div className="card border-0 bg-light p-3 mb-3 rounded-3 shadow-sm">
+          <div className="row g-2 align-items-end">
 
-          {/* Violation Status Filter */}
-          <div className="filter-group m-0" style={{ minWidth: 200, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Violation Status</label>
-            <Select 
-              options={statusOptions} 
-              value={statusOptions.find(o => o.value === statusFilter)} 
-              onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
-              menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
-            />
-          </div>
-
-          {/* Sub Company Filter */}
-          <div className="filter-group m-0" style={{ minWidth: 180, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Sub Company</label>
-            <Select
-              options={subCompanyOptions}
-              placeholder="Cari Subcompany..."
-              value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
-              onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
-              isClearable={!isSubCompanyRestricted}
-              isSearchable
-              menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
-            />
-          </div>
-
-          {/* Department / Cost Center Filter */}
-          <div className="filter-group m-0" style={{ minWidth: 180, flex: 1 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Department</label>
-            <Select
-              options={departmentOptions}
-              placeholder="Cari Department..."
-              value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
-              onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
-              isClearable={!isDeptRestricted}
-              isSearchable
-              menuPortalTarget={document.body}
-              styles={{ 
-                control: b => ({ ...b, minHeight: 34, fontSize: 13 }),
-                menuPortal: base => ({ ...base, zIndex: 9999 })
-              }}
-            />
-          </div>
-
-          {/* Date Range Filters */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-            <div className="filter-group m-0">
-              <label style={{ fontSize: 13, display: 'block', marginBottom: '4px' }}>Dari Tanggal</label>
-              <input 
-                type="date" 
-                className="form-control-app"
-                value={startDate}
-                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
-                style={{ fontSize: 13, height: 34, width: '130px' }}
+            {/* Row 1: Dropdown Filters */}
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-shield-exclamation me-1"></i> Violation Status
+              </label>
+              <Select 
+                options={statusOptions} 
+                value={statusOptions.find(o => o.value === statusFilter)} 
+                onChange={o => handleFilterChange(setStatusFilter, o?.value || 'all_data')} 
+                menuPortalTarget={document.body}
+                styles={{ 
+                  control: b => ({ ...b, minHeight: 34, fontSize: '0.8rem' }),
+                  menuPortal: base => ({ ...base, zIndex: 9999 })
+                }}
               />
             </div>
 
-            <span style={{ paddingBottom: '6px', fontSize: 14, fontWeight: 'bold' }}>-</span>
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-clock-history me-1"></i> Shift Kerja
+              </label>
+              <Select 
+                options={shiftOptions} 
+                value={shiftOptions.find(o => o.value === shiftFilter) || shiftOptions[0]} 
+                onChange={o => handleFilterChange(setShiftFilter, o?.value || '')} 
+                menuPortalTarget={document.body}
+                styles={{ 
+                  control: b => ({ ...b, minHeight: 34, fontSize: '0.8rem' }),
+                  menuPortal: base => ({ ...base, zIndex: 9999 })
+                }}
+              />
+            </div>
 
-            <div className="filter-group m-0">
-              <label style={{ fontSize: 13, display: 'block', marginBottom: '4px' }}>Sampai Tanggal</label>
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-building me-1"></i> Sub Company
+              </label>
+              <Select
+                options={subCompanyOptions}
+                placeholder="Cari Subcompany..."
+                value={subCompanyOptions.find(o => o.value === subCompanyInput) || subCompanyOptions[0]}
+                onChange={o => handleFilterChange(setSubCompanyInput, o?.value || '')}
+                isClearable={!isSubCompanyRestricted}
+                isSearchable
+                menuPortalTarget={document.body}
+                styles={{ 
+                  control: b => ({ ...b, minHeight: 34, fontSize: '0.8rem' }),
+                  menuPortal: base => ({ ...base, zIndex: 9999 })
+                }}
+              />
+            </div>
+
+            <div className="col-md-3 col-sm-6">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-diagram-3 me-1"></i> Cost Center
+              </label>
+              <Select
+                options={departmentOptions}
+                placeholder="Cari Department..."
+                value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
+                onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
+                isClearable={!isDeptRestricted}
+                isSearchable
+                menuPortalTarget={document.body}
+                styles={{ 
+                  control: b => ({ ...b, minHeight: 34, fontSize: '0.8rem' }),
+                  menuPortal: base => ({ ...base, zIndex: 9999 })
+                }}
+              />
+            </div>
+
+            {/* Row 2: Date Range & Action Buttons */}
+            <div className="col-md-3 col-sm-6 mt-2">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-calendar-event me-1"></i> Dari Tanggal
+              </label>
               <input 
                 type="date" 
-                className="form-control-app"
+                className="form-control form-control-sm"
+                value={startDate}
+                onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
+                style={{ fontSize: '0.8rem', height: '34px' }}
+              />
+            </div>
+
+            <div className="col-md-3 col-sm-6 mt-2">
+              <label className="form-label mb-1 fw-bold text-secondary" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-calendar-check me-1"></i> Sampai Tanggal
+              </label>
+              <input 
+                type="date" 
+                className="form-control form-control-sm"
                 value={endDate}
                 onChange={(e) => handleFilterChange(setEndDate, e.target.value)}
                 min={startDate}
-                style={{ fontSize: 13, height: 34, width: '130px' }}
+                style={{ fontSize: '0.8rem', height: '34px' }}
               />
             </div>
-          </div>
 
-          {/* Filter Action Buttons */}
-          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end', display: 'flex', gap: '8px' }}>
-            {isFilterApplied && (
-              <button 
-                type="button" 
-                className="btn-app btn-ghost-app" 
-                onClick={handleResetFilters}
+            <div className="col-md-6 col-sm-12 d-flex justify-content-end align-items-center gap-2 mt-3">
+              {isFilterApplied && (
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-secondary px-3" 
+                  onClick={handleResetFilters}
+                  style={{ height: '34px', fontSize: '0.8rem' }}
+                >
+                  <i className="bi bi-x-circle me-1" /> Clear Filter
+                </button>
+              )}
+
+              <LoadingButton
+                loading={isApplyingFilter}
+                loadingText="Memfilter..."
+                className="btn btn-sm btn-primary px-3 shadow-sm"
+                style={{ height: '34px', fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
+                icon="bi bi-funnel"
+                onClick={handleApplyFilters}
               >
-                <i className="bi bi-x-circle me-1" /> Clear Filter
-              </button>
-            )}
+                Terapkan Filter
+              </LoadingButton>
+            </div>
 
-            <LoadingButton
-              loading={isApplyingFilter}
-              loadingText="Memfilter..."
-              className="btn-app btn-primary-app"
-              style={{ height: '34px', fontSize: '13px', display: 'flex', alignItems: 'center' }}
-              icon="bi bi-funnel"
-              onClick={handleApplyFilters}
-            >
-              Terapkan Filter
-            </LoadingButton>
           </div>
-
         </div>
         
-        {/* --- DIRTY FILTER WARNING / DATATABLE --- */}
+        {/* WARNING DIRTY FILTER / DATATABLE */}
         {isFilterDirty ? (
-          <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
+          <div className="alert alert-warning text-center mt-2 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
-            <span style={{ fontSize: '14px' }}>
+            <span style={{ fontSize: '13px' }}>
               <strong>Filter Sedang Diubah!</strong><br />
               Silakan klik tombol <b>Terapkan Filter</b> untuk memuat ulang data.
             </span>
@@ -476,6 +518,8 @@ const Absensi = () => {
             startDate={appliedStartDate}
             endDate={appliedEndDate}
             statusFilter={appliedStatusFilter}
+            shiftFilter={appliedShiftFilter}
+            isFilterApplied={isFilterApplied}
           />
         )}
       </div>

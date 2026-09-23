@@ -66,7 +66,7 @@ const OsMedical = () => {
           setAppliedSubCompany(defaultSub);
         }
 
-        // Auto-select Department jika user dibatasi SSO
+        // Auto-select Cost Center jika user dibatasi SSO
         if (isDeptRestricted && deptData.length > 0) {
           const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
           const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
@@ -124,7 +124,7 @@ const OsMedical = () => {
         .filter(d => user.allowed_costcenters.includes(d.id))
         .map(d => ({ value: d.id, label: d.org_name }))
     : [
-        { value: '', label: 'Semua Department' },
+        { value: '', label: 'Semua Cost Center' },
         ...departments.map(d => ({ value: d.id, label: d.org_name })),
       ];
 
@@ -352,12 +352,12 @@ const OsMedical = () => {
             />
           </div>
 
-          {/* Department / Cost Center Filter */}
+          {/* Cost Center Filter */}
           <div className="filter-group m-0" style={{ minWidth: 180 }}>
-            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Department</label>
+            <label style={{ fontSize: 13, marginBottom: '4px', display: 'block' }}>Cost Center</label>
             <Select
               options={departmentOptions}
-              placeholder="Cari Department..."
+              placeholder="Cari Cost Center..."
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
               onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
               isClearable={!isDeptRestricted}

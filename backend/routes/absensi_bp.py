@@ -1,3 +1,4 @@
+import os
 from io import BytesIO
 from datetime import datetime
 import pandas as pd
@@ -5,6 +6,7 @@ from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_, and_, tuple_, func, cast, String, text
 from sqlalchemy.orm import joinedload, selectinload
 from openpyxl.worksheet.datavalidation import DataValidation
+from PIL import Image, ImageOps
 
 from extensions import db
 from model.absensi_all import Absensi_all
@@ -15,9 +17,12 @@ from model.hr_models import User, UserSubcompanyAccess, UserCostCenterAccess
 
 AbsenOs_bp = Blueprint('AbsenOs_bp', __name__)
 
+BAC_EVIDENCE_FOLDER = 'static/uploads/bac_evidence'
+if not os.path.exists(BAC_EVIDENCE_FOLDER):
+    os.makedirs(BAC_EVIDENCE_FOLDER)
+
 # =============================================================================
-# GARANSI PENUTUPAN KONEKSI DATABASE GLOBAL
-# Memastikan tidak ada koneksi berstatus "Sleep" yang tertinggal
+# GARANSI PENUTUPAN KONEKSI DATABASE GLOBAL (ZERO-ZOMBIE POLICY)
 # =============================================================================
 @AbsenOs_bp.teardown_request
 def teardown_request(exception=None):
@@ -64,7 +69,31 @@ def format_dt(val, is_time=False, iso=False):
     val_str = str(val).strip().replace('T', ' ')
     return val_str[:16] if is_time else val_str[:10]
 
-def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_out):
+def process_and_save_bac_evidence(file_storage, target_folder, filename_without_ext, max_width=1000, quality=80):
+    try:
+        img = Image.open(file_storage)
+        try:
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Batasi resolusi lebar max 1000px agar tulisan/dokumen tetap tajam & terbaca
+        if img.width > max_width:
+            ratio = max_width / float(img.width)
+            new_height = int((float(img.height) * float(ratio)))
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            
+        new_filename = f"{filename_without_ext}.webp"
+        file_path = os.path.join(target_folder, new_filename)
+        img.save(file_path, "WEBP", quality=quality, optimize=True)
+        return f"/{target_folder}/{new_filename}"
+    except Exception as e:
+        print(f"[ERROR] Gagal mengompresi bukti BAC: {str(e)}")
+        return None
+
+def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_out, evidence_photo=None):
     existing = BAC_os.query.filter_by(
         employee_id=employee_id,
         clock_date=clock_date
@@ -73,10 +102,10 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
     if existing:
         existing.bac_no = bac_no
         existing.bac_ket = bac_ket
-        if clock_in is not None: 
-            existing.clock_in = clock_in
-        if clock_out is not None: 
-            existing.clock_out = clock_out
+        existing.clock_in = clock_in
+        existing.clock_out = clock_out
+        if evidence_photo:
+            existing.evidence_photo = evidence_photo
         return existing, False
     else:
         new_bac = BAC_os(
@@ -86,17 +115,73 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
             clock_date=clock_date,
             clock_in=clock_in,
             clock_out=clock_out,
+            evidence_photo=evidence_photo,
             status=1
         )
         db.session.add(new_bac)
         return new_bac, True
 
+def determine_shift(clock_in_val, clocking_date_val):
+    if not clock_in_val or str(clock_in_val).lower() in ('none', 'null', '', 'kosong'):
+        return 'SHIFT 1'
+    
+    # 1. Evaluasi Hari Sabtu (weekday() == 5)
+    is_saturday = False
+    if clocking_date_val:
+        try:
+            if isinstance(clocking_date_val, datetime):
+                is_saturday = (clocking_date_val.weekday() == 5)
+            elif hasattr(clocking_date_val, 'weekday'):
+                is_saturday = (clocking_date_val.weekday() == 5)
+            else:
+                c_date_str = str(clocking_date_val).strip()[:10]
+                is_saturday = (datetime.strptime(c_date_str, '%Y-%m-%d').weekday() == 5)
+        except Exception:
+            is_saturday = False
+
+    # 2. Ekstraksi Jam & Menit ke format Integer (misal: 07:30 -> 730, 14:15 -> 1415)
+    jam = 0
+    try:
+        if isinstance(clock_in_val, datetime):
+            jam = clock_in_val.hour * 100 + clock_in_val.minute
+        else:
+            val_str = str(clock_in_val).strip().replace('T', ' ')
+            time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
+            time_parts = time_str.split(':')
+            jam = int(time_parts[0]) * 100 + int(time_parts[1])
+    except Exception:
+        return 'SHIFT 1'
+
+    # 3. Klasifikasi Shift
+    if is_saturday:
+        if 1500 <= jam <= 1900:
+            return 'SHIFT 3'
+        elif 1000 <= jam <= 1400:
+            return 'SHIFT 2'
+        else:
+            return 'SHIFT 1'
+    else:
+        if jam >= 2000 or jam < 400:
+            return 'SHIFT 3'
+        elif 1300 <= jam <= 1700:
+            return 'SHIFT 2'
+        else:
+            return 'SHIFT 1'
+
 # =============================================================================
 # HELPER QUERY BUILDER WITH SSO RESTRICTIONS & HYBRID CC OPTIMIZATION
 # =============================================================================
-def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_data', search='', sub_company_id='', department_id='', worker_type='all', user_email=''):
+def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all', user_email=''):
 
-    query = Absensi_all.query.filter(Absensi_all.card_id != '00000.00000')
+    # Join BAC_os ke Absensi_all untuk mendapatkan jam masuk efektif (Prioritas BAC jika ada)
+    query = db.session.query(Absensi_all).outerjoin(
+        BAC_os,
+        and_(
+            cast(BAC_os.employee_id, String) == cast(Absensi_all.employee_id, String),
+            BAC_os.clock_date == Absensi_all.clocking_date,
+            BAC_os.status == 1
+        )
+    ).filter(Absensi_all.card_id != '00000.00000')
 
     # 1. Filter Tipe Pekerja
     if worker_type == 'os':
@@ -110,9 +195,8 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
     if end_date:
         query = query.filter(Absensi_all.clocking_date <= end_date)
 
-    # 3. Filter Violation / Anomali Status
+    # 3. Filter Violation Status
     non_anomaly = or_(Absensi_all.flag_anomaly != 1, Absensi_all.flag_anomaly.is_(None))
-
     if status_filter == 'lengkap':
         query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_not(None), non_anomaly))
     elif status_filter == 'anomali':
@@ -125,27 +209,46 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
         query = query.filter(and_(Absensi_all.clock_in.is_not(None), Absensi_all.clock_out.is_(None)))
     elif status_filter == 'no_both':
         query = query.filter(and_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
-    elif status_filter == 'template_revisi':
-        query = query.filter(or_(Absensi_all.clock_in.is_(None), Absensi_all.clock_out.is_(None)))
 
-    # 4. Restriksi SSO Hak Akses Pengguna
+    # 4. FILTER SHIFT KERJA DI LEVEL MYSQL SQL (AKURAT & PERSISI)
+    if shift_filter in ('SHIFT 1', 'SHIFT 2', 'SHIFT 3'):
+        # Ambil jam efektif: Prioritaskan BAC Clock In, fallback ke Absensi_all.clock_in
+        eff_in = func.coalesce(BAC_os.clock_in, Absensi_all.clock_in)
+        
+        # MySQL DAYOFWEEK: 7 = Sabtu, 1 = Minggu, 2-6 = Senin-Jumat
+        is_sat = (func.dayofweek(Absensi_all.clocking_date) == 7)
+        time_num = (func.hour(eff_in) * 100) + func.minute(eff_in)
+
+        # Kondisi Shift Sabtu
+        sat_s2 = and_(is_sat, time_num >= 1000, time_num <= 1400)
+        sat_s3 = and_(is_sat, time_num >= 1500, time_num <= 1900)
+        sat_s1 = and_(is_sat, ~sat_s2, ~sat_s3)
+
+        # Kondisi Shift Hari Kerja (Senin-Jumat)
+        weekday_s2 = and_(~is_sat, time_num >= 1300, time_num <= 1700)
+        weekday_s3 = and_(~is_sat, or_(time_num >= 2000, time_num < 400))
+        weekday_s1 = and_(~is_sat, ~weekday_s2, ~weekday_s3)
+
+        if shift_filter == 'SHIFT 2':
+            query = query.filter(eff_in.is_not(None), or_(sat_s2, weekday_s2))
+        elif shift_filter == 'SHIFT 3':
+            query = query.filter(eff_in.is_not(None), or_(sat_s3, weekday_s3))
+        elif shift_filter == 'SHIFT 1':
+            query = query.filter(or_(eff_in.is_(None), sat_s1, weekday_s1))
+
+    # Restriksi Hak Akses SSO Pengguna
     allowed_subco = []
     allowed_cc = []
-
     if user_email:
         user = User.query.filter_by(email=user_email).first()
         if user:
             subco_records = UserSubcompanyAccess.query.filter_by(user_id=user.id).all()
             allowed_subco = [a.sub_company_id for a in subco_records]
-
             cc_records = UserCostCenterAccess.query.filter_by(user_id=user.id).all()
             allowed_cc = [str(c.cost_center_id).strip() for c in cc_records]
 
-    # =========================================================================
-    # [ENTERPRISE FIX] PEMISAHAN PRESISI: DEPT ID (PRIMARY KEY) vs CC CODES (STRING)
-    # =========================================================================
-    target_dept_ids = []
-    target_cc_codes = []
+    # Pemisahan Dept ID vs CC Codes
+    target_dept_ids, target_cc_codes = [], []
     if department_id:
         sql_cc = text("SELECT id, cost_center FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id")
         cc_res = db.session.execute(sql_cc, {'dept_id': department_id}).fetchall()
@@ -157,8 +260,7 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             target_dept_ids.append(str(department_id).strip())
             target_cc_codes.append(str(department_id).strip())
 
-    allowed_dept_ids = []
-    allowed_cc_codes = []
+    allowed_dept_ids, allowed_cc_codes = [], []
     if allowed_cc:
         sql_acc = text("SELECT id, cost_center FROM org_cost_center WHERE id IN :acc OR cost_center IN :acc")
         acc_res = db.session.execute(sql_acc, {'acc': tuple(allowed_cc)}).fetchall()
@@ -170,27 +272,20 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             allowed_dept_ids = [str(x) for x in allowed_cc]
             allowed_cc_codes = [str(x) for x in allowed_cc]
 
-    final_dept_ids = []
-    final_cc_codes = []
-
+    final_dept_ids, final_cc_codes = [], []
     if target_dept_ids and allowed_dept_ids:
         final_dept_ids = list(set(target_dept_ids) & set(allowed_dept_ids))
         final_cc_codes = list(set(target_cc_codes) & set(allowed_cc_codes))
         if not final_dept_ids and not final_cc_codes:
             final_dept_ids = ['INVALID_ACCESS']
     elif target_dept_ids:
-        final_dept_ids = target_dept_ids
-        final_cc_codes = target_cc_codes
+        final_dept_ids, final_cc_codes = target_dept_ids, target_cc_codes
     elif allowed_dept_ids:
-        final_dept_ids = allowed_dept_ids
-        final_cc_codes = allowed_cc_codes
+        final_dept_ids, final_cc_codes = allowed_dept_ids, allowed_cc_codes
 
     active_ids = []    
-    
-    # 5. Pra-Seleksi Master OS
     if worker_type in ('all', 'os'):
         os_query = db.session.query(cast(VwMasterOsActive.employee_code, String)).filter(VwMasterOsActive.employee_code.is_not(None))
-        
         if sub_company_id == 'TYPE_OS':
             os_query = os_query.filter(VwMasterOsActive.type_company == 'OS')
             if allowed_subco: os_query = os_query.filter(VwMasterOsActive.sub_company_id.in_(allowed_subco))
@@ -207,48 +302,30 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
 
         if search:
             os_query = os_query.filter(or_(
-                VwMasterOsActive.employee_code.ilike(f"%{search}%"),
-                VwMasterOsActive.employee_name.ilike(f"%{search}%"),
-                VwMasterOsActive.card_number.ilike(f"%{search}%")
+                cast(VwMasterOsActive.emp_id, String).ilike(f"%{search}%"),
+                cast(VwMasterOsActive.employee_code, String).ilike(f"%{search}%"),
+                VwMasterOsActive.employee_name.ilike(f"%{search}%")
             ))
             
         os_res = os_query.all()
         active_ids.extend([str(r[0]).strip() for r in os_res])
 
-    # 6. Pra-Seleksi Master Karyawan Tetap
-    if worker_type in ('all', 'tetap'):
-        if not allowed_subco and not sub_company_id:
-            ob_query = db.session.query(cast(ObEmployee.employee_id, String)).filter(ObEmployee.employee_id.is_not(None))
+    if search:
+        active_ids.append(search.strip())
 
-            if search:
-                ob_query = ob_query.filter(or_(
-                    ObEmployee.employee_id.ilike(f"%{search}%"),
-                    ObEmployee.employee_name.ilike(f"%{search}%"),
-                    ObEmployee.card_no.ilike(f"%{search}%")
-                ))
-            ob_res = ob_query.all()
-            active_ids.extend([str(r[0]).strip() for r in ob_res])
-
-    # =========================================================================
-    # 7. LOGIKA HYBRID FILTER DEPARTMENT (FILTER DUA LAPIS PRESISI)
-    # =========================================================================
     if final_dept_ids and final_dept_ids != ['INVALID_ACCESS'] and active_ids:
         os_info = db.session.query(
             VwMasterOsActive.employee_code, VwMasterOsActive.use_cc, 
             VwMasterOsActive.org_cc_id, VwMasterOsActive.cost_center_id
         ).filter(VwMasterOsActive.employee_code.in_(active_ids)).all()
         
-        group1_ids = [] 
-        group2_ids = [] 
-        
+        group1_ids, group2_ids = [], []
         os_handled = set()
         for r in os_info:
             eid = str(r.employee_code).strip()
             os_handled.add(eid)
             use_cc = int(r.use_cc or 0)
-            
             if use_cc == 1:
-                # Prioritaskan pencocokan org_cc_id
                 if r.org_cc_id is not None and str(r.org_cc_id).strip() in final_dept_ids:
                     group1_ids.append(eid)
                 elif str(r.cost_center_id).strip() in final_cc_codes:
@@ -260,7 +337,6 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             if eid not in os_handled:
                 group2_ids.append(eid)
 
-        # Step B: Kueri Tapping Mesin dengan Pengecekan org_cc_id Eksklusif
         group2_tuples = []
         if group2_ids:
             sql_terminal = text("""
@@ -284,7 +360,6 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
                       OR (tm_out.org_cc_id IS NULL AND tm_out.cost_center IN :cc_codes)
                   )
             """)
-            
             res_terminal = db.session.execute(sql_terminal, {
                 'g2_ids': tuple(group2_ids),
                 'sd': start_date or '',
@@ -292,7 +367,6 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
                 'dept_ids': tuple(str(x) for x in final_dept_ids) if final_dept_ids else ('INVALID_ACCESS',),
                 'cc_codes': tuple(str(x) for x in final_cc_codes) if final_cc_codes else ('INVALID_ACCESS',)
             }).fetchall()
-            
             group2_tuples = [(r[0], r[1]) for r in res_terminal]
 
         filters = []
@@ -307,7 +381,11 @@ def build_filtered_absensi_query(start_date='', end_date='', status_filter='all_
             query = query.filter(db.false()) 
 
     elif active_ids and final_dept_ids != ['INVALID_ACCESS']:
-        query = query.filter(Absensi_all.employee_id.in_(active_ids))
+        filters_search = [Absensi_all.employee_id.in_(active_ids)]
+        if search:
+            filters_search.append(cast(Absensi_all.employee_id, String).ilike(f"%{search}%"))
+            filters_search.append(Absensi_all.card_id.ilike(f"%{search}%"))
+        query = query.filter(or_(*filters_search))
     else:
         query = query.filter(db.false())
 
@@ -323,7 +401,7 @@ def _enrich_with_dynamic_cc(items):
     master_cc_map = {}
     type_map = {} 
     sub_com_map = {}
-    name_map = {} # <-- [ENTERPRISE FIX] Tambahkan pemetaan Nama Karyawan
+    name_map = {}
 
     if not items:
         return []
@@ -332,17 +410,15 @@ def _enrich_with_dynamic_cc(items):
     dates = tuple(set(str(item.clocking_date) for item in items if item.clocking_date))
     emp_ids = tuple(set(str(item.employee_id).strip() for item in items if item.employee_id))
 
-    # A. Ekstraksi Data Master OS (VwMasterOsActive)
     if card_ids or emp_ids:
         os_filters = []
         if card_ids: os_filters.append(VwMasterOsActive.card_number.in_(card_ids))
         if emp_ids:  os_filters.append(VwMasterOsActive.employee_code.in_(emp_ids))
         
-        # [ENTERPRISE FIX] Sertakan VwMasterOsActive.employee_name di dalam SELECT!
         os_info = db.session.query(
             VwMasterOsActive.card_number,
             VwMasterOsActive.employee_code,
-            VwMasterOsActive.employee_name, # <-- DITARIK DI SINI
+            VwMasterOsActive.employee_name,
             VwMasterOsActive.use_cc,
             VwMasterOsActive.cc_name,
             VwMasterOsActive.type_worker,
@@ -372,7 +448,6 @@ def _enrich_with_dynamic_cc(items):
                 if emp_name: name_map[emp_k] = emp_name
                 sub_com_map[emp_k] = sub_com
 
-    # B. Ekstraksi Data Karyawan Tetap (ObEmployee)
     if emp_ids:
         ob_info = ObEmployee.query.filter(ObEmployee.employee_id.in_(emp_ids)).all()
         for ob in ob_info:
@@ -394,7 +469,6 @@ def _enrich_with_dynamic_cc(items):
                 type_map[card_k] = 'Tetap / Kontrak'
                 sub_com_map[card_k] = '-'
 
-    # C. Ekstraksi Terminal Cost Center (Metode Hybrid)
     if card_ids and dates:
         sql_terminal_cc = """
             SELECT 
@@ -420,7 +494,6 @@ def _enrich_with_dynamic_cc(items):
         cc_rows = db.session.execute(text(sql_terminal_cc), {'card_ids': card_ids, 'dates': dates}).mappings().fetchall()
         cc_map = {(str(row['card_id']).strip(), str(row['clocking_date'])): row['terminal_cc'] for row in cc_rows}
 
-    # D. Injeksi Hasil Enrichment ke Dictionary
     for emp in items:
         emp_dict = emp.to_dict() if hasattr(emp, 'to_dict') else emp.__dict__
         
@@ -443,7 +516,6 @@ def _enrich_with_dynamic_cc(items):
                 emp_dict['cc'] = fallback_master
                 emp_dict['cost_center'] = fallback_master
 
-        # [ENTERPRISE FIX] Suntikkan Nama Karyawan Hasil Mapping Ke Objek Akhir
         emp_dict['employee_name'] = name_map.get(card_key, name_map.get(emp_key, emp_dict.get('employee_name', '-')))
         emp_dict['type'] = type_map.get(card_key, type_map.get(emp_key, emp_dict.get('type', '-')))
         emp_dict['subCom'] = sub_com_map.get(card_key, sub_com_map.get(emp_key, '-'))
@@ -464,6 +536,7 @@ def get_absensi():
         start_date = request.args.get('start_date', '', type=str)
         end_date = request.args.get('end_date', '', type=str)
         status_filter = request.args.get('status_filter', 'all_data', type=str)
+        shift_filter = request.args.get('shift', '', type=str).strip().upper()
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
@@ -471,10 +544,12 @@ def get_absensi():
 
         user_email = request.headers.get('X-User-Email', '')
 
+        # 1. Eksekusi Query dengan Parameter shift_filter Langsung ke SQL
         query = build_filtered_absensi_query(
             start_date=start_date,
             end_date=end_date,
             status_filter=status_filter,
+            shift_filter=shift_filter, # PASSED TO SQL!
             search=search,
             sub_company_id=sub_company_id,
             department_id=department_id,
@@ -483,16 +558,81 @@ def get_absensi():
         )
 
         query = query.order_by(Absensi_all.clocking_date.desc(), Absensi_all.employee_id.asc())
+        
+        # Paginate Asli dari SQL
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
 
         final_data = _enrich_with_dynamic_cc(pagination.items)
 
+        # Merge Data BAC
+        existing_keys = set()
+        for item in final_data:
+            emp_code_val = str(item.get('employee_code') or item.get('employee_id') or '').strip()
+            date_val = str(item.get('v_clocking_date') or item.get('clocking_date') or '').strip()
+            existing_keys.add((emp_code_val, date_val))
+            existing_keys.add((str(item.get('employee_id') or '').strip(), date_val))
+
+        bac_query = BAC_os.query.filter(BAC_os.status == 1)
+        if start_date:
+            bac_query = bac_query.filter(BAC_os.clock_date >= start_date)
+        if end_date:
+            bac_query = bac_query.filter(BAC_os.clock_date <= end_date)
+
+        if search:
+            matching_os = db.session.query(
+                cast(VwMasterOsActive.emp_id, String),
+                cast(VwMasterOsActive.employee_code, String)
+            ).filter(
+                or_(
+                    cast(VwMasterOsActive.emp_id, String).ilike(f"%{search}%"),
+                    cast(VwMasterOsActive.employee_code, String).ilike(f"%{search}%"),
+                    VwMasterOsActive.employee_name.ilike(f"%{search}%")
+                )
+            ).all()
+
+            search_ids = {search.strip()}
+            for m_id, m_code in matching_os:
+                if m_id: search_ids.add(str(m_id).strip())
+                if m_code: search_ids.add(str(m_code).strip())
+
+            bac_query = bac_query.filter(
+                or_(
+                    cast(BAC_os.employee_id, String).in_(list(search_ids)),
+                    cast(BAC_os.employee_id, String).ilike(f"%{search}%"),
+                    BAC_os.bac_no.ilike(f"%{search}%")
+                )
+            )
+
+        all_bacs = bac_query.all()
+        bac_map = {(str(b.employee_id).strip(), str(b.clock_date).strip()): b for b in all_bacs}
+
+        for item in final_data:
+            e_id = str(item.get('employee_id') or '').strip()
+            e_code = str(item.get('employee_code') or '').strip()
+            c_date = str(item.get('v_clocking_date') or item.get('clocking_date') or '').strip()
+
+            matched_bac = bac_map.get((e_id, c_date)) or bac_map.get((e_code, c_date))
+            if matched_bac:
+                item['bac_id'] = matched_bac.id
+                item['bac_no'] = matched_bac.bac_no or '-'
+                item['bac_ket'] = matched_bac.bac_ket or '-'
+                item['bac_clock_in'] = format_dt(matched_bac.clock_in, iso=True) if matched_bac.clock_in else None
+                item['bac_clock_out'] = format_dt(matched_bac.clock_out, iso=True) if matched_bac.clock_out else None
+                item['bac_updated_by'] = getattr(matched_bac, 'modified_by', None) or getattr(matched_bac, 'updated_by', None) or '-'
+                item['bac_updated_date'] = format_dt(getattr(matched_bac, 'modified_date', None) or getattr(matched_bac, 'updated_date', None))
+
+        # Labeling Shift untuk Tampilan Frontend
+        for item in final_data:
+            effective_in = item.get('bac_clock_in') or item.get('full_clock_in') or item.get('clock_in')
+            c_date = item.get('v_clocking_date') or item.get('clocking_date')
+            item['shift'] = determine_shift(effective_in, c_date)
+
         return jsonify({
             "status": "success",
             "data": final_data,
-            "total_page": pagination.pages,
-            "current_page": pagination.page,
-            "total_item": pagination.total
+            "total_page": pagination.pages,   # Jumlah Halaman Asli Hasil Filter Shift
+            "current_page": page,
+            "total_item": pagination.total   # Total Item Asli Sesuai Filter Shift
         }), 200
 
     except Exception as e:
@@ -531,20 +671,37 @@ def get_bac(employee_id, clock_date):
 @AbsenOs_bp.route('/absensi/bac', methods=['PUT', 'POST'])
 def update_bac():
     try:
-        data = request.json or {}
-        employee_id = data.get('employee_id')
+        # Mengakomodasi request.form (Multipart) maupun request.json
+        data = request.form if request.form else (request.json or {})
+        emp_id = str(data.get('employee_id') or '').strip()
         clock_date = data.get('clock_date')
 
-        if not employee_id or not clock_date:
+        if not emp_id or not clock_date:
             return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
 
+        # Proses File Foto Bukti jika Diunggah (Opsional)
+        evidence_path = None
+        if 'evidence_photo' in request.files:
+            file_storage = request.files['evidence_photo']
+            if file_storage and file_storage.filename != '':
+                upload_ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                base_name = f"BAC_{emp_id}_{clock_date}_{upload_ts}"
+                evidence_path = process_and_save_bac_evidence(
+                    file_storage=file_storage,
+                    target_folder=BAC_EVIDENCE_FOLDER,
+                    filename_without_ext=base_name,
+                    max_width=1000,
+                    quality=80
+                )
+
         _, is_created = upsert_bac_record(
-            employee_id=employee_id,
+            employee_id=emp_id,
             clock_date=clock_date,
             bac_no=clean_str(data.get('bac_no')),
             bac_ket=clean_str(data.get('bac_ket')),
             clock_in=parse_dt(data.get('clock_in')),
-            clock_out=parse_dt(data.get('clock_out'))
+            clock_out=parse_dt(data.get('clock_out')),
+            evidence_photo=evidence_path
         )
 
         db.session.commit()
@@ -568,6 +725,7 @@ def template():
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
+        shift_filter = request.args.get('shift', '', type=str).strip().upper()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
         user_email = request.headers.get('X-User-Email', '')
 
@@ -578,6 +736,7 @@ def template():
             start_date=start_date_raw,
             end_date=end_date_raw,
             status_filter='template_revisi', 
+            shift_filter=shift_filter,
             search=search,
             sub_company_id=sub_company_id,
             department_id=department_id,
@@ -607,15 +766,17 @@ def template():
         if not query_results:
             return jsonify({"status": "error", "message": "Tidak ditemukan data absensi tidak lengkap pada filter ini."}), 404
 
-        # Pre-Selection Enrichment untuk Nama dan CC
         enriched_results = _enrich_with_dynamic_cc(query_results)
 
         dynamic_data = []
         for d in enriched_results:
-            # [ENTERPRISE FIX] Ambil employee_name yang sudah di-enrich oleh _enrich_with_dynamic_cc
             emp_name = d.get('employee_name')
             if not emp_name or str(emp_name).strip() in ('', '-', 'None', 'null'):
                 emp_name = d.get('name') or '-'
+
+            effective_in = d.get('full_clock_in') or d.get('clock_in')
+            c_date = d.get('v_clocking_date') or d.get('clocking_date')
+            row_shift = determine_shift(effective_in, c_date)
 
             dynamic_data.append({
                 "Employee ID": str(d.get('employee_id')),
@@ -623,7 +784,8 @@ def template():
                 "Nama Karyawan": emp_name,
                 "Sub Company": d.get('subCom') or d.get('sub_company_name') or '-',
                 "Cost Center": d.get('cc') or '-',
-                "Tanggal Absen": format_dt(d.get('v_clocking_date') or d.get('clocking_date'), is_time=False),
+                "Shift": row_shift,
+                "Tanggal Absen": format_dt(c_date, is_time=False),
                 "Clocking In": format_dt(d.get('clock_in'), is_time=True) if d.get('clock_in') else 'KOSONG',
                 "Clocking Out": format_dt(d.get('clock_out'), is_time=True) if d.get('clock_out') else 'KOSONG',
                 "No BAC": "",
@@ -638,20 +800,20 @@ def template():
             df.to_excel(writer, index=False, sheet_name='Template_Import_Revisi')
             worksheet = writer.sheets['Template_Import_Revisi']
 
-            list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking"'
+            list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking,Dipulangkan"'
             dv = DataValidation(type="list", formula1=list_pilihan, allow_blank=True)
             dv.error = 'Mohon pilih keterangan yang tersedia pada list dropdown.'
             dv.errorTitle = 'Pilihan Tidak Valid'
 
             worksheet.add_data_validation(dv)
-            # Kolom 'J' (Index ke-10) untuk Keterangan BAC
-            dv.add(f"J2:J{num_rows + 100}") 
+            dv.add(f"K2:K{num_rows + 100}") 
 
         output.seek(0)
+        shift_tag = f"_{shift_filter}" if shift_filter else ""
         return send_file(
             output,
             as_attachment=True,
-            download_name=f"Template_Mass_Update_Absen_{start_date_raw}_to_{end_date_raw}.xlsx",
+            download_name=f"Template_Mass_Update_Absen{shift_tag}_{start_date_raw}_to_{end_date_raw}.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
@@ -696,7 +858,8 @@ def upload():
                     c_out_raw = clean_str(row.get('Clocking Out'))
                     ket_bac = clean_str(row.get('Keterangan BAC'))
 
-                    if not c_in_raw and not c_out_raw:
+                    # PEMBARUAN: Jika tidak ada Clock In, Clock Out, DAN Keterangan BAC, barulah skip
+                    if not c_in_raw and not c_out_raw and not ket_bac:
                         continue
 
                     if not ket_bac:
@@ -746,17 +909,19 @@ def export_absensi():
         start_date = request.args.get('start_date', '', type=str)
         end_date = request.args.get('end_date', '', type=str)
         status_filter = request.args.get('status_filter', 'all_data', type=str)
+        shift_filter = request.args.get('shift', '', type=str).strip().upper()
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
         user_email = request.headers.get('X-User-Email', '')
 
-        # 1. Bangun Kueri Dasar
+        # 1. Eksekusi Kueri SQL Terfilter (Shift disaring di level DB)
         query = build_filtered_absensi_query(
             start_date=start_date,
             end_date=end_date,
             status_filter=status_filter,
+            shift_filter=shift_filter,  # PASSED TO SQL QUERY BUILDER
             search=search,
             sub_company_id=sub_company_id,
             department_id=department_id,
@@ -770,21 +935,21 @@ def export_absensi():
             selectinload(Absensi_all.bac_os_data)
         )
 
-        # 2. Eksekusi Query
+        # 2. Ambil Seluruh Data yang Sesuai Filter Shift
         results = query.order_by(Absensi_all.clocking_date.asc(), Absensi_all.employee_id.asc()).all()
 
         if not results:
             return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
 
+        # 3. Batch Enrichment Per-Chunk (SLA < 3 Detik Optimization)
         CHUNK_SIZE = 500
         enriched_results = []
-        
         for i in range(0, len(results), CHUNK_SIZE):
             chunk = results[i : i + CHUNK_SIZE]
             enriched_chunk = _enrich_with_dynamic_cc(chunk)
             enriched_results.extend(enriched_chunk)
 
-        # 3. Format Data untuk Excel
+        # 4. Susun Format Data Excel
         excel_data = []
         for d in enriched_results:
             is_anomaly = d.get('is_anomaly') == 1 or d.get('flag_anomaly') == 1
@@ -792,6 +957,7 @@ def export_absensi():
             bac_out = d.get('bac_clock_out')
             has_bac = bool(d.get('bac_id') or d.get('bac_no') or bac_in or bac_out)
 
+            # Evaluasi Jam Masuk & Jam Keluar
             if bac_in:
                 c_in = format_dt(bac_in, is_time=True)
             elif is_anomaly and d.get('full_clock_in') and str(d.get('full_clock_in')).lower() != 'null':
@@ -806,6 +972,7 @@ def export_absensi():
             else:
                 c_out = format_dt(d.get('clock_out'), is_time=True)
 
+            # Evaluasi Status
             if has_bac:
                 status_str = "BAC Found"
             elif is_anomaly:
@@ -815,6 +982,11 @@ def export_absensi():
             else:
                 status_str = "BAC Not Found"
 
+            # Kalkulasi Shift Efektif
+            effective_in = bac_in or d.get('full_clock_in') or d.get('clock_in')
+            c_date = d.get('v_clocking_date') or d.get('clocking_date')
+            row_shift = determine_shift(effective_in, c_date)
+
             excel_data.append({
                 "Employee ID": d.get('employee_code') or d.get('employee_id'),
                 "Nama Karyawan": d.get('employee_name') or '-',
@@ -823,6 +995,7 @@ def export_absensi():
                 "Absence Card": d.get('card') or '-',
                 "Cost Center": d.get('cc') or '-',  
                 "Type": d.get('type') or '-',
+                "Shift": row_shift,  # <--- KOLOM SHIFT BARU
                 "Clocking Date": format_dt(d.get('v_clocking_date') or d.get('clocking_date'), is_time=False),
                 "Clocking In": c_in if c_in != "KOSONG" else "No Clock In",
                 "Clocking Out": c_out if c_out != "KOSONG" else "No Clock Out",
@@ -832,14 +1005,15 @@ def export_absensi():
                 "Updated Date": d.get('bac_updated_date') or '-'
             })
 
-        # 4. Generate File Excel
+        # 5. Generate & Stream File Excel ke Client
         df = pd.DataFrame(excel_data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Absensi_Karyawan')
         output.seek(0)
 
-        filename = f"Export_Absensi_{worker_type.upper()}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"Export_Absensi_{worker_type.upper()}.xlsx"
+        filename_shift_tag = f"_{shift_filter}" if shift_filter else ""
+        filename = f"Export_Absensi_{worker_type.upper()}{filename_shift_tag}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"Export_Absensi_{worker_type.upper()}{filename_shift_tag}.xlsx"
 
         return send_file(
             output,

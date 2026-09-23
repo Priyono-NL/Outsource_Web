@@ -12,6 +12,7 @@ class BAC_os(db.Model, AuditMixin):
     clock_in = db.Column(db.DateTime, nullable=True)
     clock_out = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.SmallInteger, default=0)
+    evidence_photo = db.Column(db.String(100))
 
     def to_dict(self):
         return {
@@ -23,6 +24,7 @@ class BAC_os(db.Model, AuditMixin):
             "clock_in": self.clock_in.strftime('%Y-%m-%d %H:%M:%S') if self.clock_in else None,
             "clock_out": self.clock_out.strftime('%Y-%m-%d %H:%M:%S') if self.clock_out else None,
             "status": self.status,
+            "evidence_photo": self.evidence_photo,
             "created_by": self.created_by,
             "created_date": self.created_date.strftime('%d %b %Y') if self.created_date else None
         }

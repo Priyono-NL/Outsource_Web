@@ -2,8 +2,9 @@ from extensions import db
 
 class VwMasterOsActive(db.Model):
     __tablename__ = 'vw_master_os_active'
-    
-    employee_code = db.Column(db.String(50), primary_key=True)
+
+    emp_id = db.Column(db.Integer, primary_key=True)
+    employee_code = db.Column(db.String(50))
     employee_name = db.Column(db.String(255))
     gender = db.Column(db.String(10))    
     sub_company_id = db.Column(db.String(50))

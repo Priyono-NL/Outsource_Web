@@ -90,7 +90,7 @@ const OsCCTable = ({
             <tr>
               <th>Employee ID</th>
               <th>Employee Name</th>
-              <th>Department</th>
+              <th>Cost Center</th>
               <th>Valid From</th>
               <th>Valid To</th>
               <th style={{ width: '100px', textAlign: 'center' }}>Action</th>
@@ -120,14 +120,14 @@ const OsCCTable = ({
                     <button 
                       className="btn-app btn-ghost-app btn-sm-app me-1" 
                       onClick={() => onEditClick(emp)}
-                      title="Edit Department"
+                      title="Edit Cost Centers"
                     >
                       <i className="bi bi-pencil-square"></i>
                     </button>
                     <button 
                       className="btn-app btn-danger-app btn-sm-app"
                       onClick={() => handleDelete(emp.id_oscc, emp.employee_name)}
-                      title="Hapus Department"
+                      title="Hapus Cost Centers"
                     >
                       <i className="bi bi-trash"></i>
                     </button>

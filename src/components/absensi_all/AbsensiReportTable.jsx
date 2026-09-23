@@ -89,6 +89,7 @@ const AbsensiReportTable = ({
                     <th>Absence Card</th>
                     <th>Cost Center</th>
                     <th>Type</th>
+                    <th>Shift</th>
                     <th>Clocking Date</th>
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
@@ -189,6 +190,11 @@ const AbsensiReportTable = ({
                                 <td>{emp.card || '-'}</td>
                                 <td>{emp.cc || '-'}</td>
                                 <td>{emp.type || '-'}</td>
+                                <td>
+                                    <span className="badge bg-light text-dark border">
+                                        {emp.shift || 'SHIFT 1'}
+                                    </span>
+                                </td>
                                 <td>{emp.v_clocking_date || emp.clocking_date || '-'}</td>
 
                                 <td style={{ 

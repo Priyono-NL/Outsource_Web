@@ -200,7 +200,7 @@ function User_m_form({ onClose, onSuccess, initialData }) {
                         </div>
                       </div>
 
-                      {/* Cost Center / Department Access Section */}
+                      {/* Cost Center Access Section */}
                       <div className="col-md-6">
                         <div className="bg-white p-3 rounded border shadow-sm h-100">
                           <div className="d-flex align-items-center justify-content-between mb-2">

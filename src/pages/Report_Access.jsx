@@ -77,7 +77,7 @@ const Report_Access = () => {
           setAppliedSubCompany(defaultSub);
         }
 
-        // Auto-select Department jika user dibatasi SSO
+        // Auto-select Cost Center jika user dibatasi SSO
         if (isDeptRestricted && deptData.length > 0) {
           const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
           const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
@@ -186,7 +186,7 @@ const Report_Access = () => {
         .filter(d => user.allowed_costcenters.includes(d.id))
         .map(d => ({ value: d.id, label: d.org_name }))
     : [
-        { value: '', label: 'Semua Department' },
+        { value: '', label: 'Semua Cost Center' },
         ...departments.map(d => ({ value: d.id, label: d.org_name })),
       ];
 
@@ -222,12 +222,12 @@ const Report_Access = () => {
             />
           </div>
 
-          {/* Department Filter */}
+          {/* Cost Center Filter */}
           <div className="filter-group m-0" style={{ minWidth: 160, flex: 1 }}>
-            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Department</label>
+            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Cost Center</label>
             <Select
               options={departmentOptions}
-              placeholder="Cari..."
+              placeholder="Cari Cost Center..."
               value={departmentOptions.find(o => o.value === departmentInput) || departmentOptions[0]}
               onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
               isClearable={!isDeptRestricted}

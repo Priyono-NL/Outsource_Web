@@ -69,7 +69,7 @@ const Employment = () => {
           setAppliedSubCompany(defaultSub);
         }
 
-        // --- Auto-Select Department / Cost Center jika user dibatasi ---
+        // --- Auto-Select Cost Center jika user dibatasi ---
         if (isDeptRestricted && deptData.length > 0) {
           const allowedDeptList = deptData.filter(d => user.allowed_costcenters.includes(d.id));
           const defaultDept = allowedDeptList.length > 0 ? allowedDeptList[0].id : deptData[0].id;
@@ -275,13 +275,13 @@ const Employment = () => {
         ...subCompanies.map(sc => ({ value: sc.sub_company_id, label: sc.sub_company_name })),
       ];
       
-  // --- Dynamic Opsi Department / Cost Center ---
+  // --- Dynamic Opsi Cost Center ---
   const departmentOptions = isDeptRestricted
     ? departments
         .filter(d => user.allowed_costcenters.includes(d.id))
         .map(d => ({ value: d.id, label: d.org_name }))
     : [
-        { value: '', label: 'Semua Department' },
+        { value: '', label: 'Semua Cost Center' },
         ...departments.map(d => ({ value: d.id, label: d.org_name })),
       ];
 
@@ -382,9 +382,9 @@ const Employment = () => {
             />
           </div>
 
-          {/* Department / Cost Center Dropdown (Restricted Dynamic) */}
+          {/* Cost Center Dropdown (Restricted Dynamic) */}
           <div className="filter-group" style={{ minWidth: 180 }}>
-            <label>Department</label>
+            <label>Cost Center</label>
             <Select
               options={departmentOptions}
               placeholder="Cari..."

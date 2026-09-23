@@ -148,7 +148,7 @@ function EmployTab({ initialData }) {
         </div>
 
         <div className="col-md-6">
-          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Department</label>
+          <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cost Center</label>
           <Select
             options={ccOptions}
             isSearchable={true}

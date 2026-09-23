@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
@@ -6,7 +6,12 @@ function PersonelTab({ onPersonSelect, initialData }) {
     const [searchTerm, setSearchTerm] = useState("");
     const [results, setResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [showDropdown, setShowDropdown] = useState(false);
     const [selectedPerson, setSelectedPerson] = useState(null);
+    
+    // Ref untuk memantau klik di luar elemen pencarian
+    const searchContainerRef = useRef(null);
+
     const [formData, setFormData] = useState({
         gender: "L",
         religion: "islam",
@@ -18,13 +23,26 @@ function PersonelTab({ onPersonSelect, initialData }) {
 
     const isEditMode = !!initialData;
 
+    // 1. EVENT LISTENER CLICK OUTSIDE (Menutup Dropdown Otomatis saat Klik di Luar)
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+                setShowDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    // 2. INITIAL DATA LOAD (EDIT MODE)
     useEffect(() => {
         if (initialData) {
-            setSelectedPerson({
+            const personObj = {
                 person_id: initialData.person_id,
                 name: initialData.person_name || initialData.name,
                 is_blacklist: initialData.is_blacklist
-            });
+            };
+            setSelectedPerson(personObj);
             setSearchTerm(initialData.person_name || initialData.name || "");
             
             setFormData({
@@ -38,22 +56,26 @@ function PersonelTab({ onPersonSelect, initialData }) {
         }
     }, [initialData]);
 
+    // 3. DEBOUNCE SEARCH (Minimal 3 Karakter)
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
-            if (searchTerm.length >= 3 && !selectedPerson && !isEditMode) {
+            if (searchTerm.trim().length >= 3 && !selectedPerson && !isEditMode) {
                 fetchPersons();
             } else {
                 setResults([]);
+                setShowDropdown(false);
             }
-        }, 500);
+        }, 400);
         return () => clearTimeout(delayDebounceFn);
     }, [searchTerm, selectedPerson, isEditMode]);
 
     const fetchPersons = async () => {
         setIsSearching(true);
         try {
-            const response = await api.get(`/person/search?q=${searchTerm}`);
-            setResults(response.data.data);
+            const response = await api.get(`/person/search?q=${encodeURIComponent(searchTerm.trim())}`);
+            const data = response.data.data || [];
+            setResults(data);
+            setShowDropdown(true);
         } catch (err) {
             const errorMsg = err.response?.data?.message || "Gagal mencari personel";
             Toast.fire({ icon: 'error', title: 'Pencarian Gagal', text: errorMsg });
@@ -62,11 +84,14 @@ function PersonelTab({ onPersonSelect, initialData }) {
         }
     };
 
+    // Handler memilih Personel dari Database
     const handleSelect = (person) => {
         setSelectedPerson(person);
         setSearchTerm(person.name);
         setResults([]);
+        setShowDropdown(false);
         onPersonSelect?.(person);
+        
         setFormData({
             gender: person.gender || "L",
             religion: person.religion || "islam",
@@ -77,12 +102,43 @@ function PersonelTab({ onPersonSelect, initialData }) {
         });
     };
 
+    // Handler memilih Input sebagai Personel Baru (misal: "Budi")
+    const handleSelectNewPerson = () => {
+        const newPersonObj = {
+            person_id: null,
+            name: searchTerm.trim(),
+            is_new: true
+        };
+        setSelectedPerson(newPersonObj);
+        setResults([]);
+        setShowDropdown(false);
+        onPersonSelect?.(newPersonObj);
+    };
+
+    // Handler mengetik nama baru
+    const handleSearchChange = (e) => {
+        if (isEditMode) return;
+        const val = e.target.value;
+        setSearchTerm(val);
+        
+        // Kirim perubahan nama secara live ke parent jika belum mengunci pilihan
+        if (!selectedPerson) {
+            onPersonSelect?.({
+                person_id: null,
+                name: val,
+                is_new: true
+            });
+        }
+    };
+
     const handleReset = () => {
         if (isEditMode) return;
         setSelectedPerson(null);
         setSearchTerm("");
+        setResults([]);
+        setShowDropdown(false);
         setFormData({ gender: "L", religion: "islam", pob: "", dob: "", resident_id: "", address: "" });
-        onPersonSelect?.({ is_blacklist: "No in Blacklist" });
+        onPersonSelect?.({ person_id: null, name: "", is_blacklist: "No in Blacklist" });
     };
 
     const handleInputChange = (e) => {
@@ -93,33 +149,57 @@ function PersonelTab({ onPersonSelect, initialData }) {
     return (
         <div className="animate__animated animate__fadeIn">
             <div className="row g-2">
-                <div className="col-md-12 position-relative">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Lengkap (Cari Nama/NIK)</label>
+                {/* Ref dipasang pada container input pencarian */}
+                <div className="col-md-12 position-relative" ref={searchContainerRef}>
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
+                        Nama Lengkap (Cari Nama/NIK)
+                    </label>
+                    
                     <div className="input-group input-group-sm">
                         <span className="input-group-text bg-white border-end-0">
                             <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`} style={{ fontSize: '0.8rem' }}></i>
                         </span>
                         <input
                             type="text"
-                            name='nama'
+                            name="nama"
                             className={`form-control border-start-0 ps-0 ${selectedPerson ? 'bg-light fw-bold text-primary' : ''} ${isEditMode ? 'opacity-75' : ''}`}
-                            placeholder="Minimal 3 karakter..."
+                            placeholder="Ketik nama (min. 3 karakter)..."
                             value={searchTerm}
-                            onChange={(e) => !isEditMode && setSearchTerm(e.target.value)}
+                            onChange={handleSearchChange}
+                            onFocus={() => {
+                                if (results.length > 0 || (searchTerm.trim().length >= 3 && !selectedPerson)) {
+                                    setShowDropdown(true);
+                                }
+                            }}
                             readOnly={isEditMode || !!selectedPerson}
                             autoComplete="off"
                             style={isEditMode ? { backgroundColor: '#f1f3f5', cursor: 'not-allowed', fontSize: '0.85rem' } : { fontSize: '0.85rem' }}
                         />
                         {selectedPerson && !isEditMode && (
                             <button className="btn btn-outline-danger py-0 px-2" type="button" onClick={handleReset} style={{ fontSize: '0.75rem' }}>
-                                <i className="bi bi-arrow-counterclockwise me-1"></i> Ganti
+                                <i className="bi bi-arrow-counterclockwise me-1"></i> Ganti / Reset
                             </button>
                         )}
                     </div>
 
-                    {/* Dropdown Hasil Pencarian - FIXED DENGAN MAKSIMAL TINGGI & SCROLLBAR */}
-                    {results.length > 0 && (
-                        <div className="list-group position-absolute w-100 shadow border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {/* DROPDOWN HASIL PENCARIAN & OPSI INPUT PERSONEL BARU */}
+                    {showDropdown && !selectedPerson && !isEditMode && (
+                        <div className="list-group position-absolute w-100 shadow border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '220px', overflowY: 'auto' }}>
+                            
+                            {/* Opsi 1: Pilihan Input Personel Baru dengan nama yang sedang diketik */}
+                            {searchTerm.trim().length >= 3 && (
+                                <button
+                                    type="button"
+                                    className="list-group-item list-group-item-action list-group-item-primary d-flex align-items-center py-2 px-3 fw-bold"
+                                    onClick={handleSelectNewPerson}
+                                    style={{ fontSize: '0.8rem' }}
+                                >
+                                    <i className="bi bi-person-plus-fill me-2 text-primary"></i>
+                                    <span>Gunakan "<span className="text-decoration-underline">{searchTerm.trim()}</span>" sebagai Personel Baru</span>
+                                </button>
+                            )}
+
+                            {/* Opsi 2: Hasil Pencarian Database */}
                             {results.map((p) => (
                                 <button
                                     key={p.person_id}
@@ -130,15 +210,22 @@ function PersonelTab({ onPersonSelect, initialData }) {
                                 >
                                     <div>
                                         <div className="fw-bold text-dark">{p.name}</div>
-                                        <small className="text-muted" style={{ fontSize: '0.7rem' }}>NIK: {p.resident_id}</small>
+                                        <small className="text-muted" style={{ fontSize: '0.7rem' }}>NIK: {p.resident_id || '-'}</small>
                                     </div>
                                     {p.is_blacklist === "Blacklist" ? (
                                         <span className="badge bg-danger" style={{ fontSize: '0.65rem' }}>Blacklisted</span>
                                     ) : (
-                                        <i className="bi bi-plus-circle text-primary small"></i>
+                                        <i className="bi bi-check-circle text-success small"></i>
                                     )}
                                 </button>
                             ))}
+
+                            {/* Opsi 3: Jika Tidak Ada Hasil di DB */}
+                            {results.length === 0 && searchTerm.trim().length >= 3 && (
+                                <div className="p-2 text-center text-muted small bg-light" style={{ fontSize: '0.75rem' }}>
+                                    Tidak ada data yang cocok di database. Klik tombol biru di atas untuk membuat data baru.
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -146,7 +233,9 @@ function PersonelTab({ onPersonSelect, initialData }) {
 
             <div className="d-flex align-items-center my-3">
                 <hr className="flex-grow-1 my-0 opacity-25" />
-                <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Data Detail Personel</span>
+                <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                    Data Detail Personel
+                </span>
                 <hr className="flex-grow-1 my-0 opacity-25" />
             </div>
 
@@ -215,7 +304,7 @@ function PersonelTab({ onPersonSelect, initialData }) {
                 <div className="col-md-12">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Alamat Lengkap</label>
                     <textarea 
-                        rows="2" name="address" className='form-control form-control-sm' 
+                        rows="2" name="address" className="form-control form-control-sm" 
                         placeholder="Alamat sesuai KTP..."
                         value={formData.address} 
                         onChange={handleInputChange}

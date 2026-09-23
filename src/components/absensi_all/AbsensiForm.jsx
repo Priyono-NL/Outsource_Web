@@ -13,7 +13,8 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
     bac_no: '',
     bac_ket: '',
     clock_in: '',
-    clock_out: ''
+    clock_out: '',
+    evidence_photo: ''
   });
 
   const [hasClockIn, setHasClockIn] = useState(false);
@@ -41,7 +42,8 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
         bac_no: initialData.bac_no || '',
         bac_ket: initialData.bac_ket || '',
         clock_in: initialData.bac_clock_in || '',
-        clock_out: initialData.bac_clock_out || ''
+        clock_out: initialData.bac_clock_out || '',
+        evidence_photo: initialData.evidence_photo || ''
       });
     }
 
@@ -58,17 +60,16 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   const handleSave = async (e) => {
     e.preventDefault();
     const formData = new FormData(formRef.current);
-    const data = Object.fromEntries(formData.entries());
     
-    const payload = {
-      ...data,
-      employee_id: empPk || empId,
-      clock_date: data.clock_date
-    };
-    delete payload.employee_code;
+    // Set employee_id sesuai ID NRP
+    formData.set('employee_id', empId || empPk);
+    formData.delete('employee_code');
 
     try {
-      const response = await api.put('/absensi/bac', payload);
+      // Kirim via multipart/form-data
+      const response = await api.post('/absensi/bac', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
 
       if (response.data.status === 'success') {
         formRef.current.reset();
@@ -131,12 +132,12 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-person-gear' : 'bi-plus-circle'} me-2`}></i>
-                {isEditMode ? 'Edit BAC' : 'Tambah BAC'}
+                {isEditMode ? 'Edit BAC' : 'Tambah BAC Baru'}
               </h6>
               <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
 
-            <form ref={formRef} onSubmit={handleSave}>
+            <form ref={formRef} onSubmit={handleSave} encType="multipart/form-data">
               <div className="modal-body p-3 bg-white">
                 
                 {/* Section Employee Search */}
@@ -228,12 +229,13 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                     <option value="Kartu Belum Diterima">Kartu Belum Diterima</option>
                     <option value="Kartu Error">Kartu Error</option>
                     <option value="Karyawan Lupa Clocking">Karyawan Lupa Clocking</option>
+                    <option value="Dipulangkan">Dipulangkan</option>
                   </select>
                 </div>
 
-                <div className='row'>
+                <div className='row mb-2'>
                   <div className='col-md-6'>
-                    <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock In</label>
+                    <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock In (Opsional)</label>
                     <input 
                       type="datetime-local" 
                       name="clock_in"
@@ -245,7 +247,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                   </div>
 
                   <div className='col-md-6'>
-                    <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock Out</label>
+                    <label className='form-label mb-1' style={{ fontSize: '0.75rem', fontWeight: '600'}}>Clock Out (Opsional)</label>
                     <input 
                       type="datetime-local" 
                       name="clock_out"
@@ -254,6 +256,23 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       value={bacOS.clock_out ? bacOS.clock_out.slice(0, 16) : ''}
                       onChange={(e) => setBacOS({ ...bacOS, clock_out: e.target.value })}
                     />
+                  </div>
+                </div>
+
+                {/* BUKTI FOTO / DOKUMEN BAC (OPSIONAL) */}
+                <div className="col-md-12">
+                  <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
+                    Upload Foto Bukti / Dokumen <span className="text-muted fw-normal">(Opsional)</span>
+                  </label>
+                  <input 
+                    type="file" 
+                    name="evidence_photo"
+                    accept="image/*"
+                    className="form-control form-control-sm"
+                    disabled={(!isEmployeeFound && !isEditMode) || isSearching}
+                  />
+                  <div className="form-text mt-1 text-muted" style={{ fontSize: '0.65rem' }}>
+                    Format: JPG, PNG, WEBP.
                   </div>
                 </div>
 

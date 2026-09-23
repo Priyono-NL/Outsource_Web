@@ -121,7 +121,7 @@ const Datatable = ({
               <th>Nama</th>
               <th>Gender</th>
               <th>Sub Company</th>
-              <th>Department</th>
+              <th>Cost Center</th>
               <th>Card No.</th>
               <th>Type Worker</th>
               <th>Posisi</th>
