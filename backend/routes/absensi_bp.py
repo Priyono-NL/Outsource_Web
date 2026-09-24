@@ -135,9 +135,9 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
         return new_bac, True
 
 # =============================================================================
-# CORE SQL QUERY BUILDER (UNIFIED ATTENDANCE CTE + BAC INTEGRATION)
+# CORE SQL QUERY BUILDER (OPTIMIZED WITH DEPT RESOLUTION & SHIFT FILTERING)
 # =============================================================================
-def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', search='', sub_company_id='', department_id='', worker_type='all'):
+def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all'):
     where_clauses = ["1=1"]
     params = {}
 
@@ -160,6 +160,25 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
     elif status_filter in ('violation_all', 'tidak_lengkap'):
         where_clauses.append("(COALESCE(b.clock_in, ta.clock_in) IS NULL OR COALESCE(b.clock_out, ta.clock_out) IS NULL)")
 
+    # FILTER SHIFT KERJA
+    if shift_filter in ('SHIFT 1', 'SHIFT 2', 'SHIFT 3'):
+        eff_in_sql = "COALESCE(b.clock_in, ta.clock_in)"
+        is_sat_sql = "DAYOFWEEK(ta.clocking_date) = 7"
+        time_num_sql = f"(HOUR({eff_in_sql}) * 100 + MINUTE({eff_in_sql}))"
+
+        sat_s2 = f"({is_sat_sql} AND {time_num_sql} >= 1000 AND {time_num_sql} <= 1400)"
+        sat_s3 = f"({is_sat_sql} AND {time_num_sql} >= 1500 AND {time_num_sql} <= 1900)"
+
+        weekday_s2 = f"(NOT ({is_sat_sql}) AND {time_num_sql} >= 1300 AND {time_num_sql} <= 1700)"
+        weekday_s3 = f"(NOT ({is_sat_sql}) AND ({time_num_sql} >= 2000 OR {time_num_sql} < 400))"
+
+        if shift_filter == 'SHIFT 2':
+            where_clauses.append(f"({eff_in_sql} IS NOT NULL AND ({sat_s2} OR {weekday_s2}))")
+        elif shift_filter == 'SHIFT 3':
+            where_clauses.append(f"({eff_in_sql} IS NOT NULL AND ({sat_s3} OR {weekday_s3}))")
+        elif shift_filter == 'SHIFT 1':
+            where_clauses.append(f"({eff_in_sql} IS NULL OR (NOT ({sat_s2} OR {sat_s3} OR {weekday_s2} OR {weekday_s3})))")
+
     if search:
         where_clauses.append("(m.emp_code LIKE :search OR m.emp_name LIKE :search OR ta.card_id LIKE :search OR b.bac_no LIKE :search)")
         params['search'] = f"%{search}%"
@@ -171,9 +190,32 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
             where_clauses.append("m.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
 
+    # MULTI-LAYER DEPARTMENT RESOLUTION (FIX GHOST MISSING TETAP/KONTRAK)
     if department_id:
-        where_clauses.append("(m.dept_id = :dept_id OR m.dept_code = :dept_id)")
-        params['dept_id'] = department_id
+        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id OR org_name = :dept_id")
+        with db.engine.connect() as conn:
+            cc_res = conn.execute(sql_cc, {'dept_id': department_id}).fetchone()
+
+        if cc_res:
+            dept_cc_id = str(cc_res[0]).strip()     # Misal '12' (org_cc_id)
+            dept_cc_code = str(cc_res[1]).strip()   # Misal '10200' (cost_center code)
+            dept_cc_name = str(cc_res[2]).strip() if cc_res[2] else '' # Misal 'ACCOUNTING DEPARTMENT'
+
+            where_clauses.append("""(
+                m.dept_id = :dept_cc_id 
+                OR m.dept_code = :dept_cc_code 
+                OR m.dept_id = :dept_cc_code 
+                OR m.cc_name = :dept_cc_name 
+                OR m.dept_code = :dept_cc_id
+            )""")
+            params.update({
+                'dept_cc_id': dept_cc_id,
+                'dept_cc_code': dept_cc_code,
+                'dept_cc_name': dept_cc_name
+            })
+        else:
+            where_clauses.append("(m.dept_id = :dept_id OR m.dept_code = :dept_id OR m.cc_name = :dept_id)")
+            params['dept_id'] = department_id
 
     where_sql = " AND ".join(where_clauses)
 
@@ -181,12 +223,11 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
         WITH MasterEmp AS (
             -- 1. Master Karyawan Tetap (vw_master_karyawan)
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id,
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
                 CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_name,
                 '-' AS gender,
-                CONVERT(company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id,
-                CONVERT(company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_name,
+                'sub00003' AS sub_company_id,
+                'CRS' AS sub_company_name,
                 CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS dept_code,
                 CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS dept_id,
                 CONVERT(dept_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name,
@@ -198,7 +239,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
             
             -- 2. Master Karyawan Outsource (vw_master_os_active)
             SELECT 
-                CONVERT(CAST(emp_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id,
                 CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
                 CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_name,
                 CONVERT(COALESCE(gender, '-') USING utf8mb4) COLLATE utf8mb4_general_ci AS gender,
@@ -212,7 +252,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
             WHERE employee_code IS NOT NULL AND employee_code != ''
         ),
         UnifiedAttendance AS (
-            -- Transaksi asli dari TBL_ATTENDANCE (Schema db-webapps)
             SELECT 
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS employee_id,
                 CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
@@ -225,7 +264,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
             
             UNION ALL
             
-            -- Record BAC murni dari bac_os (Database Aktif DB_NAME)
             SELECT 
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS employee_id,
                 '' AS card_id,
@@ -283,9 +321,9 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', searc
             END AS status
         FROM MasterEmp m
         INNER JOIN AttendanceAgg ta 
-            ON (m.emp_id = ta.employee_id OR m.emp_code = ta.employee_id)
+            ON m.emp_code = ta.employee_id
         LEFT JOIN bac_os b 
-            ON (CAST(b.employee_id AS CHAR) = ta.employee_id OR CAST(b.employee_id AS CHAR) = m.emp_code)
+            ON CAST(b.employee_id AS CHAR) = ta.employee_id
            AND b.clock_date = ta.clocking_date 
            AND b.status = 1
         WHERE {where_sql}
@@ -305,6 +343,7 @@ def get_absensi():
         start_date = request.args.get('start_date', '', type=str).strip()
         end_date = request.args.get('end_date', '', type=str).strip()
         status_filter = request.args.get('status_filter', 'all_data', type=str).strip()
+        shift_filter = request.args.get('shift', '', type=str).strip().upper()
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
@@ -312,8 +351,8 @@ def get_absensi():
 
         sql_query, params = _build_absensi_raw_sql(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
-            search=search, sub_company_id=sub_company_id, department_id=department_id,
-            worker_type=worker_type
+            shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
+            department_id=department_id, worker_type=worker_type
         )
 
         with db.engine.connect() as conn:
@@ -407,6 +446,7 @@ def export_absensi():
         start_date = request.args.get('start_date', '', type=str).strip()
         end_date = request.args.get('end_date', '', type=str).strip()
         status_filter = request.args.get('status_filter', 'all_data', type=str).strip()
+        shift_filter = request.args.get('shift', '', type=str).strip().upper()
         search = request.args.get('search', '', type=str).strip()
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
@@ -414,8 +454,8 @@ def export_absensi():
 
         sql_query, params = _build_absensi_raw_sql(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
-            search=search, sub_company_id=sub_company_id, department_id=department_id,
-            worker_type=worker_type
+            shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
+            department_id=department_id, worker_type=worker_type
         )
 
         with db.engine.connect() as conn:

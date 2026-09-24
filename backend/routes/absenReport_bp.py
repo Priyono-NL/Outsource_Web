@@ -47,6 +47,11 @@ def _clean_cc(val):
     return s
 
 def _resolve_cc(terminal_cc_name, master_cc_name, use_cc):
+    """
+    Menentukan Tampilan Nama Cost Center:
+    - Jika use_cc == 1: Prioritaskan Master CC Name.
+    - Jika use_cc == 0: Prioritaskan Terminal Tapping CC Name, Fallback ke Master CC Name.
+    """
     t_cc = _clean_cc(terminal_cc_name)
     m_cc = _clean_cc(master_cc_name)
     
@@ -98,12 +103,24 @@ def _get_master_dictionaries():
     return os_map, ob_map
 
 def _fetch_daily_attendance(search_date, worker_type='all'):
-    # CTE INNER JOIN MASTER: OTOMATIS ELIMINASI GHOST RECORDS DI LEVEL MYSQL
+    # CTE INNER JOIN MASTER: MAPPING TETAP/KONTRAK KE CRS (sub00003) & ELIMINASI GHOST RECORDS
     sql = """
         WITH MasterEmp AS (
-            SELECT CONVERT(employee_id USING utf8mb4) AS emp_id FROM vw_master_karyawan WHERE employee_id IS NOT NULL AND employee_id != ''
-            UNION
-            SELECT CONVERT(employee_code USING utf8mb4) AS emp_id FROM vw_master_os_active WHERE employee_code IS NOT NULL AND employee_code != ''
+            SELECT 
+                CONVERT(employee_id USING utf8mb4) AS emp_id,
+                'sub00003' AS sub_company_id,
+                'CRS' AS sub_company_name
+            FROM vw_master_karyawan 
+            WHERE employee_id IS NOT NULL AND employee_id != ''
+            
+            UNION ALL
+            
+            SELECT 
+                CONVERT(employee_code USING utf8mb4) AS emp_id,
+                CONVERT(sub_company_id USING utf8mb4) AS sub_company_id,
+                CONVERT(sub_company_name USING utf8mb4) AS sub_company_name
+            FROM vw_master_os_active 
+            WHERE employee_code IS NOT NULL AND employee_code != ''
         )
         SELECT 
             ta.employee_id,
@@ -137,6 +154,7 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
 # BUSINESS LOGIC: REPORTING
 # =============================================================================
 def _get_aggregated_mp_cc(search_date):
+    """ Laporan 1: MP Per Cost Center """
     att_rows = _fetch_daily_attendance(search_date) if search_date else []
     os_map, ob_map = _get_master_dictionaries()
     
@@ -194,6 +212,7 @@ def determine_shift(clock_in_val, is_saturday):
         else: return 'SHIFT 1'
 
 def _get_aggregated_daily_shift(search_date):
+    """ Laporan 2: Summary Absensi Harian (Pivot Shift) """
     att_rows = _fetch_daily_attendance(search_date)
     os_map, ob_map = _get_master_dictionaries()
     
@@ -240,11 +259,14 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
+    # =========================================================================
+    # 1. RESOLUSI PASTI UNTUK TARGET COST CENTER (ID, KODE, & NAMA)
+    # =========================================================================
     target_dept_id = None
     target_cc_code = None
     target_cc_name = None
     if department_id:
-        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id")
+        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id OR org_name = :dept_id")
         with db.engine.connect() as conn:
             cc_res = conn.execute(sql_cc, {'dept_id': department_id}).fetchone()
         if cc_res:
@@ -319,15 +341,20 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
             
         info = os_map[emp_id]
         
+        # 1. Filter Text Pencarian
         if search_text:
             s_lower = search_text.lower()
             if s_lower not in emp_id.lower() and s_lower not in (info['display_name'] or '').lower():
                 continue
 
+        # 2. Filter Sub Company
         db_sub_com = _clean_cc(info.get('sub_company_id'))
         if allowed_sub_companies is not None and db_sub_com not in allowed_sub_companies:
             continue
 
+        # =========================================================================
+        # 3. EVALUASI COST CENTER DENGAN DUA LAPIS MATCHING
+        # =========================================================================
         use_cc_flag = int(info.get('use_cc', 0) or 0)
         master_cc_id = _clean_cc(info.get('cost_center_id'))
         master_cc_name = _clean_cc(info.get('cc_name'))
@@ -345,6 +372,7 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
                 if master_cc_id == target_cc_code or (master_cc_name and target_cc_name and master_cc_name == target_cc_name):
                     is_matched = True
             else:
+                # Prioritaskan pencocokan org_cc_id
                 if terminal_org_cc_id and terminal_org_cc_id == target_dept_id:
                     is_matched = True
                 elif not terminal_org_cc_id and (terminal_cc_id == target_cc_code or (terminal_cc_name and target_cc_name and terminal_cc_name == target_cc_name)):
