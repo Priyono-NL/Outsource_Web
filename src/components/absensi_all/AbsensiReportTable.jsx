@@ -10,6 +10,7 @@ const AbsensiReportTable = ({
     startDate, 
     endDate, 
     statusFilter,
+    shiftFilter, // DITAMBAHKAN: Menerima prop shiftFilter
     workerType 
 }) => { 
     
@@ -35,6 +36,7 @@ const AbsensiReportTable = ({
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
+                shift: shiftFilter || '', // DITAMBAHKAN: Disuntikkan ke parameter API Flask
                 worker_type: workerType || 'all' 
             }).toString();
 
@@ -56,15 +58,18 @@ const AbsensiReportTable = ({
         }
     };
 
+    // Reset ke Halaman 1 saat ada perubahan filter terapan
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter, workerType]);
+    }, [searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, workerType]);
     
+    // Trigger pemanggilan data
     useEffect(() => {
         if (!startDate || !endDate) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, workerType]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, workerType]);
 
+    // Helper Formatter Jam (HH:mm)
     const formatTime = (timeStr) => {
         if (!timeStr || timeStr === 'null' || timeStr === 'None' || timeStr === 'KOSONG') return null;
         if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
@@ -117,7 +122,6 @@ const AbsensiReportTable = ({
                     absensi.map((emp, index) => {
                         const isAnomaly = emp.is_anomaly === 1;
                         
-                        // PERBAIKAN BUG: Validasi BAC harus mengabaikan nilai '-'
                         const hasBAC = !!(
                             emp.bac_id || 
                             (emp.bac_no && emp.bac_no !== '-') || 
@@ -130,7 +134,7 @@ const AbsensiReportTable = ({
                         let isClockInFromBAC = false;
                         let isClockOutFromBAC = false;
 
-                        if (emp.bac_clock_in) {
+                        if (emp.bac_clock_in && emp.bac_clock_in !== 'null') {
                             displayClockIn = formatTime(emp.bac_clock_in);
                             isClockInFromBAC = true;
                         } else if (isAnomaly && emp.full_clock_in && emp.full_clock_in !== 'null') {
@@ -139,7 +143,7 @@ const AbsensiReportTable = ({
                             displayClockIn = formatTime(emp.clock_in);
                         }
 
-                        if (emp.bac_clock_out) {
+                        if (emp.bac_clock_out && emp.bac_clock_out !== 'null') {
                             displayClockOut = formatTime(emp.bac_clock_out);
                             isClockOutFromBAC = true;
                         } else if (isAnomaly && emp.full_clock_out && emp.full_clock_out !== 'null') {
@@ -150,7 +154,6 @@ const AbsensiReportTable = ({
 
                         let statusElement = null;
 
-                        // PERBAIKAN: Utamakan status resmi yang dikirim Backend
                         if (emp.status === 'BAC Found' || hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
