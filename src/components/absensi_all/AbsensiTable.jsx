@@ -37,7 +37,7 @@ const AbsensiTable = ({
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
-                shift: shiftFilter || '', // Disuntikkan ke backend Flask
+                shift: shiftFilter || '',
                 worker_type: 'os'
             }).toString();
 
@@ -69,7 +69,7 @@ const AbsensiTable = ({
     }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, isFilterApplied]);
 
     const formatTime = (timeStr) => {
-        if (!timeStr || timeStr === 'null' || timeStr === 'None') return null;
+        if (!timeStr || timeStr === 'null' || timeStr === 'None' || timeStr === 'KOSONG') return null;
         if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
         if (timeStr.includes(' ')) return timeStr.split(' ')[1].substring(0, 5);
         return timeStr.substring(0, 5);
@@ -120,14 +120,20 @@ const AbsensiTable = ({
                 ) : absensi.length > 0 ? (
                     absensi.map((emp, index) => {
                         const isAnomaly = emp.is_anomaly === 1;
-                        const hasBAC = !!(emp.bac_id || emp.bac_no || emp.bac_clock_in || emp.bac_clock_out);
+
+                        const hasBAC = !!(
+                            emp.bac_id || 
+                            (emp.bac_no && emp.bac_no !== '-') || 
+                            (emp.bac_clock_in && emp.bac_clock_in !== 'null') || 
+                            (emp.bac_clock_out && emp.bac_clock_out !== 'null')
+                        );
 
                         let displayClockIn = null;
                         let displayClockOut = null;
                         let isClockInFromBAC = false;
                         let isClockOutFromBAC = false;
 
-                        if (emp.bac_clock_in) {
+                        if (emp.bac_clock_in && emp.bac_clock_in !== 'null') {
                             displayClockIn = formatTime(emp.bac_clock_in);
                             isClockInFromBAC = true;
                         } else if (isAnomaly && emp.full_clock_in && emp.full_clock_in !== 'null') {
@@ -136,7 +142,7 @@ const AbsensiTable = ({
                             displayClockIn = formatTime(emp.clock_in);
                         }
 
-                        if (emp.bac_clock_out) {
+                        if (emp.bac_clock_out && emp.bac_clock_out !== 'null') {
                             displayClockOut = formatTime(emp.bac_clock_out);
                             isClockOutFromBAC = true;
                         } else if (isAnomaly && emp.full_clock_out && emp.full_clock_out !== 'null') {
@@ -145,11 +151,10 @@ const AbsensiTable = ({
                             displayClockOut = formatTime(emp.clock_out);
                         }
 
-                        const isViolation = !displayClockIn || !displayClockOut;
                         let statusElement = null;
                         let actionElement = null;
 
-                        if (hasBAC) {
+                        if (emp.status === 'BAC Found' || hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
                                     <i className="bi bi-shield-check me-1"></i> BAC Found
@@ -157,41 +162,27 @@ const AbsensiTable = ({
                             );                        
                             actionElement = (
                                 <button 
-                                    className="btn-app btn-warning-app" 
-                                    style={{ padding: '4px 8px', fontSize: '12px' }}
+                                    className="btn-app border text-primary bg-light" 
+                                    style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px' }}
                                     onClick={() => onEditClick(emp)}
-                                    title="Koreksi Data Absensi"
+                                    title="Lihat Detail BAC & Foto Bukti"
                                 >
-                                    <i className="bi bi-pencil-square me-1"></i> Koreksi
+                                    <i className="bi bi-eye me-1"></i> Lihat BAC
                                 </button>
                             );
-                        } else if (isAnomaly) {
-                            statusElement = (
-                                <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-exclamation-triangle-fill me-1"></i> Tidak Lengkap
-                                </span>
-                            );
-                            actionElement = (
-                                <button 
-                                    className="btn-app btn-warning-app" 
-                                    style={{ padding: '4px 8px', fontSize: '12px' }}
-                                    onClick={() => onEditClick(emp)}
-                                    title="Koreksi Data Absensi Tidak Lengkap"
-                                >
-                                    <i className="bi bi-pencil-square me-1"></i> Koreksi
-                                </button>
-                            );
-                        } else if (!isViolation) {
+
+                        } else if (emp.status === 'Lengkap') {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
                                     <i className="bi bi-check-circle-fill me-1"></i> Lengkap
                                 </span>
                             );
-                            actionElement = statusElement;
+                            actionElement = <span className="text-muted">-</span>;
+
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-x-circle-fill me-1"></i> BAC not found
+                                    <i className="bi bi-exclamation-triangle-fill me-1"></i> Tidak Lengkap
                                 </span>
                             );
                             actionElement = (

@@ -13,13 +13,6 @@ import AbsensiTable from '../components/absensi_all/AbsensiTable';
 import AbsensiForm from '../components/absensi_all/AbsensiForm';
 
 const Absensi = () => {
-  const getFirstDayOfMonth = () => {
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    return `${yyyy}-${mm}-01`;
-  };
-
   const getTodayString = () => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -46,7 +39,7 @@ const Absensi = () => {
   const [shiftFilter, setShiftFilter]           = useState('');
   const [subCompanyInput, setSubCompanyInput]   = useState('');
   const [departmentInput, setDepartmentInput]   = useState('');
-  const [startDate, setStartDate]               = useState(getFirstDayOfMonth());
+  const [startDate, setStartDate]               = useState(getTodayString());
   const [endDate, setEndDate]                   = useState(getTodayString());
 
   // --- STATE APPLIED FILTER (TERAPAN) ---
@@ -54,7 +47,7 @@ const Absensi = () => {
   const [appliedShiftFilter, setAppliedShiftFilter]   = useState('');
   const [appliedSubCompany, setAppliedSubCompany]     = useState('');
   const [appliedDepartment, setAppliedDepartment]     = useState('');
-  const [appliedStartDate, setAppliedStartDate]       = useState(getFirstDayOfMonth());
+  const [appliedStartDate, setAppliedStartDate]       = useState(getTodayString());
   const [appliedEndDate, setAppliedEndDate]           = useState(getTodayString());
 
   // --- FLAG FILTER STATES ---
@@ -128,7 +121,7 @@ const Absensi = () => {
     setShiftFilter('');
     setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
     setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
-    setStartDate(getFirstDayOfMonth());
+    setStartDate(getTodayString());
     setEndDate(getTodayString());
     crud.setSearchInput('');
 
@@ -136,7 +129,7 @@ const Absensi = () => {
     setAppliedShiftFilter('');
     if (!isSubCompanyRestricted) setAppliedSubCompany('');
     if (!isDeptRestricted) setAppliedDepartment('');
-    setAppliedStartDate(getFirstDayOfMonth());
+    setAppliedStartDate(getTodayString());
     setAppliedEndDate(getTodayString());
 
     setIsFilterApplied(false);

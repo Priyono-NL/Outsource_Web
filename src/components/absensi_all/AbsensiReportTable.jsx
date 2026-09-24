@@ -6,7 +6,7 @@ const AbsensiReportTable = ({
     refreshTrigger, 
     searchTerm, 
     subCompany, 
-    department, // PROPS BARU: Untuk filter Cost Center / Departemen
+    department,
     startDate, 
     endDate, 
     statusFilter,
@@ -31,7 +31,7 @@ const AbsensiReportTable = ({
                 pageSize: itemsPerPage,
                 search: searchTerm || '',
                 sub_company: subCompany || '',
-                department: department || '', // Disuntikkan ke query parameter API
+                department: department || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
@@ -56,20 +56,17 @@ const AbsensiReportTable = ({
         }
     };
 
-    // Reset ke Halaman 1 saat ada perubahan filter terapan
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, subCompany, department, startDate, endDate, statusFilter, workerType]);
     
-    // Trigger pemanggilan data
     useEffect(() => {
         if (!startDate || !endDate) return;
         fetchData();
     }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, workerType]);
 
-    // Helper Formatter Jam (HH:mm)
     const formatTime = (timeStr) => {
-        if (!timeStr || timeStr === 'null' || timeStr === 'None') return null;
+        if (!timeStr || timeStr === 'null' || timeStr === 'None' || timeStr === 'KOSONG') return null;
         if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
         if (timeStr.includes(' ')) return timeStr.split(' ')[1].substring(0, 5);
         return timeStr.substring(0, 5);
@@ -100,10 +97,9 @@ const AbsensiReportTable = ({
                 </tr>
             </thead>
             <tbody>
-                {/* 1. Kondisi jika parameter tanggal belum diisi */}
                 {(!startDate || !endDate) ? (
                     <tr>
-                        <td colSpan="14" className="empty-state text-center py-5 text-muted">
+                        <td colSpan="15" className="empty-state text-center py-5 text-muted">
                             <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
                             Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                         </td>
@@ -111,7 +107,7 @@ const AbsensiReportTable = ({
                 
                 ) : loading ? (
                     <tr>
-                        <td colSpan="14" className="text-center py-4 text-muted">
+                        <td colSpan="15" className="text-center py-4 text-muted">
                             <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                             Memuat data absensi...
                         </td>
@@ -120,7 +116,14 @@ const AbsensiReportTable = ({
                 ) : absensi.length > 0 ? (
                     absensi.map((emp, index) => {
                         const isAnomaly = emp.is_anomaly === 1;
-                        const hasBAC = !!(emp.bac_id || emp.bac_no || emp.bac_clock_in || emp.bac_clock_out);
+                        
+                        // PERBAIKAN BUG: Validasi BAC harus mengabaikan nilai '-'
+                        const hasBAC = !!(
+                            emp.bac_id || 
+                            (emp.bac_no && emp.bac_no !== '-') || 
+                            (emp.bac_clock_in && emp.bac_clock_in !== 'null') || 
+                            (emp.bac_clock_out && emp.bac_clock_out !== 'null')
+                        );
 
                         let displayClockIn = null;
                         let displayClockOut = null;
@@ -145,24 +148,17 @@ const AbsensiReportTable = ({
                             displayClockOut = formatTime(emp.clock_out);
                         }
 
-                        const isViolation = !displayClockIn || !displayClockOut;
                         let statusElement = null;
 
-                        if (hasBAC) {
+                        // PERBAIKAN: Utamakan status resmi yang dikirim Backend
+                        if (emp.status === 'BAC Found' || hasBAC) {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
                                     <i className="bi bi-shield-check me-1"></i>
                                     BAC Found
                                 </span>
                             );
-                        } else if (isAnomaly) {
-                            statusElement = (
-                                <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
-                                    Tidak Lengkap
-                                </span>
-                            );
-                        } else if (!isViolation) {
+                        } else if (emp.status === 'Lengkap') {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
                                     <i className="bi bi-check-circle-fill me-1"></i>
@@ -172,8 +168,8 @@ const AbsensiReportTable = ({
                         } else {
                             statusElement = (
                                 <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
-                                    <i className="bi bi-x-circle-fill me-1"></i>
-                                    BAC not found
+                                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                                    Tidak Lengkap
                                 </span>
                             );                            
                         }
@@ -224,7 +220,7 @@ const AbsensiReportTable = ({
                 
                 ) : (
                     <tr>
-                        <td colSpan="14" className="empty-state text-center py-4 text-muted">
+                        <td colSpan="15" className="empty-state text-center py-4 text-muted">
                             <i className="bi bi-inbox d-block mb-1 fs-4 text-secondary"></i>
                             Data absensi tidak ditemukan untuk filter tersebut.
                         </td>

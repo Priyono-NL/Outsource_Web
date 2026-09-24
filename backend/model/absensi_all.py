@@ -103,6 +103,7 @@ class Absensi_all(db.Model):
             "gender": gender,
             "subCom": subcom,
             "card": self.card_id,
+            "card_id": self.card_id,
             "cc": cc,
             "type": emp_type,
             "v_clocking_date": format_date_str(self.clocking_date, '%d %b %Y'),
@@ -110,7 +111,6 @@ class Absensi_all(db.Model):
             "clock_in": format_time_str(self.clock_in),
             "clock_out": format_time_str(self.clock_out),
             
-            # ---> DITAMBAHKAN KEMBALI AGAR REACT BISA MERENDER TIMESTAMP LENGKAP <---
             "full_clock_in": format_full_datetime(self.clock_in),
             "full_clock_out": format_full_datetime(self.clock_out),            
             "is_anomaly": self.flag_anomaly,
@@ -121,6 +121,8 @@ class Absensi_all(db.Model):
             "bac_clock_in": bac.clock_in.strftime('%Y-%m-%dT%H:%M') if (bac and bac.clock_in) else None,
             "bac_clock_out": bac.clock_out.strftime('%Y-%m-%dT%H:%M') if (bac and bac.clock_out) else None,
             "bac_status": bac.status if bac else None,
+            "bac_evidence": bac.evidence_photo if bac else '',
+            "evidence_photo": bac.evidence_photo if bac else '',
             "bac_updated_by": bac.created_by if bac else None,
             "bac_updated_date": bac.created_date.strftime('%d %b %Y') if (bac and bac.created_date) else None,
         }

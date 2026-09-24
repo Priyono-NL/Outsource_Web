@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import { componentRegistry } from './utils/menuConfig';
 import { AuthProvider, useAuth } from './utils/useAuth';
 import AbsensiVendor from './pages/AbsensiVendor';
+import PendingAccess from './pages/PendingAccess'; // 1. Import Halaman PendingAccess
 
 const EnvBanner = () => {
   const isDev = import.meta.env.MODE === 'development';
@@ -51,24 +52,41 @@ const MainLayout = () => {
     window.location.href = ssoPortalUrl;
   };
 
+  // =============================================================================
+  // DETEKSI PENDING ACCESS KETAT:
+  // User dianggap Pending jika BUKAN Superadmin/Vendor DAN (Role Kosong ATAU Menus Kosong)
+  // =============================================================================
+  const isSuperAdmin = role === 'superadmin' || user?.role_app === 'superadmin';
+  const isVendorApp  = role === 'vendor_app';
+  const hasNoMenus   = !user?.menus || user.menus.length === 0;
+
+  const isPendingAccess = 
+    !isSuperAdmin && 
+    !isVendorApp && 
+    (!role || role === 'Belum di-mapping' || role === 'pending' || hasNoMenus);
+
   return (
     <div id="app-shell">
 
       {role !== 'vendor_app' && (
         <header id="app-topbar">
-          <button
-            className="topbar-toggle"
-            onClick={() => setSidebarExpanded(v => !v)}
-            title="Toggle Sidebar"
-          >
-            <i className={`bi ${sidebarExpanded ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}`} />
-          </button>
+          {!isPendingAccess && (
+            <button
+              className="topbar-toggle"
+              onClick={() => setSidebarExpanded(v => !v)}
+              title="Toggle Sidebar"
+            >
+              <i className={`bi ${sidebarExpanded ? 'bi-layout-sidebar-inset' : 'bi-layout-sidebar'}`} />
+            </button>
+          )}
 
           <span className="topbar-brand">Manajemen OS</span>
 
           <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
             <div className="topbar-user-name">{user?.nama || user?.email || 'User'}</div>
-            <div className="topbar-user-role">{role || 'user'}</div>
+            <div className="topbar-user-role">
+              {isPendingAccess ? 'Belum di-mapping' : (role || 'user')}
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -94,7 +112,7 @@ const MainLayout = () => {
       <EnvBanner />
 
       <div id="app-body">        
-        {role !== 'vendor_app' && (
+        {role !== 'vendor_app' && !isPendingAccess && (
           <nav
             id="app-sidebar"
             style={{ width: sidebarExpanded ? 232 : 64 }}
@@ -102,11 +120,18 @@ const MainLayout = () => {
             <Sidebar isExpanded={sidebarExpanded} />
           </nav>
         )}
-        <main id="app-content">          
+
+        <main id="app-content" style={{ width: isPendingAccess ? '100%' : 'auto' }}>          
           {role === 'vendor_app' ? (
             <Routes>
               <Route path="/absenVendor" element={<AbsensiVendor />} />
               <Route path="*" element={<Navigate to="/absenVendor" replace />} />
+            </Routes>
+          ) : isPendingAccess ? (
+            /* DILOCK KE HALAMAN PENDING JIKA MENUS KOSONG */
+            <Routes>
+              <Route path="/pending" element={<PendingAccess />} />
+              <Route path="*" element={<Navigate to="/pending" replace />} />
             </Routes>
           ) : (
             <Routes>

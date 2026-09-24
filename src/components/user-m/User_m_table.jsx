@@ -8,16 +8,25 @@ const User_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
     const [error, setError] = useState(null); 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
-    const [totalPages, setTotalPages] = useState(0); 
+    const [totalPages, setTotalPages] = useState(1); 
 
     const fetchData = async () => {
         try {
             const response = await api.get(`/api/users/management?page=${currentPage}&pageSize=${itemsPerPage}&search=${searchTerm}`);
             const result = response.data;
+            
             if (result.success || result.status === 'success') { 
-                // Mendukung struktur data response dari endpoint backend
-                setUsers(result.data.users || result.data);
-                setTotalPages(result.total_page || result.data.total_page || 1);
+                // 1. Set data user
+                const userData = result.data?.users || (Array.isArray(result.data) ? result.data : []);
+                setUsers(userData);
+
+                // 2. PERBAIKAN: Tangkap total_page dari result.data.pagination
+                const totalPg = result.data?.pagination?.total_page 
+                             || result.total_page 
+                             || result.data?.total_page 
+                             || 1;
+                             
+                setTotalPages(totalPg);
             } else { 
                 throw new Error(result.message || 'Terjadi kesalahan pada data'); 
             }
@@ -104,13 +113,14 @@ const User_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="6" className="text-center py-3 text-muted">
+                                <td colSpan="5" className="text-center py-3 text-muted">
                                     Tidak ada data user yang ditemukan.
                                 </td>
                             </tr>
                         )}
                     </tbody>
                 </table>
+                
                 <PageNav 
                     currentPage={currentPage} 
                     totalPages={totalPages} 
