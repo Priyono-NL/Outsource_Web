@@ -3,6 +3,8 @@ from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
 from datetime import datetime, date
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 from extensions import db
 from model.subCompany import SubCompany
@@ -29,11 +31,35 @@ def teardown_request(exception=None):
 # REUSABLE HELPERS (DRY CORE)
 # =============================================================================
 
+def _format_period_string(start_str, end_str):
+    """
+    Format string periode tanggal agar rapi di file Excel.
+    Contoh: '25 Sep 2026' jika 1 hari, atau '25 Sep 2026 s/d 28 Sep 2026' jika rentang tanggal.
+    """
+    if not start_str and not end_str:
+        return "-"
+
+    def parse_and_format(date_val):
+        try:
+            dt = datetime.strptime(str(date_val).strip(), '%Y-%m-%d')
+            return dt.strftime('%d %b %Y')
+        except Exception:
+            return str(date_val)
+
+    formatted_start = parse_and_format(start_str)
+    formatted_end = parse_and_format(end_str)
+
+    if formatted_start == formatted_end:
+        return formatted_start
+    return f"{formatted_start} s/d {formatted_end}"
+
+
 def _get_hybrid_pattern():
     """Mengonversi array HYBRID_NODES menjadi pola REGEXP MySQL"""
     if not HYBRID_NODES:
         return "^$"  
     return "|".join(HYBRID_NODES)
+
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
     """Membangun filter WHERE clause dinamis (Sangat Cepat Berkat Normalisasi CTE)"""
@@ -148,15 +174,15 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         SELECT 
             k.emp_id, 
             k.display_name, 
-            k.cc_name,
+            k.cc_name, 
             k.card_number,
             COALESCE(c.clock_date, m.tanggal_makan) AS ref_date,
             c.raw_out_dt,
             m.raw_makan_dt,
             c.raw_in_dt,
-            IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y %H:%i')), '-') as waktu_out,
-            IF(m.raw_makan_time IS NOT NULL, UPPER(CONCAT(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y'), ' ', DATE_FORMAT(m.raw_makan_time, '%H:%i'))), '-') as waktu_makan,
-            IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y %H:%i')), '-') as waktu_in,
+            IF(c.raw_out_dt IS NOT NULL, DATE_FORMAT(c.raw_out_dt, '%H:%i'), '-') as waktu_out,
+            IF(m.raw_makan_time IS NOT NULL, DATE_FORMAT(m.raw_makan_time, '%H:%i'), '-') as waktu_makan,
+            IF(c.raw_in_dt IS NOT NULL, DATE_FORMAT(c.raw_in_dt, '%H:%i'), '-') as waktu_in,
             c.node_out,
             c.node_in
         FROM Karyawan k
@@ -266,8 +292,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         SELECT 
             k.emp_id, k.display_name, k.card_number, k.cc_name,
             c.clock_date,
-            IF(c.raw_in IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in, '%d-%b-%Y %H:%i')), '-') as waktu_in,
-            IF(c.raw_out IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out, '%d-%b-%Y %H:%i')), '-') as waktu_out,
+            IF(c.raw_in IS NOT NULL, DATE_FORMAT(c.raw_in, '%H:%i'), '-') as waktu_in,
+            IF(c.raw_out IS NOT NULL, DATE_FORMAT(c.raw_out, '%H:%i'), '-') as waktu_out,
             c.node_in, c.node_out
         FROM Karyawan k
         INNER JOIN ClockData c ON k.emp_id = c.emp_id
@@ -345,52 +371,153 @@ def exportBreak():
     try:
         start = request.args.get('start_date', '').strip()
         end = request.args.get('end_date', '').strip()
+        sub_comp = request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip()
+        dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
+        search = request.args.get('search', '').strip()
+        status_filter = request.args.get('status_filter', 'all_data').strip()
+
         report_data = _get_break_data(
             start, 
             end, 
-            request.args.get('sub_company', '').strip(), 
-            request.args.get('department', '').strip(),
-            request.args.get('search', '').strip(),
-            request.args.get('status_filter', 'all_data').strip()
+            sub_comp, 
+            dept,
+            search,
+            status_filter
         )
 
-        if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
+        if not report_data: 
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
         
+        # Ubah nama kolom agar bersih dan mudah dibaca di Excel
         df.rename(columns={
-            'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center', 'card_number': 'Absence Card No',
-            'waktu_out': 'Waktu OUT', 'node_out': 'Node OUT', 'waktu_makan': 'Waktu Makan', 
-            'waktu_in': 'Waktu IN', 'node_in': 'Node IN', 'total': 'Total Menit', 'status': 'Status'
+            'emp_id': 'Employee Id', 
+            'display_name': 'Display Name', 
+            'cc_name': 'Cost Center', 
+            'card_number': 'Absence Card No',
+            'waktu_out': 'Waktu OUT', 
+            'node_out': 'Node OUT', 
+            'waktu_makan': 'Waktu Makan', 
+            'waktu_in': 'Waktu IN', 
+            'node_in': 'Node IN', 
+            'total': 'Total Menit', 
+            'status': 'Status'
         }, inplace=True)
         
+        periode_text = _format_period_string(start, end)
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Break_Report')
+
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Tulis data mulai dari baris ke-4 (startrow=3, 0-indexed) agar ada ruang untuk header periode
+            df.to_excel(writer, index=False, sheet_name='Break_Report', startrow=3)
+            ws = writer.sheets['Break_Report']
+
+            # Baris 1: Judul Laporan
+            ws['A1'] = "LAPORAN LOG ISTIRAHAT KARYAWAN"
+            ws['A1'].font = Font(name='Calibri', size=13, bold=True, color='1F4E78')
+
+            # Baris 2: Periode Tanggal
+            ws['A2'] = f"Periode: {periode_text}"
+            ws['A2'].font = Font(name='Calibri', size=11, bold=True, italic=True)
+
+            # Format Header Tabel (Baris 4 di Excel)
+            header_fill = PatternFill(start_color="F2F4F7", end_color="F2F4F7", fill_type="solid")
+            header_font = Font(name='Calibri', size=11, bold=True)
+            for cell in ws[4]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(vertical="center")
+
+            # Penyesuaian lebar kolom otomatis (Auto-fit)
+            for col in ws.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                # Evaluasi panjang karakter mulai dari baris header tabel (baris 4 ke bawah)
+                for cell in col[3:]:
+                    val_str = str(cell.value or '')
+                    if len(val_str) > max_len:
+                        max_len = len(val_str)
+                ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
+
         output.seek(0)
         
-        return send_file(output, as_attachment=True, download_name=f"Employee_Break_Report_{start}_to_{end}.xlsx")
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+        file_name = f"Employee_Break_Report_{start}.xlsx" if start == end else f"Employee_Break_Report_{start}_to_{end}.xlsx"
+        return send_file(output, as_attachment=True, download_name=file_name)
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @AbsenBreak_bp.route('/exportAccess')
 def exportAccess():
     try:
         start = request.args.get('start_date', '').strip()
         end = request.args.get('end_date', '').strip()
-        report_data = _get_access_data(start, end, request.args.get('sub_company', '').strip(), request.args.get('department', '').strip())
+        sub_comp = request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip()
+        dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
+        search = request.args.get('search', '').strip()
 
-        if not report_data: return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
+        report_data = _get_access_data(
+            start, 
+            end, 
+            sub_comp, 
+            dept,
+            search
+        )
+
+        if not report_data: 
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
         
+        # Ubah nama kolom agar bersih dan rapi
         df.rename(columns={
-            'emp_id': 'Employee Id', 'display_name': 'Display Name', 'cc_name': 'Cost Center',
-            'card_number': 'Absence Card No', 'waktu_in': 'Waktu IN', 'node_in': 'Node IN', 
-            'waktu_out': 'Waktu OUT', 'node_out': 'Node OUT'
+            'emp_id': 'Employee Id', 
+            'display_name': 'Display Name', 
+            'cc_name': 'Cost Center',
+            'card_number': 'Absence Card No', 
+            'waktu_in': 'Waktu IN', 
+            'node_in': 'Node IN', 
+            'waktu_out': 'Waktu OUT', 
+            'node_out': 'Node OUT'
         }, inplace=True)
         
+        periode_text = _format_period_string(start, end)
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Access_Report')
+
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Tulis data mulai dari baris ke-4 (startrow=3)
+            df.to_excel(writer, index=False, sheet_name='Access_Report', startrow=3)
+            ws = writer.sheets['Access_Report']
+
+            # Baris 1: Judul Laporan
+            ws['A1'] = "LAPORAN AKSES / CLOCKING KARYAWAN"
+            ws['A1'].font = Font(name='Calibri', size=13, bold=True, color='1F4E78')
+
+            # Baris 2: Periode Tanggal
+            ws['A2'] = f"Periode: {periode_text}"
+            ws['A2'].font = Font(name='Calibri', size=11, bold=True, italic=True)
+
+            # Format Header Tabel (Baris 4 di Excel)
+            header_fill = PatternFill(start_color="F2F4F7", end_color="F2F4F7", fill_type="solid")
+            header_font = Font(name='Calibri', size=11, bold=True)
+            for cell in ws[4]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(vertical="center")
+
+            # Penyesuaian lebar kolom otomatis (Auto-fit)
+            for col in ws.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col[3:]:
+                    val_str = str(cell.value or '')
+                    if len(val_str) > max_len:
+                        max_len = len(val_str)
+                ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
+
         output.seek(0)
         
-        return send_file(output, as_attachment=True, download_name=f"Access_Clocking_Report_{start}_to_{end}.xlsx")
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+        file_name = f"Access_Clocking_Report_{start}.xlsx" if start == end else f"Access_Clocking_Report_{start}_to_{end}.xlsx"
+        return send_file(output, as_attachment=True, download_name=file_name)
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500

@@ -68,13 +68,79 @@ const MpEmp_Table = ({
         fetchData();
     }, [refreshTrigger, searchTerm, subCompany, department, startDate, endDate, currentPage]);
 
+    const formatDisplayDate = (dateStr) => {
+        if (!dateStr) return '-';
+        const dateObj = new Date(dateStr);
+        if (isNaN(dateObj.getTime())) return dateStr;
+
+        return dateObj.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        });
+    };
+
+    const renderDateRange = () => {
+        if (!startDate || !endDate) {
+            return (
+                <span className="text-muted fst-italic">
+                    <i className="bi bi-calendar-x me-1.5 text-warning"></i>
+                    Periode belum dipilih
+                </span>
+            );
+        }
+
+        const startFormatted = formatDisplayDate(startDate);
+        const endFormatted = formatDisplayDate(endDate);
+
+        if (startDate === endDate) {
+            return (
+                <span className="d-inline-flex align-items-center text-secondary">
+                    <i className="bi bi-calendar3 me-2 text-primary"></i>
+                    <span className="fw-semibold me-2">Periode:</span>
+                    <span className="badge bg-white text-dark border px-2.5 py-1.5 fw-medium shadow-sm">
+                        {startFormatted}
+                    </span>
+                </span>
+            );
+        }
+
+        return (
+            <span className="d-inline-flex align-items-center text-secondary">
+                <i className="bi bi-calendar3 me-2 text-primary"></i>
+                <span className="fw-semibold me-2">Periode:</span>
+                <span className="badge bg-white text-dark border px-2 py-1 fw-medium shadow-sm">
+                    {startFormatted}
+                </span>
+                <i className="bi bi-arrow-right mx-1.5 text-muted small"></i>
+                <span className="badge bg-white text-dark border px-2 py-1 fw-medium shadow-sm">
+                    {endFormatted}
+                </span>
+            </span>
+        );
+    };
+
     return (
         <>
             {error && (
                 <div className="alert alert-danger py-2 mb-2" style={{ fontSize: '0.85rem' }}>
                     <i className="bi bi-exclamation-triangle-fill me-2"></i>{error}
                 </div>
-            )}        
+            )} 
+
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 p-2 px-3 mb-3 bg-light bg-opacity-50 border rounded-3">
+                <div className="d-flex align-items-center">
+                    {renderDateRange()}
+                </div>
+                {totalItem > 0 && (
+                    <div className="d-flex align-items-center">
+                        <span className="badge rounded-pill bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-1.5 fw-semibold">
+                            <i className="bi bi-people-fill me-1.5"></i>
+                            {totalItem.toLocaleString('id-ID')} Data
+                        </span>
+                    </div>
+                )}
+            </div>       
 
             <div className="table-responsive">
                 <table className="app-table table-hover table-striped mb-3">
