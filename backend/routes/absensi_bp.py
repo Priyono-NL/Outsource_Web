@@ -184,29 +184,40 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         params['search'] = f"%{search}%"
 
     if sub_company_id:
-        if sub_company_id == 'TYPE_OS': where_clauses.append("m.emp_type = 'OS'")
-        elif sub_company_id == 'TYPE_VENDOR': where_clauses.append("m.emp_type = 'Vendor'")
+        if sub_company_id == 'TYPE_OS': 
+            where_clauses.append("m.emp_type = 'OS'")
+        elif sub_company_id == 'TYPE_VENDOR': 
+            where_clauses.append("m.emp_type = 'Vendor'")
         else:
-            where_clauses.append("m.sub_company_id = :sub_company_id")
+            where_clauses.append("(m.sub_company_id = :sub_company_id OR m.sub_company_name = :sub_company_id)")
             params['sub_company_id'] = sub_company_id
 
-    # MULTI-LAYER DEPARTMENT RESOLUTION (FIX GHOST MISSING TETAP/KONTRAK)
+    # EVALUASI FILTER DEPARTMENT BERBASIS FLAG use_cc
     if department_id:
         sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id OR org_name = :dept_id")
         with db.engine.connect() as conn:
             cc_res = conn.execute(sql_cc, {'dept_id': department_id}).fetchone()
 
         if cc_res:
-            dept_cc_id = str(cc_res[0]).strip()     # Misal '12' (org_cc_id)
-            dept_cc_code = str(cc_res[1]).strip()   # Misal '10200' (cost_center code)
-            dept_cc_name = str(cc_res[2]).strip() if cc_res[2] else '' # Misal 'ACCOUNTING DEPARTMENT'
+            dept_cc_id = str(cc_res[0]).strip()
+            dept_cc_code = str(cc_res[1]).strip()
+            dept_cc_name = str(cc_res[2]).strip() if cc_res[2] else ''
 
             where_clauses.append("""(
-                m.dept_id = :dept_cc_id 
-                OR m.dept_code = :dept_cc_code 
-                OR m.dept_id = :dept_cc_code 
-                OR m.cc_name = :dept_cc_name 
-                OR m.dept_code = :dept_cc_id
+                (m.use_cc = 1 AND (
+                    m.dept_id = :dept_cc_id 
+                    OR m.dept_code = :dept_cc_code 
+                    OR m.cc_name = :dept_cc_name
+                ))
+                OR
+                (m.use_cc = 0 AND (
+                    CAST(COALESCE(tm_in.org_cc_id, tm_out.org_cc_id, occ.id) AS CHAR) = :dept_cc_id
+                    OR CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR) = :dept_cc_code
+                    OR occ.org_name = :dept_cc_name
+                    OR (tm_in.id IS NULL AND tm_out.id IS NULL AND (
+                        m.dept_id = :dept_cc_id OR m.dept_code = :dept_cc_code OR m.cc_name = :dept_cc_name
+                    ))
+                ))
             )""")
             params.update({
                 'dept_cc_id': dept_cc_id,
@@ -214,42 +225,70 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 'dept_cc_name': dept_cc_name
             })
         else:
-            where_clauses.append("(m.dept_id = :dept_id OR m.dept_code = :dept_id OR m.cc_name = :dept_id)")
+            where_clauses.append("""(
+                (m.use_cc = 1 AND (m.dept_id = :dept_id OR m.dept_code = :dept_id OR m.cc_name = :dept_id))
+                OR
+                (m.use_cc = 0 AND (
+                    CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR) = :dept_id
+                    OR occ.org_name = :dept_id
+                    OR (m.dept_id = :dept_id OR m.dept_code = :dept_id OR m.cc_name = :dept_id)
+                ))
+            )""")
             params['dept_id'] = department_id
 
     where_sql = " AND ".join(where_clauses)
 
     sql_query = f"""
         WITH MasterEmp AS (
-            -- 1. Master Karyawan Tetap (vw_master_karyawan)
+            -- 1. Master Karyawan Tetap (vw_master_karyawan) -> use_cc = 1 (selalu True)
             SELECT 
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
-                CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_name,
+                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_name,
                 '-' AS gender,
                 'sub00003' AS sub_company_id,
                 'CRS' AS sub_company_name,
-                CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS dept_code,
-                CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS dept_id,
-                CONVERT(dept_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name,
-                'TETAP/KONTRAK' AS emp_type
+                MAX(CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_code,
+                MAX(CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_id,
+                MAX(CONVERT(dept_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name,
+                'TETAP/KONTRAK' AS emp_type,
+                1 AS use_cc
             FROM vw_master_karyawan
             WHERE employee_id IS NOT NULL AND employee_id != ''
+            GROUP BY employee_id
             
             UNION ALL
             
-            -- 2. Master Karyawan Outsource (vw_master_os_active)
+            -- 2. Master Karyawan Outsource (vw_master_os_active) -> use_cc dari database
             SELECT 
                 CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
-                CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_name,
-                CONVERT(COALESCE(gender, '-') USING utf8mb4) COLLATE utf8mb4_general_ci AS gender,
-                CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id,
-                CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_name,
-                CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS dept_code,
-                CONVERT(CAST(org_cc_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS dept_id,
-                CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name,
-                CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_type
+                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_name,
+                MAX(CONVERT(COALESCE(gender, '-') USING utf8mb4) COLLATE utf8mb4_general_ci) AS gender,
+                MAX(CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_id,
+                MAX(CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_name,
+                MAX(CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_code,
+                MAX(CONVERT(CAST(org_cc_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_id,
+                MAX(CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name,
+                MAX(CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_type,
+                MAX(COALESCE(use_cc, 0)) AS use_cc
             FROM vw_master_os_active
             WHERE employee_code IS NOT NULL AND employee_code != ''
+            GROUP BY employee_code
+        ),
+        BacAgg AS (
+            SELECT 
+                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS employee_id,
+                clock_date,
+                MAX(id) AS id,
+                MAX(bac_no) AS bac_no,
+                MAX(bac_ket) AS bac_ket,
+                MAX(clock_in) AS clock_in,
+                MAX(clock_out) AS clock_out,
+                MAX(evidence_photo) AS evidence_photo,
+                MAX(created_by) AS created_by,
+                MAX(created_date) AS created_date
+            FROM bac_os
+            WHERE status = 1
+            GROUP BY employee_id, clock_date
         ),
         UnifiedAttendance AS (
             SELECT 
@@ -265,14 +304,13 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             UNION ALL
             
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS employee_id,
+                employee_id,
                 '' AS card_id,
                 clock_date AS clocking_date,
                 NULL AS clock_in,
                 NULL AS clock_out,
                 0 AS flag
-            FROM bac_os
-            WHERE status = 1
+            FROM BacAgg
         ),
         AttendanceAgg AS (
             SELECT 
@@ -292,7 +330,13 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             m.gender AS gender,
             COALESCE(m.sub_company_name, '-') AS subCom,
             COALESCE(ta.card_id, '-') AS card,
-            COALESCE(m.cc_name, '-') AS cc,
+            
+            -- LOGIKA COST CENTER DINAMIS SESUAI FLAG use_cc
+            CASE 
+                WHEN m.use_cc = 1 THEN COALESCE(m.cc_name, '-')
+                ELSE COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center, m.cc_name, '-')
+            END AS cc,
+            
             m.emp_type AS type,
             DATE_FORMAT(ta.clocking_date, '%d %b %Y') AS v_clocking_date,
             DATE_FORMAT(ta.clocking_date, '%Y-%m-%d') AS clocking_date,
@@ -322,10 +366,20 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         FROM MasterEmp m
         INNER JOIN AttendanceAgg ta 
             ON m.emp_code = ta.employee_id
-        LEFT JOIN bac_os b 
-            ON CAST(b.employee_id AS CHAR) = ta.employee_id
-           AND b.clock_date = ta.clocking_date 
-           AND b.status = 1
+        LEFT JOIN BacAgg b 
+            ON b.employee_id = ta.employee_id
+           AND b.clock_date = ta.clocking_date
+        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
+            ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
+        LEFT JOIN terminal_master tm_in 
+            ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
+            ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
+        LEFT JOIN terminal_master tm_out 
+            ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+        LEFT JOIN org_cost_center occ 
+            ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) 
+            OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
         WHERE {where_sql}
         ORDER BY ta.clocking_date DESC, m.emp_code ASC
     """
