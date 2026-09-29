@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import api from '../../api/api';
+import { Toast } from '../../utils/sweetalert';
 import PageNav from '../PageNav';
 
 const AbsensiTable = ({ 
@@ -73,6 +75,56 @@ const AbsensiTable = ({
         if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
         if (timeStr.includes(' ')) return timeStr.split(' ')[1].substring(0, 5);
         return timeStr.substring(0, 5);
+    };
+
+    const handleDeleteClick = (emp) => {
+        const empCode = emp.employee_code || emp.employee_id;
+        const empName = emp.employee_name || '-';
+        const clockDate = emp.clocking_date;
+
+        Swal.fire({
+            title: 'Hapus Data Absensi?',
+            html: `Apakah Anda yakin ingin menghapus absensi <b>${empName} (${empCode})</b> pada tanggal <b>${emp.v_clocking_date || clockDate}</b>?`,
+            icon: 'warning',
+            input: 'textarea',
+            inputPlaceholder: 'Tuliskan alasan penghapusan di sini (Wajib)...',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return 'Alasan penghapusan wajib diisi!';
+                }
+            },
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Ya, Hapus',
+            cancelButtonText: 'Batal',
+            reverseButtons: true
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await api.post('/absensi/delete', {
+                        employee_id: empCode,
+                        clock_date: clockDate,
+                        reason: result.value.trim()
+                    });
+
+                    if (response.data.status === 'success') {
+                        Toast.fire({
+                            icon: 'success',
+                            title: response.data.message || 'Data absensi berhasil dihapus.'
+                        });
+                        fetchData(); // Reload table instan tanpa refresh halaman
+                    } else {
+                        throw new Error(response.data.message || 'Gagal menghapus data absensi');
+                    }
+                } catch (err) {
+                    Toast.fire({
+                        icon: 'error',
+                        title: err.response?.data?.message || err.message || 'Gagal menghapus data absensi'
+                    });
+                }
+            }
+        });
     };
 
     return (
@@ -177,7 +229,7 @@ const AbsensiTable = ({
                                     <i className="bi bi-check-circle-fill me-1"></i> Lengkap
                                 </span>
                             );
-                            actionElement = <span className="text-muted">-</span>;
+                            actionElement = null;
 
                         } else {
                             statusElement = (
@@ -193,7 +245,7 @@ const AbsensiTable = ({
                                     title="Koreksi Data Absensi"
                                 >
                                     <i className="bi bi-pencil-square me-1"></i> Koreksi
-                                </button>
+                                </button> 
                             );
                         }
 
@@ -238,8 +290,18 @@ const AbsensiTable = ({
                                 <td>{emp.bac_updated_by || '-'}</td>
                                 <td>{emp.bac_updated_date || '-'}</td>
 
-                                <td style={{ textAlign: 'center' }}>
-                                    {actionElement}
+                                <td>
+                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+                                        {actionElement}
+                                        <button 
+                                            className="btn-app btn-danger-app" 
+                                            style={{ padding: '4px 8px', fontSize: '12px' }}
+                                            onClick={() => handleDeleteClick(emp)}
+                                            title="Hapus Data Absensi"
+                                        >
+                                            <i className="bi bi-trash"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         );

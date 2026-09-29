@@ -151,33 +151,6 @@ const Absensi = () => {
     crud.handleClose();
   };
 
-  const handleExport = async () => {
-    if (isFilterDirty) {
-      Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengeksport data.' });
-      return;
-    }
-
-    setIsExporting(true);
-    try {
-      const params = new URLSearchParams({
-        search: crud.appliedSearch || '',
-        sub_company: appliedSubCompany || '',
-        department: appliedDepartment || '',
-        start_date: appliedStartDate || '',
-        end_date: appliedEndDate || '',
-        status_filter: appliedStatusFilter || 'all_data',
-        shift: appliedShiftFilter || ''
-      }).toString();
-
-      const res = await api.get(`/absensi/export?${params}`, { responseType: 'blob' });
-      saveAs(res.data, `Absensi_OS_Filtered_${appliedStartDate}_to_${appliedEndDate}.xlsx`);
-    } catch {
-      Toast.fire({ icon: 'error', title: 'Gagal mengunduh file Excel' });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   const handleDownloadTemplate = async () => {
     if (isFilterDirty) {
       Toast.fire({ icon: 'warning', title: 'Terapkan filter yang baru diubah sebelum mengunduh template.' });

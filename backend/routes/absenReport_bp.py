@@ -47,11 +47,6 @@ def _clean_cc(val):
     return s
 
 def _resolve_cc(terminal_cc_name, master_cc_name, use_cc):
-    """
-    Menentukan Tampilan Nama Cost Center:
-    - Jika use_cc == 1: Prioritaskan Master CC Name.
-    - Jika use_cc == 0: Prioritaskan Terminal Tapping CC Name, Fallback ke Master CC Name.
-    """
     t_cc = _clean_cc(terminal_cc_name)
     m_cc = _clean_cc(master_cc_name)
     
@@ -103,7 +98,7 @@ def _get_master_dictionaries():
     return os_map, ob_map
 
 def _fetch_daily_attendance(search_date, worker_type='all'):
-    # CTE INNER JOIN MASTER: MAPPING TETAP/KONTRAK KE CRS (sub00003) & ELIMINASI GHOST RECORDS
+    # ANTI-JOIN: LEFT JOIN attendance_exclusions & WHERE ex.id IS NULL
     sql = """
         WITH MasterEmp AS (
             SELECT 
@@ -130,6 +125,10 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
             
         FROM `db-webapps`.TBL_ATTENDANCE ta
         INNER JOIN MasterEmp m ON (CAST(ta.employee_id AS CHAR) = m.emp_id)
+        LEFT JOIN attendance_exclusions ex 
+            ON CAST(ex.employee_id AS CHAR) = CAST(ta.employee_id AS CHAR)
+           AND ex.clocking_date = ta.clocking_date
+           AND ex.status = 1
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
         LEFT JOIN terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
@@ -139,6 +138,7 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
         WHERE ta.clocking_date = :search_date
           AND ta.employee_id IS NOT NULL 
           AND ta.card_id != '00000.00000'
+          AND ex.id IS NULL
     """
     if worker_type == 'os':
         sql += " AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8 "
@@ -154,7 +154,6 @@ def _fetch_daily_attendance(search_date, worker_type='all'):
 # BUSINESS LOGIC: REPORTING
 # =============================================================================
 def _get_aggregated_mp_cc(search_date):
-    """ Laporan 1: MP Per Cost Center """
     att_rows = _fetch_daily_attendance(search_date) if search_date else []
     os_map, ob_map = _get_master_dictionaries()
     
@@ -212,7 +211,6 @@ def determine_shift(clock_in_val, is_saturday):
         else: return 'SHIFT 1'
 
 def _get_aggregated_daily_shift(search_date):
-    """ Laporan 2: Summary Absensi Harian (Pivot Shift) """
     att_rows = _fetch_daily_attendance(search_date)
     os_map, ob_map = _get_master_dictionaries()
     
@@ -259,9 +257,6 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
-    # =========================================================================
-    # 1. RESOLUSI PASTI UNTUK TARGET COST CENTER (ID, KODE, & NAMA)
-    # =========================================================================
     target_dept_id = None
     target_cc_code = None
     target_cc_name = None
@@ -277,7 +272,7 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
             target_dept_id = str(department_id).strip()
             target_cc_code = str(department_id).strip()
 
-    # INNER JOIN KETAT DENGAN MASTER OS
+    # ANTI-JOIN INTEGRATION ON MANPOWER PER EMPLOYEE QUERY
     sql_attendance = """
         SELECT 
             daily.employee_id, 
@@ -294,6 +289,10 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
                 MIN(CAST(COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) AS CHAR)) AS terminal_org_cc_id
             FROM `db-webapps`.TBL_ATTENDANCE ta
             INNER JOIN vw_master_os_active os ON (CAST(ta.employee_id AS CHAR) = os.employee_code OR CAST(ta.employee_id AS CHAR) = CAST(os.emp_id AS CHAR))
+            LEFT JOIN attendance_exclusions ex 
+                ON CAST(ex.employee_id AS CHAR) = CAST(ta.employee_id AS CHAR)
+               AND ex.clocking_date = ta.clocking_date
+               AND ex.status = 1
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
             LEFT JOIN terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
             LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
@@ -304,6 +303,7 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
               AND ta.employee_id IS NOT NULL 
               AND ta.card_id != '00000.00000'
               AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8
+              AND ex.id IS NULL
             GROUP BY ta.employee_id, ta.clocking_date
         ) daily
         GROUP BY daily.employee_id
@@ -341,20 +341,15 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
             
         info = os_map[emp_id]
         
-        # 1. Filter Text Pencarian
         if search_text:
             s_lower = search_text.lower()
             if s_lower not in emp_id.lower() and s_lower not in (info['display_name'] or '').lower():
                 continue
 
-        # 2. Filter Sub Company
         db_sub_com = _clean_cc(info.get('sub_company_id'))
         if allowed_sub_companies is not None and db_sub_com not in allowed_sub_companies:
             continue
 
-        # =========================================================================
-        # 3. EVALUASI COST CENTER DENGAN DUA LAPIS MATCHING
-        # =========================================================================
         use_cc_flag = int(info.get('use_cc', 0) or 0)
         master_cc_id = _clean_cc(info.get('cost_center_id'))
         master_cc_name = _clean_cc(info.get('cc_name'))
@@ -372,7 +367,6 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
                 if master_cc_id == target_cc_code or (master_cc_name and target_cc_name and master_cc_name == target_cc_name):
                     is_matched = True
             else:
-                # Prioritaskan pencocokan org_cc_id
                 if terminal_org_cc_id and terminal_org_cc_id == target_dept_id:
                     is_matched = True
                 elif not terminal_org_cc_id and (terminal_cc_id == target_cc_code or (terminal_cc_name and target_cc_name and terminal_cc_name == target_cc_name)):

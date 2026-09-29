@@ -5,6 +5,7 @@ import pandas as pd
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
 from PIL import Image, ImageOps
+from openpyxl.styles import Font
 
 from extensions import db
 from model.bac_os import BAC_os
@@ -14,10 +15,6 @@ AbsenOs_bp = Blueprint('AbsenOs_bp', __name__)
 BAC_EVIDENCE_FOLDER = 'static/uploads/bac_evidence'
 if not os.path.exists(BAC_EVIDENCE_FOLDER):
     os.makedirs(BAC_EVIDENCE_FOLDER)
-
-# =============================================================================
-# GARANSI PENUTUPAN KONEKSI DATABASE GLOBAL (ZERO-ZOMBIE POLICY)
-# =============================================================================
 @AbsenOs_bp.teardown_request
 def teardown_request(exception=None):
     try:
@@ -25,9 +22,7 @@ def teardown_request(exception=None):
     except Exception:
         pass
 
-# =============================================================================
 # REUSABLE HELPERS & SHIFT DETERMINER
-# =============================================================================
 def clean_str(val):
     if val is None or pd.isna(val):
         return None
@@ -130,15 +125,13 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
             employee_id=employee_id, bac_no=bac_no, bac_ket=bac_ket,
             clock_date=clock_date, clock_in=clock_in, clock_out=clock_out,
             evidence_photo=evidence_photo, status=1
-        )
+            )
         db.session.add(new_bac)
         return new_bac, True
 
-# =============================================================================
-# CORE SQL QUERY BUILDER (OPTIMIZED WITH DEPT RESOLUTION & SHIFT FILTERING)
-# =============================================================================
+# CORE SQL QUERY BUILDER (OPTIMIZED WITH EXCLUSION FILTER & DEPT RESOLUTION)
 def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all'):
-    where_clauses = ["1=1"]
+    where_clauses = ["1=1", "ex.id IS NULL"]
     params = {}
 
     if start_date:
@@ -331,7 +324,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             COALESCE(m.sub_company_name, '-') AS subCom,
             COALESCE(ta.card_id, '-') AS card,
             
-            -- LOGIKA COST CENTER DINAMIS SESUAI FLAG use_cc
             CASE 
                 WHEN m.use_cc = 1 THEN COALESCE(m.cc_name, '-')
                 ELSE COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center, m.cc_name, '-')
@@ -366,9 +358,13 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         FROM MasterEmp m
         INNER JOIN AttendanceAgg ta 
             ON m.emp_code = ta.employee_id
+        LEFT JOIN attendance_exclusions ex
+            ON ex.employee_id = ta.employee_id
+        AND ex.clocking_date = ta.clocking_date
+        AND ex.status = 1
         LEFT JOIN BacAgg b 
             ON b.employee_id = ta.employee_id
-           AND b.clock_date = ta.clocking_date
+        AND b.clock_date = ta.clocking_date
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
             ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
         LEFT JOIN terminal_master tm_in 
@@ -385,15 +381,13 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
     """
     return sql_query, params
 
-# =============================================================================
-# 1. GET LIST ABSENSI (FAST API - SLA < 1 DETIK)
-# =============================================================================
+# 1. GET LIST ABSENSI
 @AbsenOs_bp.route('/absensi', methods=['GET'])
 def get_absensi():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 20, type=int)
-
+        
         start_date = request.args.get('start_date', '', type=str).strip()
         end_date = request.args.get('end_date', '', type=str).strip()
         status_filter = request.args.get('status_filter', 'all_data', type=str).strip()
@@ -408,7 +402,6 @@ def get_absensi():
             shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
             department_id=department_id, worker_type=worker_type
         )
-
         with db.engine.connect() as conn:
             all_rows = conn.execute(text(sql_query), params).mappings().fetchall()
 
@@ -416,11 +409,9 @@ def get_absensi():
         start_idx = (page - 1) * pageSize
         end_idx = start_idx + pageSize
         paged_rows = [dict(r) for r in all_rows[start_idx:end_idx]]
-
         for r in paged_rows:
             eff_in = r.get('bac_clock_in') or r.get('full_clock_in') or r.get('clock_in')
             r['shift'] = determine_shift(eff_in, r.get('clocking_date'))
-
         return jsonify({
             "status": "success",
             "data": paged_rows,
@@ -428,20 +419,18 @@ def get_absensi():
             "current_page": page,
             "total_item": total_item
         }), 200
-
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# =============================================================================
 # 2. GET DETAIL BAC TUNGGAL
-# =============================================================================
-@AbsenOs_bp.route('/absensi/bac/<int:employee_id>/<string:clock_date>', methods=['GET'])
+@AbsenOs_bp.route('/absensi/bac//', methods=['GET'])
 def get_bac(employee_id, clock_date):
     try:
         extra_info = BAC_os.query.filter_by(employee_id=employee_id, clock_date=clock_date).first()
+
         if not extra_info:
             return jsonify({"clock_in": "", "clock_out": "", "bac_no": "", "bac_ket": "", "evidence_photo": ""}), 200
-
+        
         return jsonify({
             "clock_in": format_dt(extra_info.clock_in, iso=True),
             "clock_out": format_dt(extra_info.clock_out, iso=True),
@@ -452,19 +441,17 @@ def get_bac(employee_id, clock_date):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# =============================================================================
 # 3. SAVE / UPDATE BAC TUNGGAL
-# =============================================================================
 @AbsenOs_bp.route('/absensi/bac', methods=['PUT', 'POST'])
 def update_bac():
     try:
         data = request.form if request.form else (request.json or {})
         emp_id = str(data.get('employee_id') or '').strip()
-        clock_date = data.get('clock_date')
+        clock_date = data.get('clock_date')  
 
         if not emp_id or not clock_date:
             return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
-
+        
         evidence_path = None
         if 'evidence_photo' in request.files:
             file_storage = request.files['evidence_photo']
@@ -475,25 +462,20 @@ def update_bac():
                     file_storage=file_storage, target_folder=BAC_EVIDENCE_FOLDER,
                     filename_without_ext=base_name, max_width=1000, quality=80
                 )
-
         _, is_created = upsert_bac_record(
             employee_id=emp_id, clock_date=clock_date,
             bac_no=clean_str(data.get('bac_no')), bac_ket=clean_str(data.get('bac_ket')),
             clock_in=parse_dt(data.get('clock_in')), clock_out=parse_dt(data.get('clock_out')),
             evidence_photo=evidence_path
         )
-
         db.session.commit()
         msg = "BAC Absensi berhasil ditambahkan!" if is_created else "BAC Absensi berhasil diupdate!"
         return jsonify({"status": "success", "message": msg}), 200
-
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# =============================================================================
 # 4. EXPORT EXCEL ULTRA-FAST (SLA < 1 DETIK)
-# =============================================================================
 @AbsenOs_bp.route('/absensi/export', methods=['GET'])
 def export_absensi():
     try:
@@ -505,22 +487,19 @@ def export_absensi():
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
-
         sql_query, params = _build_absensi_raw_sql(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
             shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
             department_id=department_id, worker_type=worker_type
         )
-
         with db.engine.connect() as conn:
             rows = conn.execute(text(sql_query), params).mappings().fetchall()
-
+        
         if not rows:
             return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
-
+        
         df = pd.DataFrame([dict(r) for r in rows])
         df['Shift'] = df.apply(lambda r: determine_shift(r['bac_clock_in'] or r['full_clock_in'] or r['clock_in'], r['clocking_date']), axis=1)
-
         df.rename(columns={
             'employee_code': 'Employee ID',
             'employee_name': 'Nama Karyawan',
@@ -537,7 +516,6 @@ def export_absensi():
             'bac_updated_by': 'Updated By',
             'bac_updated_date': 'Updated Date'
         }, inplace=True)
-
         selected_cols = [
             'Employee ID', 'Nama Karyawan', 'Gender', 'Sub Company', 'Absence Card',
             'Cost Center', 'Type', 'Shift', 'Clocking Date', 'Clocking In',
@@ -545,19 +523,71 @@ def export_absensi():
         ]
         df = df[selected_cols]
 
+        def _format_date_label(dt_str):
+            if not dt_str:
+                return "-"
+            try:
+                return datetime.strptime(dt_str, '%Y-%m-%d').strftime('%d-%b-%Y').upper()
+            except Exception:
+                return dt_str
+        
+        start_label = _format_date_label(start_date)
+        end_label = _format_date_label(end_date)
+        if worker_type == 'os':
+            worker_label = "YAYASAN"
+        elif worker_type == 'tetap':
+            worker_label = "TETAP / KONTRAK"
+        else:
+            worker_label = "SEMUA KARYAWAN"
+        header_title = f"DATA ABSENSI KARYAWAN {worker_label} Periode Tanggal: {start_label} Sampai: {end_label}"
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Absensi_Karyawan')
+            df.to_excel(writer, index=False, sheet_name='Absensi_Karyawan', startrow=1)            
+            ws = writer.sheets['Absensi_Karyawan']
+            ws['A1'] = header_title
+            ws['A1'].font = Font(name='Calibri', size=11, bold=True)
         output.seek(0)
-
         filename = f"Export_Absensi_{worker_type.upper()}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"Export_Absensi_{worker_type.upper()}.xlsx"
-
         return send_file(
             output,
             as_attachment=True,
             download_name=filename,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
+# 5. SOFT DELETE / EXCLUDE ABSENSI (EXCLUSION LOG POLICY)
+@AbsenOs_bp.route('/absensi/delete', methods=['POST', 'DELETE'])
+def delete_absensi():
+    try:
+        data = request.get_json() or request.form or {}
+        emp_id = str(data.get('employee_id') or '').strip()
+        clock_date = str(data.get('clock_date') or '').strip()
+        reason = clean_str(data.get('reason'))
+        deleted_by = clean_str(data.get('deleted_by') or request.headers.get('X-User-Email') or 'Admin')
+        if not emp_id or not clock_date:
+            return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
+        sql_upsert = text("""
+            INSERT INTO attendance_exclusions (employee_id, clocking_date, reason, deleted_by, deleted_at, status)
+            VALUES (:employee_id, :clock_date, :reason, :deleted_by, NOW(), 1)
+            ON DUPLICATE KEY UPDATE 
+                reason = VALUES(reason),
+                deleted_by = VALUES(deleted_by),
+                deleted_at = NOW(),
+                status = 1
+        """)
+        with db.engine.connect() as conn:
+            conn.execute(sql_upsert, {
+                'employee_id': emp_id,
+                'clock_date': clock_date,
+                'reason': reason,
+                'deleted_by': deleted_by
+            })
+            conn.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"Data absensi karyawan {emp_id} tanggal {clock_date} berhasil dihapus dari laporan."
+        }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
