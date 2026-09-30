@@ -34,6 +34,12 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   
   const formRef = useRef(null);
   const isEditMode = !!initialData;
+
+  // DETEKSI MODE READ-ONLY (JIKA STATUS BAC FOUND ATAU SUDAH MEMILIKI RECORD BAC)
+  const isReadOnly = isEditMode && (
+    initialData?.status === 'BAC Found' || 
+    !!(initialData?.bac_id || (initialData?.bac_no && initialData?.bac_no !== '-'))
+  );
   
   useEffect(() => {
     if (initialData) {
@@ -69,7 +75,8 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
     }
   }, [initialData]);
 
-  const handleFileChange = (e) => {    
+  const handleFileChange = (e) => {
+    if (isReadOnly) return;
     const file = e.target.files[0];
     if (file) {
       const localUrl = URL.createObjectURL(file);
@@ -88,7 +95,8 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   }, [previewUrl]);
 
   const handleSave = async (e) => {
-    e.preventDefault();    
+    e.preventDefault();
+    if (isReadOnly) return; // Guard agar read-only tidak bisa submit
 
     const formData = new FormData(formRef.current);
     
@@ -166,8 +174,8 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
             {/* Header */}
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
-                <i className={`bi ${isEditMode ? 'bi-pencil-square text-warning' : 'bi-plus-circle text-success'} me-2`}></i>
-                {isEditMode ? 'Koreksi Absensi (BAC)' : 'Tambah BAC Baru'}
+                <i className={`bi ${isReadOnly ? 'bi-shield-check text-primary' : isEditMode ? 'bi-pencil-square text-warning' : 'bi-plus-circle text-success'} me-2`}></i>
+                {isReadOnly ? 'Detail BAC Absensi' : isEditMode ? 'Koreksi Absensi (BAC)' : 'Tambah BAC Baru'}
               </h6>
               <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
@@ -189,9 +197,9 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         required
                         value={empId}
                         onChange={handleIdChange}
-                        onBlur={(e) => !isEditMode && handleSearchEmployee(e.target.value)}
-                        readOnly={isEditMode}
-                        style={(isEditMode) ? { cursor: 'not-allowed' } : {}}
+                        onBlur={(e) => !isEditMode && !isReadOnly && handleSearchEmployee(e.target.value)}
+                        readOnly={isEditMode || isReadOnly}
+                        style={(isEditMode || isReadOnly) ? { cursor: 'not-allowed' } : {}}
                       />
                     </div>
                   </div>
@@ -219,7 +227,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                 <div className="d-flex align-items-center mb-3">
                    <hr className="flex-grow-1 my-0 opacity-25" />
                    <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                     {isEditMode ? 'Edit Data BAC' : 'Input BAC'}
+                     {isReadOnly ? 'Data BAC Tersimpan' : 'Input BAC'}
                    </span>
                    <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
@@ -232,7 +240,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         name="bac_no" 
                         className="form-control form-control-sm" 
                         placeholder="Contoh: 001122"
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching} 
+                        disabled={isReadOnly || (!isEmployeeFound && !isEditMode) || isSearching} 
                         required
                         value={bacOS.bac_no || ''}
                         onChange={(e) => setBacOS({ ...bacOS, bac_no: e.target.value })} 
@@ -245,7 +253,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         type="date" 
                         name="clock_date"
                         className='form-control form-control-sm'
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching || isEditMode} 
+                        disabled={isReadOnly || (!isEmployeeFound && !isEditMode) || isSearching || isEditMode} 
                         required
                         value={clockDate}
                         onChange={(e) => setClockDate(e.target.value)}
@@ -258,7 +266,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                   <select 
                     name="bac_ket" 
                     className="form-select form-select-sm"
-                    disabled={(!isEmployeeFound && !isEditMode) || isSearching}
+                    disabled={isReadOnly || (!isEmployeeFound && !isEditMode) || isSearching}
                     required
                     value={bacOS.bac_ket || ''}
                     onChange={(e) => setBacOS({ ...bacOS, bac_ket: e.target.value })}
@@ -279,7 +287,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       type="datetime-local" 
                       name="clock_in"
                       className='form-control form-control-sm'
-                      disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockIn}
+                      disabled={isReadOnly || (!isEmployeeFound && !isEditMode) || isSearching || hasClockIn}
                       value={bacOS.clock_in ? bacOS.clock_in.slice(0, 16) : ''}
                       onChange={(e) => setBacOS({ ...bacOS, clock_in: e.target.value })} 
                     />
@@ -291,7 +299,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                       type="datetime-local" 
                       name="clock_out"
                       className='form-control form-control-sm'
-                      disabled={(!isEmployeeFound && !isEditMode) || isSearching || hasClockOut}
+                      disabled={isReadOnly || (!isEmployeeFound && !isEditMode) || isSearching || hasClockOut}
                       value={bacOS.clock_out ? bacOS.clock_out.slice(0, 16) : ''}
                       onChange={(e) => setBacOS({ ...bacOS, clock_out: e.target.value })}
                     />
@@ -300,7 +308,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
 
                 {/* BUKTI FOTO / DOKUMEN BAC + PREVIEW */}
                 <div className="col-md-12">
-                  {(
+                  {!isReadOnly && (
                     <>
                       <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
                         Upload Foto Bukti / Dokumen <span className="text-muted fw-normal">(Opsional)</span>
@@ -334,7 +342,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
                         />
                       </a>
                     </div>
-                  ) : (
+                  ) : isReadOnly && (
                     <div className="mt-2 p-2 border rounded bg-light text-center text-muted" style={{ fontSize: '0.75rem' }}>
                       <i className="bi bi-file-earmark-x me-1"></i> Tidak ada lampiran foto bukti.
                     </div>
@@ -345,7 +353,11 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
 
               {/* Footer */}
               <div className="modal-footer bg-light border-top p-2 px-3">
-                {(
+                {isReadOnly ? (
+                  <button type="button" className="btn btn-sm btn-primary px-4 shadow-sm" style={{ fontSize: '0.8rem' }} onClick={onClose}>
+                    <i className="bi bi-check2-circle me-1"></i> Tutup
+                  </button>
+                ) : (
                   <>
                     <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
                     <button 

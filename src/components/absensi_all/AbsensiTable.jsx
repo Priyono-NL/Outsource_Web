@@ -217,9 +217,9 @@ const AbsensiTable = ({
                                     className="btn-app border text-primary bg-light" 
                                     style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px' }}
                                     onClick={() => onEditClick(emp)}
-                                    title="Lihat Detail BAC & Foto Bukti"
+                                    title="Edit Detail BAC & Foto Bukti"
                                 >
-                                    <i className="bi bi-eye me-1"></i> Lihat BAC
+                                    <i className="bi bi-pencil-square me-1"></i> Edit BAC
                                 </button>
                             );
 
