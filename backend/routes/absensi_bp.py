@@ -1,6 +1,6 @@
 import os
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
@@ -154,10 +154,47 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
 
     if status_filter == 'lengkap':
         where_clauses.append("(COALESCE(b.clock_in, ta.clock_in) IS NOT NULL AND COALESCE(b.clock_out, ta.clock_out) IS NOT NULL AND (ta.flag != 1 OR ta.flag IS NULL))")
-    elif status_filter == 'anomali':
-        where_clauses.append("ta.flag = 1")
-    elif status_filter in ('violation_all', 'tidak_lengkap', 'template_revisi'):
-        where_clauses.append("(COALESCE(b.clock_in, ta.clock_in) IS NULL OR COALESCE(b.clock_out, ta.clock_out) IS NULL)")
+    elif status_filter in ('anomali', 'template_revisi'):
+        where_clauses.append("""(
+            ta.flag = 1 
+            OR 
+            (SELECT COUNT(1) 
+             FROM `db-webapps`.TBL_ATTENDANCE a2 
+             WHERE a2.employee_id = ta.employee_id 
+             AND a2.clocking_date = ta.clocking_date) > 1
+        )""")
+    elif status_filter == 'no_in':
+        where_clauses.append("""(
+            COALESCE(b.clock_in, ta.clock_in) IS NULL 
+            OR 
+            (
+                b.clock_in IS NULL 
+                AND 
+                EXISTS (
+                    SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a2 
+                    WHERE a2.employee_id = ta.employee_id 
+                    AND a2.clocking_date = ta.clocking_date 
+                    AND a2.clock_in IS NULL
+                )
+            )
+        )""")
+    elif status_filter == 'no_out':
+       where_clauses.append("""(
+            COALESCE(b.clock_out, ta.clock_out) IS NULL 
+            OR 
+            (
+                b.clock_out IS NULL 
+                AND 
+                EXISTS (
+                    SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a2 
+                    WHERE a2.employee_id = ta.employee_id 
+                    AND a2.clocking_date = ta.clocking_date 
+                    AND a2.clock_out IS NULL
+                )
+            )
+        )""")
+    elif status_filter == 'no_both':
+        where_clauses.append("(b.clock_in IS NOT NULL AND b.clock_out IS NOT NULL)")
 
     if shift_filter in ('SHIFT 1', 'SHIFT 2', 'SHIFT 3'):
         eff_in_sql = "COALESCE(b.clock_in, ta.clock_in)"
@@ -299,26 +336,29 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             UNION ALL
             
             SELECT 
-                employee_id,
+                b.employee_id,
                 '' AS card_id,
-                clock_date AS clocking_date,
+                b.clock_date AS clocking_date,
                 NULL AS clock_in,
                 NULL AS clock_out,
                 0 AS flag
-            FROM BacAgg
+            FROM BacAgg b
+            WHERE NOT EXISTS (
+                SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a 
+                WHERE a.employee_id = b.employee_id AND a.clocking_date = b.clock_date
+            )
         ),
         AttendanceAgg AS (
             SELECT 
                 employee_id,
-                MAX(card_id) AS card_id,
+                card_id,
                 clocking_date,
-                MAX(clock_in) AS clock_in,
-                MAX(clock_out) AS clock_out,
-                MAX(flag) AS flag
+                clock_in,
+                clock_out,
+                flag
             FROM UnifiedAttendance
-            GROUP BY employee_id, clocking_date
         )
-        SELECT 
+        SELECT DISTINCT 
             m.emp_code AS employee_id,
             m.emp_code AS employee_code,
             m.emp_name AS employee_name,
@@ -379,10 +419,9 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) 
             OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
         WHERE {where_sql}
-        ORDER BY ta.clocking_date DESC, m.emp_code ASC
+        ORDER BY clocking_date DESC, employee_code ASC
     """
     return sql_query, params
-
 
 # =============================================================================
 # 1. GET LIST ABSENSI
@@ -620,7 +659,6 @@ def template():
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
         shift_filter = request.args.get('shift', '', type=str).strip().upper()
-        worker_type = request.args.get('worker_type', 'all', type=str).strip()
         user_email = request.headers.get('X-User-Email', '')
 
         if not start_date_raw or not end_date_raw:
@@ -634,7 +672,7 @@ def template():
             search=search,
             sub_company_id=sub_company_id,
             department_id=department_id,
-            worker_type=worker_type
+            worker_type='os'
         )
         
         with db.engine.connect() as conn:
@@ -656,12 +694,11 @@ def template():
             row_shift = determine_shift(effective_in, c_date)
             val_in = d.get('clock_in')
             val_out = d.get('clock_out')            
-            excel_in = "" if (val_in == 'KOSONG' or not val_in) else "SUDAH ADA"
-            excel_out = "" if (val_out == 'KOSONG' or not val_out) else "SUDAH ADA"
+            excel_in = "" if (val_in == 'KOSONG') else val_in
+            excel_out = "" if (val_out == 'KOSONG') else val_out
 
             dynamic_data.append({
                 "Employee ID": str(d.get('employee_id')),
-                "Kode Karyawan": d.get('employee_code') or d.get('employee_id'),
                 "Nama Karyawan": emp_name,
                 "Sub Company": d.get('subCom') or '-',
                 "Cost Center": d.get('cc') or '-',
@@ -687,7 +724,7 @@ def template():
             dv.errorTitle = 'Pilihan Tidak Valid'
 
             worksheet.add_data_validation(dv)
-            dv.add(f"K2:K{num_rows + 100}") 
+            dv.add(f"J2:J{num_rows + 100}") 
 
         output.seek(0)
         shift_tag = f"_{shift_filter}" if shift_filter else ""
@@ -712,13 +749,13 @@ def upload():
         return jsonify({'message': 'Mohon pilih file Excel terlebih dahulu.'}), 400
 
     try:
-        # Load Excel menggunakan pandas
         df = pd.read_excel(file, dtype={
             'Employee ID': str, 
             'Tanggal Absen': str,
             'Clocking In': str, 
             'Clocking Out': str, 
-            'No BAC': str
+            'No BAC': str,
+            'Shift': str
         })
 
         errors = []
@@ -738,32 +775,40 @@ def upload():
                     c_in_raw = clean_str(row.get('Clocking In'))
                     c_out_raw = clean_str(row.get('Clocking Out'))
                     ket_bac = clean_str(row.get('Keterangan BAC'))
+                    shift_val = clean_str(row.get('Shift')) or ''
 
-                    if c_in_raw and c_in_raw.upper() == 'SUDAH ADA':
-                        c_in_raw = None
-                    if c_out_raw and c_out_raw.upper() == 'SUDAH ADA':
-                        c_out_raw = None
-
+                    # 1. CEK BARIS KOSONG: Jika tidak ada jam in, jam out, dan ket_bac kosong, lewati baris ini.
                     if not c_in_raw and not c_out_raw and not ket_bac:
                         continue
 
+                    # 2. KETERANGAN BAC WAJIB DARI DROPDOWN
                     if not ket_bac:
-                        raise ValueError("Kolom 'Keterangan BAC' wajib diisi jika Anda melakukan perubahan waktu.")
+                        raise ValueError("Kolom 'Keterangan BAC' wajib diisi.")
 
+                    # 3. PARSING JAM IN (jika ada)
                     final_c_in = None
                     if c_in_raw:
                         combined_in = f"{clock_date_raw[:10]} {c_in_raw}"
                         final_c_in = parse_dt(combined_in)
                         if not final_c_in:
-                            raise ValueError(f"Format Clocking In ({c_in_raw}) tidak valid. Ketik dalam format HH:MM.")
+                            raise ValueError(f"Format Clocking In ({c_in_raw}) tidak valid. Gunakan format HH:MM.")
 
+                    # 4. PARSING JAM OUT DENGAN LOGIKA SHIFT 3 (LINTAS HARI)
                     final_c_out = None
                     if c_out_raw:
                         combined_out = f"{clock_date_raw[:10]} {c_out_raw}"
                         final_c_out = parse_dt(combined_out)
                         if not final_c_out:
-                            raise ValueError(f"Format Clocking Out ({c_out_raw}) tidak valid. Ketik dalam format HH:MM.")
+                            raise ValueError(f"Format Clocking Out ({c_out_raw}) tidak valid. Gunakan format HH:MM.")
 
+                        # --- LOGIKA LINTAS HARI SHIFT 3 ---
+                        if final_c_in and final_c_out < final_c_in:
+                            final_c_out += timedelta(days=1)
+                        elif not final_c_in and 'SHIFT 3' in shift_val.upper():
+                            if final_c_out.hour <= 15:
+                                final_c_out += timedelta(days=1)
+
+                    # 5. SIMPAN/UPDATE KE TABEL BAC
                     upsert_bac_record(
                         employee_id=emp_id_raw,
                         clock_date=clock_date_raw[:10],
@@ -778,20 +823,18 @@ def upload():
             except ValueError as ve:
                 errors.append(f"Baris {line_number} (ID {emp_id_raw or '-'}): {str(ve)}")
             except Exception as e:
-                errors.append(f"Baris {line_number} (ID {emp_id_raw or '-'}): Gagal menyimpan ke DB - {str(e)}")
+                errors.append(f"Baris {line_number} (ID {emp_id_raw or '-'}): Gagal memproses - {str(e)}")
 
-        # Commit semua perubahan sukses ke Database
         db.session.commit()
 
-        # RETURN RESPONSE
         if success_count > 0:
             status = "success" if not errors else "partial_success"
-            msg = f"Berhasil merevisi {success_count} data absensi ke log BAC."
+            msg = f"Berhasil memproses {success_count} baris data absensi."
             return jsonify({"status": status, "message": msg, "errors": errors}), 200
         else:
             return jsonify({
                 "status": "error",
-                "message": "Tidak ada data absensi yang diperbarui. Periksa kembali inputan jam dan Keterangan BAC Anda.",
+                "message": "Tidak ada data yang diproses. Periksa kembali file Excel Anda.",
                 "errors": errors
             }), 400
 
@@ -799,4 +842,4 @@ def upload():
         db.session.rollback()
         import traceback
         traceback.print_exc()
-        return jsonify({"status": "error", "message": f"Terjadi kesalahan fatal pada server: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": f"Terjadi kesalahan sistem: {str(e)}"}), 500
