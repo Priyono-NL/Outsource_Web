@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search }) => { 
+const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, isFilterApplied }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -57,8 +57,9 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
     }, [subCompany, department, startDate, endDate, statusFilter, search]);
 
     useEffect(() => {
+        if (!startDate || !endDate || !isFilterApplied) return;
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, currentPage]);
+    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, currentPage, isFilterApplied]);
 
     // Format tampilan tanggal ke format lokal Indonesia (contoh: 25 Sep 2026)
     const formatDisplayDate = (dateStr) => {
@@ -173,9 +174,17 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                         </tr>
                     </thead>
                     <tbody>
-                        { loading ? (
+                        {!isFilterApplied ? (
                             <tr>
-                                <td colSpan="11" className="text-center py-4 text-muted">
+                                <td colSpan="16" className="empty-state text-center py-5 text-muted">
+                                    <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
+                                    Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
+                                </td> 
+                            </tr>
+                        
+                        ) : loading ? (
+                            <tr>
+                                <td colSpan="16" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                                     Memuat data log istirahat...
                                 </td>

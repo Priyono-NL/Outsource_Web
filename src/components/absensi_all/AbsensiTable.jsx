@@ -81,8 +81,8 @@ const AbsensiTable = ({
         const empCode = emp.employee_code || emp.employee_id;
         const empName = emp.employee_name || '-';
         const clockDate = emp.clocking_date;
-        const clockIn = (emp.full_clock_in && emp.full_clock_in !== 'null') ? emp.full_clock_in : '';
-        const clockOut = (emp.full_clock_out && emp.full_clock_out !== 'null') ? emp.full_clock_out : '';
+        const rawClockIn = emp.raw_ta_in;
+        const rawClockOut = emp.raw_ta_out;
 
         Swal.fire({
             title: 'Hapus Data Absensi?',
@@ -107,8 +107,8 @@ const AbsensiTable = ({
                     const response = await api.post('/absensi/delete', {
                         employee_id: empCode,
                         clock_date: clockDate,
-                        clock_in: clockIn,
-                        clock_out: clockOut,
+                        clock_in: rawClockIn,
+                        clock_out: rawClockOut,
                         reason: result.value.trim()
                     });
 
@@ -157,7 +157,7 @@ const AbsensiTable = ({
                 </tr>
             </thead>
             <tbody>
-                {(!startDate || !endDate) ? (
+                {!isFilterApplied ? (
                     <tr>
                         <td colSpan="16" className="empty-state text-center py-5 text-muted">
                             <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>

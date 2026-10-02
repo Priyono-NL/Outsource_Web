@@ -46,7 +46,7 @@ const Report_MpEmp = () => {
   const [appliedEndDate, setAppliedEndDate]       = useState(todayStr);
 
   // --- FLAG FILTER STATES ---
-  const [isFilterApplied, setIsFilterApplied] = useState(true);
+  const [isFilterApplied, setIsFilterApplied] = useState(false);
   const [isFilterDirty, setIsFilterDirty]     = useState(false);
 
   // --- ACTION LOADING STATES ---
@@ -302,7 +302,7 @@ const Report_MpEmp = () => {
             <div className="spinner-border text-primary" role="status"></div>
             <p className="mt-2 text-muted" style={{ fontSize: 13 }}>Menyiapkan parameter akses...</p>
           </div>
-        ) : isFilterDirty ? (
+        ) : isFilterDirty && isFilterApplied ? (
           <div className="alert alert-warning text-center mt-3 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
             <span style={{ fontSize: '14px' }}>
@@ -317,6 +317,7 @@ const Report_MpEmp = () => {
             department={appliedDepartment}
             startDate={appliedStartDate}
             endDate={appliedEndDate}
+            isFilterApplied={isFilterApplied}
           />
         )}
       </div>

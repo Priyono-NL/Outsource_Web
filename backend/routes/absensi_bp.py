@@ -405,6 +405,10 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             END AS cc,
             
             m.emp_type AS type,
+
+            DATE_FORMAT(ta.clock_in, '%Y-%m-%d %H:%i:%s') AS raw_ta_in,
+            DATE_FORMAT(ta.clock_out, '%Y-%m-%d %H:%i:%s') AS raw_ta_out,
+            
             DATE_FORMAT(ta.clocking_date, '%d %b %Y') AS v_clocking_date,
             DATE_FORMAT(ta.clocking_date, '%Y-%m-%d') AS clocking_date,
             
@@ -657,11 +661,10 @@ def delete_absensi():
         clock_date = str(data.get('clock_date') or '').strip()
         reason = clean_str(data.get('reason'))
         deleted_by = clean_str(data.get('deleted_by') or request.headers.get('X-User-Email') or 'Admin')
-        clock_in_raw = str(data.get('clock_in') or '').strip()
-        clock_out_raw = str(data.get('clock_out') or '').strip()
-        
-        c_in = parse_dt(clock_in_raw) if clock_in_raw not in ('', '-', 'No Clock In') else None
-        c_out = parse_dt(clock_out_raw) if clock_out_raw not in ('', '-', 'No Clock Out') else None
+        raw_in = str(data.get('clock_in') or '').strip()
+        raw_out = str(data.get('clock_out') or '').strip()        
+        c_in = raw_in if raw_in not in ('', 'null', 'None', 'undefined') else None
+        c_out = raw_out if raw_out not in ('', 'null', 'None', 'undefined') else None
 
         if not emp_id or not clock_date:
             return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400

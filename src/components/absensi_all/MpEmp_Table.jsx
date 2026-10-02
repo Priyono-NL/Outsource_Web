@@ -8,7 +8,8 @@ const MpEmp_Table = ({
     subCompany, 
     department, 
     startDate, 
-    endDate 
+    endDate, 
+    isFilterApplied
 }) => { 
     
     const [employees, setEmployees] = useState([]); 
@@ -65,8 +66,9 @@ const MpEmp_Table = ({
 
     // Refetch data saat pagination, trigger refresh, atau filter berubah
     useEffect(() => {
+        if (!startDate || !endDate || !isFilterApplied) return;
         fetchData();
-    }, [refreshTrigger, searchTerm, subCompany, department, startDate, endDate, currentPage]);
+    }, [refreshTrigger, searchTerm, subCompany, department, startDate, endDate, currentPage, isFilterApplied]);
 
     const formatDisplayDate = (dateStr) => {
         if (!dateStr) return '-';
@@ -156,7 +158,15 @@ const MpEmp_Table = ({
                         </tr>
                     </thead>
                     <tbody>
-                        { loading ? (
+                        {!isFilterApplied ? (
+                            <tr>
+                                <td colSpan="7" className="empty-state text-center py-5 text-muted">
+                                    <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
+                                    Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
+                                </td>
+                            </tr>
+                        
+                        ) : loading ? (
                             <tr>
                                 <td colSpan="7" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>

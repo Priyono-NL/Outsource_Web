@@ -10,8 +10,10 @@ const AbsensiReportTable = ({
     startDate, 
     endDate, 
     statusFilter,
-    shiftFilter, // DITAMBAHKAN: Menerima prop shiftFilter
-    workerType 
+    shiftFilter,
+    workerType,
+    isFilterApplied
+
 }) => { 
     
     const [absensi, setAbsensi] = useState([]);   
@@ -65,9 +67,9 @@ const AbsensiReportTable = ({
     
     // Trigger pemanggilan data
     useEffect(() => {
-        if (!startDate || !endDate) return;
+        if (!startDate || !endDate || !isFilterApplied) return;
         fetchData();
-    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, workerType]);
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, workerType, isFilterApplied]);
 
     // Helper Formatter Jam (HH:mm)
     const formatTime = (timeStr) => {
@@ -102,7 +104,7 @@ const AbsensiReportTable = ({
                 </tr>
             </thead>
             <tbody>
-                {(!startDate || !endDate) ? (
+                { !isFilterApplied ? (
                     <tr>
                         <td colSpan="15" className="empty-state text-center py-5 text-muted">
                             <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>

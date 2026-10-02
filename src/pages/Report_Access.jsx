@@ -48,7 +48,7 @@ const Report_Access = () => {
   const [appliedSearch, setAppliedSearch]         = useState('');
 
   // --- FLAG FILTER STATES ---
-  const [isFilterApplied, setIsFilterApplied] = useState(true);
+  const [isFilterApplied, setIsFilterApplied] = useState(false);
   const [isFilterDirty, setIsFilterDirty]     = useState(false);
 
   // --- ACTION LOADING STATES ---

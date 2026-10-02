@@ -50,7 +50,7 @@ const ReportAbsen = () => {
   const [appliedEndDate, setAppliedEndDate]           = useState(getTodayString());
 
   // --- FLAG FILTER STATES ---
-  const [isFilterApplied, setIsFilterApplied] = useState(true);
+  const [isFilterApplied, setIsFilterApplied] = useState(false);
   const [isFilterDirty, setIsFilterDirty]     = useState(false);
 
   // --- ACTION LOADING STATES ---
@@ -376,7 +376,7 @@ const ReportAbsen = () => {
         </div>
         
         {/* --- DIRTY FILTER WARNING / DATATABLE --- */}
-        {isFilterDirty ? (
+        {isFilterDirty && isFilterApplied  ? (
           <div className="alert alert-warning text-center mt-2 mb-3 py-3" style={{ borderStyle: 'dashed' }} role="alert">
             <i className="bi bi-exclamation-triangle text-warning fs-4 d-block mb-1"></i>
             <span style={{ fontSize: '13px' }}>
@@ -394,7 +394,8 @@ const ReportAbsen = () => {
             startDate={appliedStartDate}
             endDate={appliedEndDate}
             statusFilter={appliedStatusFilter}
-            shiftFilter={appliedShiftFilter} 
+            shiftFilter={appliedShiftFilter}
+            isFilterApplied={isFilterApplied}
           />
         )}
       </div>
