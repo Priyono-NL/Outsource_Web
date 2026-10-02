@@ -154,18 +154,15 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                 <table className="app-table table-hover table-striped mb-3" style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                     <thead>
                         <tr>
-                            <th>Sub Company</th>
-                            <th>Cost Center</th>
                             <th className="text-center">Employee Id</th>
-                            <th>Display Name</th>
-                            <th className="text-center">Absence Card No</th>
+                            <th>Display Name</th>                            
+                            <th>Cost Center</th>
+                            <th>Sub Company</th>
                             <th>Tipe</th>
-                            <th className="text-center">Tanggal OUT</th>
+                            <th className="text-center">Absence Card No</th>
                             <th className="text-center">Waktu OUT</th>
                             <th className="text-center">Node OUT</th>
-                            <th className="text-center">Tanggal Makan</th>
                             <th className="text-center">Waktu Makan</th>
-                            <th className="text-center">Tanggal IN</th>
                             <th className="text-center">Waktu IN</th>
                             <th className="text-center">Node IN</th>
                             <th className="text-center">Total (Menit)</th>
@@ -183,18 +180,15 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                         ) : employees.length > 0 ? (
                             employees.map((emp, index) => (
                                 <tr key={`mp-emp-${emp.emp_id}-${index}`}>
-                                    <td>{emp.sub_company_name || '-'}</td>
-                                    <td>{emp.cc_name || '-'}</td>
                                     <td className="text-center fw-bold">{emp.emp_id || '-'}</td>
                                     <td>{emp.display_name || '-'}</td>
-                                    <td className="text-center">{emp.card_number || '-'}</td>                                    
+                                    <td>{emp.cc_name || '-'}</td>
+                                    <td>{emp.sub_company_name || '-'}</td>
                                     <td>{emp.tipe_karyawan || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_out) || '-'}</td>
+                                    <td className="text-center">{emp.card_number || '-'}</td>
                                     <td className="text-center">{emp.waktu_out || '-'}</td>
                                     <td className="text-center">{emp.node_out || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_makan) || '-'}</td>
                                     <td className="text-center">{emp.waktu_makan || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_in) || '-'}</td>
                                     <td className="text-center">{emp.waktu_in || '-'}</td>
                                     <td className="text-center">{emp.node_in || '-'}</td>
                                     <td className="text-center fw-bold text-primary">{emp.total !== undefined ? emp.total : '-'}</td>

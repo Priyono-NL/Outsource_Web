@@ -215,7 +215,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             where_clauses.append(f"({eff_in_sql} IS NULL OR (NOT ({sat_s2} OR {sat_s3} OR {weekday_s2} OR {weekday_s3})))")
 
     if search:
-        where_clauses.append("(m.emp_code LIKE :search OR m.emp_name LIKE :search OR ta.card_id LIKE :search OR b.bac_no LIKE :search)")
+        where_clauses.append("(m.emp_code LIKE :search OR m.emp_name LIKE :search OR m.master_card_id LIKE :search OR ta.card_id LIKE :search OR b.bac_no LIKE :search)")
         params['search'] = f"%{search}%"
 
     if sub_company_id:
@@ -277,6 +277,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             SELECT 
                 CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
                 MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_name,
+                MAX(CONVERT(card_no USING utf8mb4) COLLATE utf8mb4_general_ci) AS master_card_id,
                 '-' AS gender,
                 'sub00003' AS sub_company_id,
                 'CRS' AS sub_company_name,
@@ -294,6 +295,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             SELECT 
                 CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
                 MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_name,
+                MAX(CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_general_ci) AS master_card_id,
                 MAX(CONVERT(COALESCE(gender, '-') USING utf8mb4) COLLATE utf8mb4_general_ci) AS gender,
                 MAX(CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_id,
                 MAX(CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_name,
@@ -305,6 +307,37 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             FROM vw_master_os_active
             WHERE employee_code IS NOT NULL AND employee_code != ''
             GROUP BY employee_code
+        ),
+        RawBacData AS (
+            SELECT 
+                employee_id,
+                clock_date,
+                id,
+                bac_no,
+                bac_ket,
+                clock_in,
+                clock_out,
+                evidence_photo,
+                created_by,
+                created_date
+            FROM bac_os
+            WHERE status = 1
+            
+            UNION ALL
+            
+            SELECT 
+                nrp AS employee_id,
+                DATE(submit_at) AS clock_date,
+                id,
+                'BAC' AS bac_no,
+                'BAC (kiosk/backdate)' AS bac_ket,
+                CASE WHEN direction = 0 THEN submit_at ELSE NULL END AS clock_in,
+                CASE WHEN direction = 1 THEN submit_at ELSE NULL END AS clock_out,
+                NULL AS evidence_photo,
+                'system' AS created_by,
+                submit_at AS created_date
+            FROM `db-webapps`.transaksi_absen
+            WHERE status IN (2, 7)
         ),
         BacAgg AS (
             SELECT 
@@ -318,8 +351,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 MAX(evidence_photo) AS evidence_photo,
                 MAX(created_by) AS created_by,
                 MAX(created_date) AS created_date
-            FROM bac_os
-            WHERE status = 1
+            FROM RawBacData
             GROUP BY employee_id, clock_date
         ),
         UnifiedAttendance AS (
@@ -364,7 +396,8 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             m.emp_name AS employee_name,
             m.gender AS gender,
             COALESCE(m.sub_company_name, '-') AS subCom,
-            COALESCE(ta.card_id, '-') AS card,
+            
+            COALESCE(NULLIF(ta.card_id, ''), NULLIF(m.master_card_id, ''), '-') AS card,
             
             CASE 
                 WHEN m.use_cc = 1 THEN COALESCE(m.cc_name, '-')
@@ -400,8 +433,12 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         FROM MasterEmp m
         INNER JOIN AttendanceAgg ta 
             ON m.emp_code = ta.employee_id
-        LEFT JOIN attendance_exclusions ex
-            ON ex.employee_id = ta.employee_id
+        LEFT JOIN attendance_exclusions ex 
+            ON CAST(ex.employee_id AS CHAR) = ta.employee_id
+            AND ex.clocking_date = ta.clocking_date
+            AND (ex.clock_in <=> ta.clock_in)
+            AND (ex.clock_out <=> ta.clock_out)
+            AND ex.status = 1
         AND ex.clocking_date = ta.clocking_date
         AND ex.status = 1
         LEFT JOIN BacAgg b 
@@ -620,31 +657,45 @@ def delete_absensi():
         clock_date = str(data.get('clock_date') or '').strip()
         reason = clean_str(data.get('reason'))
         deleted_by = clean_str(data.get('deleted_by') or request.headers.get('X-User-Email') or 'Admin')
+        clock_in_raw = str(data.get('clock_in') or '').strip()
+        clock_out_raw = str(data.get('clock_out') or '').strip()
+        
+        c_in = parse_dt(clock_in_raw) if clock_in_raw not in ('', '-', 'No Clock In') else None
+        c_out = parse_dt(clock_out_raw) if clock_out_raw not in ('', '-', 'No Clock Out') else None
+
         if not emp_id or not clock_date:
             return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
             
         sql_upsert = text("""
-            INSERT INTO attendance_exclusions (employee_id, clocking_date, reason, deleted_by, deleted_at, status)
-            VALUES (:employee_id, :clock_date, :reason, :deleted_by, NOW(), 1)
+            INSERT INTO attendance_exclusions 
+                (employee_id, clocking_date, clock_in, clock_out, reason, deleted_by, deleted_at, status)
+            VALUES 
+                (:employee_id, :clock_date, :clock_in, :clock_out, :reason, :deleted_by, NOW(), 1)
             ON DUPLICATE KEY UPDATE 
                 reason = VALUES(reason),
                 deleted_by = VALUES(deleted_by),
                 deleted_at = NOW(),
                 status = 1
         """)
+        
         with db.engine.connect() as conn:
             conn.execute(sql_upsert, {
                 'employee_id': emp_id,
                 'clock_date': clock_date,
+                'clock_in': c_in,
+                'clock_out': c_out,
                 'reason': reason,
                 'deleted_by': deleted_by
             })
             conn.commit()
+            
         return jsonify({
             "status": "success",
-            "message": f"Data absensi karyawan {emp_id} tanggal {clock_date} berhasil dihapus dari laporan."
+            "message": f"Data absensi karyawan {emp_id} berhasil dihapus dari laporan."
         }), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # =============================================================================

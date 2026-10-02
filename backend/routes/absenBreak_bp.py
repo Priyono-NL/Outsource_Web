@@ -1,8 +1,9 @@
 import pandas as pd
 from io import BytesIO
+from collections import defaultdict
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
-from datetime import datetime, date
+from datetime import datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -15,7 +16,6 @@ AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 # CONFIGURATION CONSTANTS (CLEAN & MAINTAINABLE)
 # =============================================================================
 HYBRID_NODES = ['161', '162', '166', '167', '191', '192', '188', '189', '175', '173']
-MAX_BREAK_MINUTES = 240
 
 # =============================================================================
 # ZERO-ZOMBIE CONNECTION POLICY (TEARDOWN HOOK)
@@ -34,7 +34,6 @@ def teardown_request(exception=None):
 def _format_period_string(start_str, end_str):
     """
     Format string periode tanggal agar rapi di file Excel.
-    Contoh: '25 Sep 2026' jika 1 hari, atau '25 Sep 2026 s/d 28 Sep 2026' jika rentang tanggal.
     """
     if not start_str and not end_str:
         return "-"
@@ -53,13 +52,11 @@ def _format_period_string(start_str, end_str):
         return formatted_start
     return f"{formatted_start} s/d {formatted_end}"
 
-
 def _get_hybrid_pattern():
     """Mengonversi array HYBRID_NODES menjadi pola REGEXP MySQL"""
     if not HYBRID_NODES:
         return "^$"  
     return "|".join(HYBRID_NODES)
-
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
     """Membangun filter WHERE clause dinamis (Sangat Cepat Berkat Normalisasi CTE)"""
@@ -84,7 +81,7 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
             filters.append("k.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
             
-    # 2. Filter Cost Center (SEKARANG LANGSUNG TEMBAK KE ID NUMERIK)
+    # 2. Filter Cost Center (ID NUMERIK)
     if department_id:
         filters.append("k.cost_center_id = :department_id")
         params['department_id'] = department_id
@@ -98,17 +95,18 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     return filter_clause, params
 
 def _get_base_karyawan_cte():
-    """CTE TERNORMALISASI: Mengubah string code Karyawan Tetap menjadi ID numerik org_cost_center"""
+    """CTE TERNORMALISASI: Mengubah string code dan resolve SubCompany & Tipe Karyawan"""
     return """
         WITH Karyawan AS (
             SELECT 
                 CONVERT(k.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
                 CONVERT(k.employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS display_name, 
                 CONVERT(k.card_no USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                -- NORMALISASI: Ubah kode text jadi ID numerik
                 CONVERT(CAST(COALESCE(occ.id, k.cost_center) AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center_id, 
                 CONVERT(COALESCE(occ.org_name, k.dept_name) USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
-                CONVERT(k.company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id
+                'sub00003' COLLATE utf8mb4_general_ci AS sub_company_id,
+                'CRS' COLLATE utf8mb4_general_ci AS sub_company_name,
+                'TETAP/KONTRAK' COLLATE utf8mb4_general_ci AS tipe_karyawan
             FROM vw_master_karyawan k
             LEFT JOIN org_cost_center occ ON occ.cost_center = k.cost_center
             
@@ -120,7 +118,9 @@ def _get_base_karyawan_cte():
                 CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
                 CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center_id, 
                 CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
-                CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id
+                CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id,
+                CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_name,
+                CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci AS tipe_karyawan
             FROM vw_master_os_active
         )
     """
@@ -146,6 +146,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
     params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
 
+    # Query diupdate untuk memisahkan TANGGAL dan WAKTU secara mandiri
     sql_query = f"""
         {base_cte},
         ClockData AS (
@@ -174,14 +175,19 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         SELECT 
             k.emp_id, 
             k.display_name, 
+            k.sub_company_name,
+            k.tipe_karyawan,
             k.cc_name, 
             k.card_number,
             COALESCE(c.clock_date, m.tanggal_makan) AS ref_date,
             c.raw_out_dt,
             m.raw_makan_dt,
             c.raw_in_dt,
+            IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y')), '-') as tanggal_out,
             IF(c.raw_out_dt IS NOT NULL, DATE_FORMAT(c.raw_out_dt, '%H:%i'), '-') as waktu_out,
+            IF(m.raw_makan_time IS NOT NULL, UPPER(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y')), '-') as tanggal_makan,
             IF(m.raw_makan_time IS NOT NULL, DATE_FORMAT(m.raw_makan_time, '%H:%i'), '-') as waktu_makan,
+            IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y')), '-') as tanggal_in,
             IF(c.raw_in_dt IS NOT NULL, DATE_FORMAT(c.raw_in_dt, '%H:%i'), '-') as waktu_in,
             c.node_out,
             c.node_in
@@ -192,7 +198,6 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         {filter_clause}
     """
     
-    # EKSEKUSI RAW QUERY ZERO-ZOMBIE
     with db.engine.connect() as conn:
         rows = conn.execute(text(sql_query), params).mappings().fetchall()
         
@@ -219,48 +224,60 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         makan_dt = row['raw_makan_dt']
         in_dt = row['raw_in_dt']
 
-        valid_start_dts = [dt for dt in [out_dt, makan_dt] if dt is not None]
-        start_break_dt = min(valid_start_dts) if valid_start_dts else None
+        start_break_dt = out_dt if out_dt is not None else makan_dt
 
         total_mins = 0
-        status = "Normal Break"
+        status = "Lengkap (Normal)"
         
         if not start_break_dt and not in_dt:
-            status = "No Both"
+            status = "Tidak Lengkap (No Both)"
         elif not start_break_dt:
-            status = "No Clocking OUT"
+            status = "Tidak Lengkap (No OUT)"
         elif not in_dt:
-            status = "No Clocking IN"
+            status = "Tidak Lengkap (No IN)"
         else:
-            if in_dt > start_break_dt:
-                diff_seconds = (in_dt - start_break_dt).total_seconds()
-                total_mins = max(0, int(diff_seconds // 60))
+            diff_seconds = (in_dt - start_break_dt).total_seconds()
+            total_mins = int(diff_seconds // 60)
+            
+            if total_mins <= 0:
+                status = "Tidak Lengkap (0 Menit)"
+            elif total_mins > 90:
+                status = "> 90 Menit"
+            elif total_mins >= 65:
+                status = "> 65 Menit"
+            elif total_mins > 60:
+                status = "> 60 Menit"
             else:
-                total_mins = 0
+                status = "Lengkap (Normal)"
 
-            if total_mins > MAX_BREAK_MINUTES:
-                continue
-
-            if total_mins == 0: 
-                status = "0 Menit"
-            elif total_mins > 60: 
-                status = ">60"
-
+        # Penyesuaian filter logic berdasar parameter UI terbaru
         if status_filter != 'all_data':
-            if status_filter == 'lengkap' and status != 'Normal Break': continue
-            elif status_filter == 'overbreak' and status != '>60': continue
-            elif status_filter == 'tidak_lengkap' and status not in ('No Clocking IN', 'No Clocking OUT', 'No Both', '0 Menit'): continue
+            if status_filter == 'lengkap' and status != 'Lengkap (Normal)':
+                continue
+            elif status_filter == 'tidak_lengkap' and not status.startswith('Tidak Lengkap'):
+                continue
+            elif status_filter == 'over60' and total_mins <= 60:
+                continue
+            elif status_filter == 'over65' and total_mins < 65:
+                continue
+            elif status_filter == 'over90' and total_mins <= 90:
+                continue
 
         seen_records.add(unique_key)
 
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
+            "sub_company_name": row['sub_company_name'] or '-',
+            "tipe_karyawan": row['tipe_karyawan'] or '-',
             "cc_name": row['cc_name'] or '-',
             "card_number": row['card_number'] or '-', 
+            "tanggal_out": row['tanggal_out'],
             "waktu_out": row['waktu_out'],
             "node_out": get_break_area(row['node_out']),
+            "tanggal_makan": row['tanggal_makan'],
             "waktu_makan": row['waktu_makan'],
+            "tanggal_in": row['tanggal_in'],
             "waktu_in": row['waktu_in'],
             "node_in": get_break_area(row['node_in']),
             "total": total_mins, 
@@ -290,7 +307,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             GROUP BY employee_id, clocking_date
         )
         SELECT 
-            k.emp_id, k.display_name, k.card_number, k.cc_name,
+            k.emp_id, k.display_name, k.sub_company_name, k.tipe_karyawan, k.card_number, k.cc_name,
             c.clock_date,
             IF(c.raw_in IS NOT NULL, DATE_FORMAT(c.raw_in, '%H:%i'), '-') as waktu_in,
             IF(c.raw_out IS NOT NULL, DATE_FORMAT(c.raw_out, '%H:%i'), '-') as waktu_out,
@@ -300,7 +317,6 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         WHERE 1=1 {filter_clause}
     """
     
-    # EKSEKUSI RAW QUERY ZERO-ZOMBIE
     with db.engine.connect() as conn:
         rows = conn.execute(text(sql_query), params).mappings().fetchall()
         
@@ -324,6 +340,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
+            "sub_company_name": row['sub_company_name'] or '-',
+            "tipe_karyawan": row['tipe_karyawan'] or '-',
             "cc_name": row['cc_name'] or '-', 
             "card_number": row['card_number'] or '-',
             "waktu_in": row['waktu_in'],
@@ -333,6 +351,56 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         })
 
     return report_data
+
+def _get_summary_break_data(start_date, end_date):
+    """
+    Menghitung Summary Review Break Time >= 65 minutes.
+    Melakukan Pivot Data berdasarkan Karyawan Unik dan Total Hari (SLA < 3 detik).
+    """
+    # 1. Tarik semua data break untuk range tanggal ini
+    all_breaks = _get_break_data(start_date, end_date, '', '', '', 'all_data')
+    
+    # 2. Filter hanya yang Overbreak >= 65 Menit
+    over_breaks = [b for b in all_breaks if b['total'] >= 65]
+    
+    sub_companies = ["CRS", "GLB", "PRO"]
+    
+    pivot_emp = defaultdict(lambda: defaultdict(set))
+    pivot_days = defaultdict(lambda: defaultdict(int))
+    
+    for b in over_breaks:
+        cc = b['cc_name']
+        sc = b['sub_company_name']
+        emp_id = b['emp_id']
+        
+        # Kumpulkan entitas unique employee dan total hari (semua baris over_breaks dianggap unik per hari)
+        pivot_emp[cc][sc].add(emp_id)
+        pivot_days[cc][sc] += 1
+        
+    def format_pivot(pivot_dict, is_set=False):
+        data = []
+        footer = {sc: 0 for sc in sub_companies}
+        footer['grand_total'] = 0
+        
+        for cc, sc_data in sorted(pivot_dict.items()):
+            counts = {}
+            row_tot = 0
+            for sc in sub_companies:
+                val = len(sc_data.get(sc, set())) if is_set else sc_data.get(sc, 0)
+                counts[sc] = val
+                row_tot += val
+                footer[sc] += val
+            
+            if row_tot > 0:
+                data.append({'cc': cc, 'counts': counts, 'row_total': row_tot})
+                footer['grand_total'] += row_tot
+                
+        return data, footer
+        
+    data_emp, foot_emp = format_pivot(pivot_emp, is_set=True)
+    data_days, foot_days = format_pivot(pivot_days, is_set=False)
+    
+    return sub_companies, data_emp, foot_emp, data_days, foot_days
 
 # =============================================================================
 # ENDPOINTS
@@ -377,12 +445,7 @@ def exportBreak():
         status_filter = request.args.get('status_filter', 'all_data').strip()
 
         report_data = _get_break_data(
-            start, 
-            end, 
-            sub_comp, 
-            dept,
-            search,
-            status_filter
+            start, end, sub_comp, dept, search, status_filter
         )
 
         if not report_data: 
@@ -390,38 +453,47 @@ def exportBreak():
 
         df = pd.DataFrame(report_data)
         
-        # Ubah nama kolom agar bersih dan mudah dibaca di Excel
+        # PENGGANTIAN NAMA KOLOM (Sesuai dengan pemisahan format TANGGAL dan WAKTU)
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
+            'sub_company_name': 'Sub Company',
+            'tipe_karyawan': 'Tipe',
             'cc_name': 'Cost Center', 
             'card_number': 'Absence Card No',
-            'waktu_out': 'Waktu OUT', 
-            'node_out': 'Node OUT', 
-            'waktu_makan': 'Waktu Makan', 
-            'waktu_in': 'Waktu IN', 
-            'node_in': 'Node IN', 
+            'tanggal_out': 'TANGGAL OUT',
+            'waktu_out': 'WAKTU OUT', 
+            'node_out': 'NODE OUT', 
+            'tanggal_makan': 'TANGGAL MAKAN',
+            'waktu_makan': 'WAKTU MAKAN', 
+            'tanggal_in': 'TANGGAL IN',
+            'waktu_in': 'WAKTU IN', 
+            'node_in': 'NODE IN', 
             'total': 'Total Menit', 
             'status': 'Status'
         }, inplace=True)
         
+        # PENGURUTAN KOLOM EXPORT (Sesuai Referensi Gambar Baru)
+        selected_cols = [
+            'Employee Id', 'Display Name', 'Sub Company', 'Tipe', 'Cost Center', 
+            'Absence Card No', 'TANGGAL OUT', 'WAKTU OUT', 'NODE OUT', 
+            'TANGGAL MAKAN', 'WAKTU MAKAN', 'TANGGAL IN', 'WAKTU IN', 'NODE IN', 
+            'Total Menit', 'Status'
+        ]
+        df = df[selected_cols]
+
         periode_text = _format_period_string(start, end)
         output = BytesIO()
 
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Tulis data mulai dari baris ke-4 (startrow=3, 0-indexed) agar ada ruang untuk header periode
             df.to_excel(writer, index=False, sheet_name='Break_Report', startrow=3)
             ws = writer.sheets['Break_Report']
 
-            # Baris 1: Judul Laporan
             ws['A1'] = "LAPORAN LOG ISTIRAHAT KARYAWAN"
             ws['A1'].font = Font(name='Calibri', size=13, bold=True, color='1F4E78')
-
-            # Baris 2: Periode Tanggal
             ws['A2'] = f"Periode: {periode_text}"
             ws['A2'].font = Font(name='Calibri', size=11, bold=True, italic=True)
 
-            # Format Header Tabel (Baris 4 di Excel)
             header_fill = PatternFill(start_color="F2F4F7", end_color="F2F4F7", fill_type="solid")
             header_font = Font(name='Calibri', size=11, bold=True)
             for cell in ws[4]:
@@ -429,11 +501,9 @@ def exportBreak():
                 cell.font = header_font
                 cell.alignment = Alignment(vertical="center")
 
-            # Penyesuaian lebar kolom otomatis (Auto-fit)
             for col in ws.columns:
                 max_len = 0
                 col_letter = get_column_letter(col[0].column)
-                # Evaluasi panjang karakter mulai dari baris header tabel (baris 4 ke bawah)
                 for cell in col[3:]:
                     val_str = str(cell.value or '')
                     if len(val_str) > max_len:
@@ -441,7 +511,6 @@ def exportBreak():
                 ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
 
         output.seek(0)
-        
         file_name = f"Employee_Break_Report_{start}.xlsx" if start == end else f"Employee_Break_Report_{start}_to_{end}.xlsx"
         return send_file(output, as_attachment=True, download_name=file_name)
     except Exception as e: 
@@ -456,23 +525,17 @@ def exportAccess():
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
 
-        report_data = _get_access_data(
-            start, 
-            end, 
-            sub_comp, 
-            dept,
-            search
-        )
+        report_data = _get_access_data(start, end, sub_comp, dept, search)
 
         if not report_data: 
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
-        
-        # Ubah nama kolom agar bersih dan rapi
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
+            'sub_company_name': 'Sub Company',
+            'tipe_karyawan': 'Tipe',
             'cc_name': 'Cost Center',
             'card_number': 'Absence Card No', 
             'waktu_in': 'Waktu IN', 
@@ -481,23 +544,24 @@ def exportAccess():
             'node_out': 'Node OUT'
         }, inplace=True)
         
+        selected_cols = [
+            'Employee Id', 'Display Name', 'Sub Company', 'Tipe', 'Cost Center', 
+            'Absence Card No', 'Waktu IN', 'Node IN', 'Waktu OUT', 'Node OUT'
+        ]
+        df = df[selected_cols]
+        
         periode_text = _format_period_string(start, end)
         output = BytesIO()
 
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Tulis data mulai dari baris ke-4 (startrow=3)
             df.to_excel(writer, index=False, sheet_name='Access_Report', startrow=3)
             ws = writer.sheets['Access_Report']
 
-            # Baris 1: Judul Laporan
             ws['A1'] = "LAPORAN AKSES / CLOCKING KARYAWAN"
             ws['A1'].font = Font(name='Calibri', size=13, bold=True, color='1F4E78')
-
-            # Baris 2: Periode Tanggal
             ws['A2'] = f"Periode: {periode_text}"
             ws['A2'].font = Font(name='Calibri', size=11, bold=True, italic=True)
 
-            # Format Header Tabel (Baris 4 di Excel)
             header_fill = PatternFill(start_color="F2F4F7", end_color="F2F4F7", fill_type="solid")
             header_font = Font(name='Calibri', size=11, bold=True)
             for cell in ws[4]:
@@ -505,7 +569,6 @@ def exportAccess():
                 cell.font = header_font
                 cell.alignment = Alignment(vertical="center")
 
-            # Penyesuaian lebar kolom otomatis (Auto-fit)
             for col in ws.columns:
                 max_len = 0
                 col_letter = get_column_letter(col[0].column)
@@ -516,8 +579,113 @@ def exportAccess():
                 ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
 
         output.seek(0)
-        
         file_name = f"Access_Clocking_Report_{start}.xlsx" if start == end else f"Access_Clocking_Report_{start}_to_{end}.xlsx"
         return send_file(output, as_attachment=True, download_name=file_name)
     except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# NEW ENDPOINTS: SUMMARY BREAK REPORT (API & EXCEL EXPORT)
+# =============================================================================
+@AbsenBreak_bp.route('/reportSumBreak')
+def reportSumBreak():
+    try:
+        start = request.args.get('start_date', '').strip()
+        end = request.args.get('end_date', '').strip()
+        
+        subcos, d_emp, f_emp, d_days, f_days = _get_summary_break_data(start, end)
+        
+        return jsonify({
+            "status": "success",
+            "sub_companies": subcos,
+            "data_employees": d_emp,
+            "footer_employees": f_emp,
+            "data_days": d_days,
+            "footer_days": f_days
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@AbsenBreak_bp.route('/exportSumBreak')
+def exportSumBreak():
+    try:
+        start = request.args.get('start_date', '').strip()
+        end = request.args.get('end_date', '').strip()
+        
+        subcos, d_emp, f_emp, d_days, f_days = _get_summary_break_data(start, end)
+        
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            
+            # =======================================================
+            # DATA TABLE 1: REVIEW BY TOTAL EMPLOYEES
+            # =======================================================
+            df_emp_rows = []
+            for row in d_emp:
+                r = {'Cost Center': row['cc']}
+                for sc in subcos: r[sc] = row['counts'][sc] if row['counts'][sc] > 0 else None
+                r['Grand Total'] = row['row_total']
+                df_emp_rows.append(r)
+            
+            foot_e = {'Cost Center': 'Grand Total'}
+            for sc in subcos: foot_e[sc] = f_emp[sc] if f_emp[sc] > 0 else None
+            foot_e['Grand Total'] = f_emp['grand_total']
+            df_emp_rows.append(foot_e)
+            
+            df_emp = pd.DataFrame(df_emp_rows)
+            df_emp.to_excel(writer, index=False, sheet_name='Summary_Break', startrow=4)
+            
+            ws = writer.sheets['Summary_Break']
+            ws['A1'] = "Summary Review Break Time >= 65 minutes"
+            ws['A1'].font = Font(size=14, bold=True)
+            ws['A2'] = _format_period_string(start, end)
+            
+            ws['A4'] = "Review by Total Employees"
+            ws['A4'].font = Font(color="0000FF", bold=True)
+            ws['A5'] = "COUNTUNIQUE of Employ Company"
+            ws['A5'].font = Font(italic=True)
+            
+            for cell in ws[5]:
+                cell.fill = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")
+                cell.font = Font(color="FFFFFF", bold=True)
+            
+            # =======================================================
+            # DATA TABLE 2: REVIEW BY TOTAL DAYS
+            # =======================================================
+            current_row = 5 + len(df_emp_rows) + 3 # Jeda 3 Baris antar tabel
+            
+            ws[f'A{current_row}'] = "Review by Total Days"
+            ws[f'A{current_row}'].font = Font(color="0000FF", bold=True)
+            ws[f'A{current_row+1}'] = "COUNTA of Tanggal IN ke I Company"
+            ws[f'A{current_row+1}'].font = Font(italic=True)
+            
+            df_days_rows = []
+            for row in d_days:
+                r = {'Cost Center': row['cc']}
+                for sc in subcos: r[sc] = row['counts'][sc] if row['counts'][sc] > 0 else None
+                r['Grand Total'] = row['row_total']
+                df_days_rows.append(r)
+            
+            foot_d = {'Cost Center': 'Grand Total'}
+            for sc in subcos: foot_d[sc] = f_days[sc] if f_days[sc] > 0 else None
+            foot_d['Grand Total'] = f_days['grand_total']
+            df_days_rows.append(foot_d)
+            
+            df_days = pd.DataFrame(df_days_rows)
+            df_days.to_excel(writer, index=False, sheet_name='Summary_Break', startrow=current_row+1, header=True)
+            
+            for cell in ws[current_row+2]:
+                cell.fill = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")
+                cell.font = Font(color="FFFFFF", bold=True)
+                
+            # Resize Kolom agar Rapi
+            for col in ws.columns:
+                ws.column_dimensions[col[0].column_letter].width = 18
+                
+        output.seek(0)
+        file_name = f"Summary_Break_Report_{start}_to_{end}.xlsx"
+        return send_file(output, as_attachment=True, download_name=file_name)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500

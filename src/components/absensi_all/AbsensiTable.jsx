@@ -81,6 +81,8 @@ const AbsensiTable = ({
         const empCode = emp.employee_code || emp.employee_id;
         const empName = emp.employee_name || '-';
         const clockDate = emp.clocking_date;
+        const clockIn = (emp.full_clock_in && emp.full_clock_in !== 'null') ? emp.full_clock_in : '';
+        const clockOut = (emp.full_clock_out && emp.full_clock_out !== 'null') ? emp.full_clock_out : '';
 
         Swal.fire({
             title: 'Hapus Data Absensi?',
@@ -105,6 +107,8 @@ const AbsensiTable = ({
                     const response = await api.post('/absensi/delete', {
                         employee_id: empCode,
                         clock_date: clockDate,
+                        clock_in: clockIn,
+                        clock_out: clockOut,
                         reason: result.value.trim()
                     });
 

@@ -7,7 +7,7 @@ from sqlalchemy import or_, func, and_
 from PIL import Image, ImageOps
 from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
-
+from openpyxl.styles import Font
 
 from extensions import db
 
@@ -1077,7 +1077,6 @@ def upload():
         db.session.rollback()
         return jsonify({"message": f"Terjadi kesalahan fatal: {str(e)}"}), 500
 
-
 @employee_bp.route('/employee/export', methods=['GET'])
 def export():
     try:
@@ -1190,7 +1189,7 @@ def export():
         
         filtered_employees = query.all()
         
-        # 7. MAPPING KE ARRAY (Langsung dari hasil JOIN, bukan lazy loading to_dict)
+        # 7. MAPPING KE ARRAY (Langsung dari hasil JOIN, menghindari N+1)
         data = []
         for emp, person, cc_name, sub_con_name, grade, type_worker, posisi, card_number, card_from, card_to in filtered_employees:
             data.append({
@@ -1210,9 +1209,24 @@ def export():
             return jsonify({'status': 'error', 'message': 'Data tidak ditemukan untuk diexport.'}), 400
 
         df = pd.DataFrame(data)
+        
+        if status == 'active':
+            status_label = "AKTIF"
+        elif status == 'inactive':
+            status_label = "TIDAK AKTIF"
+        else:
+            status_label = "KESELURUHAN"
+            
+        formatted_date = target_date.strftime('%d-%b-%Y').upper()
+        header_title = f"DATA KARYAWAN {status_label} PER TANGGAL: {formatted_date}"
+        
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data_Karyawan')        
+            df.to_excel(writer, index=False, sheet_name='Data_Karyawan', startrow=1)            
+            ws = writer.sheets['Data_Karyawan']
+            ws['A1'] = header_title
+            ws['A1'].font = Font(name='Calibri', size=11, bold=True)
+            
         output.seek(0)
 
         filename_date = target_date.strftime('%Y-%m-%d')
@@ -1260,39 +1274,65 @@ def deactivate_employee(pk_id):
 @employee_bp.route("/employee/stats", methods=['GET'])
 def get_employee_stats():
     try:
-        now = datetime.now()
+        now = datetime.now().date() 
+        
         allowed_subcos = get_allowed_subcompanies()
         TARGET_SUBCO_NAMES = ['PRO', 'GLB', 'ISS', '911', 'RENTOKIL']
+        
         master_sub_rows = SubCompany.query.filter(SubCompany.sub_company_name.in_(TARGET_SUBCO_NAMES)).all()
         sub_id_to_name = {str(sub.sub_company_id): sub.sub_company_name for sub in master_sub_rows}
         target_sub_ids = list(sub_id_to_name.keys())
+        
         if allowed_subcos:
             allowed_subcos_str = [str(x) for x in allowed_subcos]
             valid_subcos = list(set(target_sub_ids) & set(allowed_subcos_str))
         else:
             valid_subcos = target_sub_ids
+            
         base_emp = OsEmployment.query
         if allowed_subcos:
             base_emp = base_emp.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
-        total_active = base_emp.filter(or_(OsEmployment.valid_to >= now, OsEmployment.valid_to == None)).count()
-        total_inactive = base_emp.filter(OsEmployment.valid_to < now).count()
+            
+        active_condition = and_(
+            OsEmployment.valid_from.is_not(None),
+            OsEmployment.valid_from <= now,
+            or_(OsEmployment.valid_to >= now, OsEmployment.valid_to == None)
+        )
+        
+        inactive_condition = or_(
+            OsEmployment.valid_from.is_(None),
+            OsEmployment.valid_to < now
+        )
+        
+        # Kalkulasi Total
+        total_active = base_emp.filter(active_condition).count()
+        total_inactive = base_emp.filter(inactive_condition).count()
+        
+        # Kalkulasi Cost Center
         cc_query = db.session.query(
             OsCostCenter.org_cc_id, 
             func.count(OsCostCenter.id).label('total')
         ).join(OsEmployment, OsCostCenter.employee_id == OsEmployment.id)\
-         .filter(or_(OsCostCenter.valid_to >= now, OsCostCenter.valid_to == None))
+         .filter(active_condition)
+         
         if allowed_subcos:
             cc_query = cc_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+            
         stats_cc = {row.org_cc_id: row.total for row in cc_query.group_by(OsCostCenter.org_cc_id).all()}
+        
+        # Kalkulasi Sub Company
         sub_query = db.session.query(
             OsEmployment.sub_company_id,
             func.count(OsEmployment.id).label('total')
-        ).filter(or_(OsEmployment.valid_to >= now, OsEmployment.valid_to == None))
+        ).filter(active_condition)
+        
         if not valid_subcos:
             sub_query = sub_query.filter(db.false())
         else:
             sub_query = sub_query.filter(OsEmployment.sub_company_id.in_(valid_subcos))
+            
         stats_sub = {str(row.sub_company_id): row.total for row in sub_query.group_by(OsEmployment.sub_company_id).all()}
+        
         all_cc = costCenter.query.all()
         cc_aktif = {cc.org_name: stats_cc.get(cc.id, 0) for cc in all_cc if stats_cc.get(cc.id, 0) > 0}        
         sub_aktif = {
@@ -1316,5 +1356,4 @@ def get_employee_stats():
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
-        # Zero-Zombie Connection Policy
-        db.session.close()
+        db.session.remove()

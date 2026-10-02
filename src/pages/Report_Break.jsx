@@ -199,8 +199,10 @@ const Report_Break = () => {
   const statusOptions = [
     { value: 'all_data', label: 'Semua Status' },
     { value: 'lengkap', label: 'Lengkap (Normal)' },
-    { value: 'overbreak', label: 'Overbreak (> 60 menit)' },
-    { value: 'tidak_lengkap', label: 'Tidak Lengkap (Missed)' },
+    { value: 'tidak_lengkap', label: 'Tidak Lengkap' },
+    { value: 'over60', label: '> 60 menit' },    
+    { value: 'over65', label: '> 65 menit' },
+    { value: 'over90', label: '> 90 menit (male only)' },
   ];
 
   return (
