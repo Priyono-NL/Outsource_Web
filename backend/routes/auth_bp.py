@@ -64,6 +64,7 @@ def sso_sync():
             for m in all_menus:
                 menu_items_raw.append({
                     'id': m.id, 'title': m.title, 'path': m.path, 'icon': m.icon, 'parent_id': m.parent_id,
+                    'group_no': m.group_no, 'order_no': m.order_no,
                     'can_create': True, 'can_edit': True, 'can_delete': True
                 })
                 if m.path:
@@ -80,6 +81,7 @@ def sso_sync():
                     can_d = p.can_delete if p else False
                     menu_items_raw.append({
                         'id': m.id, 'title': m.title, 'path': m.path, 'icon': m.icon, 'parent_id': m.parent_id,
+                        'group_no': m.group_no, 'order_no': m.order_no,
                         'can_create': can_c, 'can_edit': can_e, 'can_delete': can_d
                     })
                     if m.path:

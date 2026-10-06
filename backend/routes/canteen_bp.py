@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy.orm import selectinload
 from extensions import db
 from model.canteen import canteen, canteenDetail
 from model.costCenter import costCenter
@@ -11,7 +12,7 @@ def index():
     try:
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 10, type=int)
-        pagination = canteen.query.paginate(page=page, per_page=pageSize, error_out=False)
+        pagination = canteen.query.options(selectinload(canteen.details)).paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",
             "data": [canteeens.to_dict() for canteeens in pagination.items],

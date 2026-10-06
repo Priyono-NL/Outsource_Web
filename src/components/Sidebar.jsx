@@ -1,4 +1,4 @@
-import React, { Fragment, useState } from 'react';
+import React, { Fragment, useState, useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../utils/useAuth';
 
@@ -96,32 +96,32 @@ const NavFolder = ({ route, isExpanded }) => {
 
 /* ── Komponen Utama Sidebar ── */
 const Sidebar = ({ isExpanded }) => {
-  // 1. Ambil data user dari Context SSO
   const { user } = useAuth();
-  
-  // 2. Ambil array 'menus' hasil generate backend Python
-  const dynamicRoutes = user?.menus || []; 
 
-  // 3. Kelompokkan route per group_no / group (dengan fallback nilai default 1)
-  const groups = [...new Set(dynamicRoutes.map(r => r.group_no ?? r.group ?? 1))].sort();
+  const groupedRoutes = useMemo(() => {
+    const dynamicRoutes = user?.menus || [];
+    const groups = [...new Set(dynamicRoutes.map((r) => r.group_no ?? r.group ?? 1))].sort();
+    return groups.map((g) => ({
+      group: g,
+      routes: dynamicRoutes.filter((r) => (r.group_no ?? r.group ?? 1) === g),
+    }));
+  }, [user?.menus]);
 
   return (
     <ul className="sidebar-nav">
-      {groups.map((g, gi) => (
-        <Fragment key={`group-${g}`}>
+      {groupedRoutes.map(({ group, routes }, gi) => (
+        <Fragment key={`group-${group}`}>
           {/* Divider antar grup */}
           {gi > 0 && <li><div className="sidebar-divider" /></li>}
           
           {/* Render menu berdasarkan grupnya */}
-          {dynamicRoutes
-            .filter(r => (r.group_no ?? r.group ?? 1) === g)
-            .map((route, index) => (
-              route.children && route.children.length > 0 ? (
-                <NavFolder key={`folder-${route.id || index}`} route={route} isExpanded={isExpanded} />
-              ) : (
-                <NavItem key={route.id || route.path} route={route} isExpanded={isExpanded} />
-              )
-            ))}
+          {routes.map((route, index) => (
+            route.children && route.children.length > 0 ? (
+              <NavFolder key={`folder-${route.id || index}`} route={route} isExpanded={isExpanded} />
+            ) : (
+              <NavItem key={route.id || route.path} route={route} isExpanded={isExpanded} />
+            )
+          ))}
         </Fragment>
       ))}
     </ul>

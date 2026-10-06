@@ -4,6 +4,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
+from sqlalchemy.orm import contains_eager, joinedload
 from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -66,7 +67,11 @@ def index():
         req_dept = request.args.get('department', '', type=str)
 
         query = OsCostCenter.query.join(OsEmployment, OsCostCenter.employee_id == OsEmployment.id) \
-                                  .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
+                                  .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                                  .options(
+                                      contains_eager(OsCostCenter.employement).contains_eager(OsEmployment.person),
+                                      joinedload(OsCostCenter.cc_master)
+                                  )
 
         # 1. Restriksi SSO
         allowed_subco = get_allowed_subcompanies()

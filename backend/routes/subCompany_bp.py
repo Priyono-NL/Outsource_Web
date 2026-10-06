@@ -74,7 +74,9 @@ def add():
 def update(id):
     try:
         company = SubCompany.query.filter_by(sub_company_id=id).first()
-        data = request.json
+        if not company:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
+        data = request.json or {}
         company.sub_company_name = data.get('sub_company_name', company.sub_company_name)
         company.type_company = data.get('type_company', company.type_company)
         db.session.commit()
@@ -87,6 +89,8 @@ def update(id):
 def delete(id):
     try:
         data = SubCompany.query.filter_by(sub_company_id=id).first()
+        if not data:
+            return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 404
         db.session.delete(data)
         db.session.commit()
         return jsonify({"status": "success", "message": "Data berhasil dihapus!"}), 200

@@ -1,7 +1,5 @@
 from flask import Flask, request, Response
 from datetime import timedelta
-from sqlalchemy.pool import NullPool # <--- 1. IMPORT NULLPOOL DI SINI
-
 from extensions import db
 from config import Config
 from routes.auth_bp import auth_bp
@@ -33,14 +31,7 @@ from routes.guest_bp import guest_bp
 
 def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config)    
-
-    # =========================================================================
-    # 2. KONFIGURASI NULLPOOL (MATIKAN CONNECTION POOLING SLEEP)
-    # =========================================================================
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'poolclass': NullPool
-    }
+    app.config.from_object(Config)
 
     ALLOWED_ORIGINS = Config.CORS_ORIGINS
     if isinstance(ALLOWED_ORIGINS, str):

@@ -3,9 +3,15 @@ import { useCrudPage } from '../utils/useCrudPage';
 import PageHeader from '../components/PageHeader';
 import SubComTable from '../components/subCom/SubComTable';
 import SubComForm from '../components/subCom/SubComForm';
+import { invalidateMasterDataCache } from '../utils/masterDataCache';
 
 const SubCompany = () => {
   const crud = useCrudPage();
+
+  const handleSuccess = () => {
+    invalidateMasterDataCache();
+    crud.handleRefresh();
+  };
 
   return (
     <div>
@@ -27,7 +33,7 @@ const SubCompany = () => {
       {crud.showForm && (
         <SubComForm
           onClose={crud.handleClose}
-          onSuccess={crud.handleRefresh}
+          onSuccess={handleSuccess}
           initialData={crud.editingData}
         />
       )}

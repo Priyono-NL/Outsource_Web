@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import { componentRegistry } from './utils/menuConfig';
 import { AuthProvider, useAuth } from './utils/useAuth';
-import AbsensiVendor from './pages/AbsensiVendor';
-import PendingAccess from './pages/PendingAccess'; // 1. Import Halaman PendingAccess
+const AbsensiVendor = React.lazy(() => import('./pages/AbsensiVendor'));
+const PendingAccess = React.lazy(() => import('./pages/PendingAccess'));
+
+const RouteLoader = () => (
+  <div className="d-flex justify-content-center align-items-center py-5 w-100" style={{ minHeight: '300px' }}>
+    <div className="spinner-border text-primary" role="status" style={{ width: '2.5rem', height: '2.5rem' }}></div>
+  </div>
+);
 
 const EnvBanner = () => {
   const isDev = import.meta.env.MODE === 'development';
@@ -122,35 +128,36 @@ const MainLayout = () => {
         )}
 
         <main id="app-content" style={{ width: isPendingAccess ? '100%' : 'auto' }}>          
-          {role === 'vendor_app' ? (
-            <Routes>
-              <Route path="/absenVendor" element={<AbsensiVendor />} />
-              <Route path="*" element={<Navigate to="/absenVendor" replace />} />
-            </Routes>
-          ) : isPendingAccess ? (
-            /* DILOCK KE HALAMAN PENDING JIKA MENUS KOSONG */
-            <Routes>
-              <Route path="/pending" element={<PendingAccess />} />
-              <Route path="*" element={<Navigate to="/pending" replace />} />
-            </Routes>
-          ) : (
-            <Routes>
-              {Object.entries(componentRegistry).map(([path, element]) => {
-                if (publicRoutes.includes(path)) return null;
+          <Suspense fallback={<RouteLoader />}>
+            {role === 'vendor_app' ? (
+              <Routes>
+                <Route path="/absenVendor" element={<AbsensiVendor />} />
+                <Route path="*" element={<Navigate to="/absenVendor" replace />} />
+              </Routes>
+            ) : isPendingAccess ? (
+              /* DILOCK KE HALAMAN PENDING JIKA MENUS KOSONG */
+              <Routes>
+                <Route path="/pending" element={<PendingAccess />} />
+                <Route path="*" element={<Navigate to="/pending" replace />} />
+              </Routes>
+            ) : (
+              <Routes>
+                {Object.entries(componentRegistry).map(([path, element]) => {
+                  if (publicRoutes.includes(path)) return null;
+                  
+                  return (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={element}
+                    />
+                  );
+                })}
                 
-                return (
-                  <Route
-                    key={path}
-                    path={path}
-                    element={element}
-                  />
-                );
-              })}
-              
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          )}
-
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            )}
+          </Suspense>
         </main>
       </div>
 

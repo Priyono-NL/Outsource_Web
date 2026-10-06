@@ -6,6 +6,7 @@ import api from '../api/api';
 import { Toast, Confirm } from '../utils/sweetalert';
 import { useCrudPage } from '../utils/useCrudPage';
 import { useAuth } from '../utils/useAuth';
+import { getCachedSubCompanies, getCachedCostCenters } from '../utils/masterDataCache';
 
 import PageHeader from '../components/PageHeader';
 import LoadingButton from '../components/LoadingButton';
@@ -65,13 +66,10 @@ const Absensi = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [resSub, resDept] = await Promise.all([
-          api.get('/subcom?page=1&pageSize=200'),
-          api.get('/costcenter?page=1&pageSize=200'),
+        const [subData, deptData] = await Promise.all([
+          getCachedSubCompanies(),
+          getCachedCostCenters(),
         ]);
-
-        const subData  = resSub.data.data || [];
-        const deptData = resDept.data.data || [];
 
         setSubCompanies(subData);
         setDepartments(deptData);

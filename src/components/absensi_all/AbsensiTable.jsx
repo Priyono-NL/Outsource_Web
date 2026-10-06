@@ -25,7 +25,7 @@ const AbsensiTable = ({
     const [itemsPerPage] = useState(20);
     const [totalPages, setTotalPages] = useState(0);
 
-    const fetchData = async () => {
+    const fetchData = async (signal) => {
         try {
             setLoading(true);
             setError(null);
@@ -43,7 +43,7 @@ const AbsensiTable = ({
                 worker_type: 'os'
             }).toString();
 
-            const response = await api.get(`/absensi?${params}`);
+            const response = await api.get(`/absensi?${params}`, { signal });
             const result = response.data;
             
             if (result.status === 'success') { 
@@ -53,6 +53,7 @@ const AbsensiTable = ({
                 throw new Error(result.message || 'Terjadi kesalahan pada data absensi'); 
             }
         } catch (err) {
+            if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
             setAbsensi([]);
             setTotalPages(0);
@@ -62,12 +63,16 @@ const AbsensiTable = ({
     };
 
     useEffect(() => {
-        setCurrentPage(1);
+        if (currentPage !== 1) {
+            setCurrentPage(1);
+        }
     }, [searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter]);
     
     useEffect(() => {
         if (!startDate || !endDate || !isFilterApplied) return;
-        fetchData();
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => controller.abort();
     }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, subCompany, department, startDate, endDate, statusFilter, shiftFilter, isFilterApplied]);
 
     const formatTime = (timeStr) => {

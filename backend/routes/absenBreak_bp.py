@@ -58,8 +58,35 @@ def _get_hybrid_pattern():
         return "^$"  
     return "|".join(HYBRID_NODES)
 
+def determine_shift(clock_in_val, is_saturday):
+    """
+    Menentukan shift kerja berdasarkan waktu mulai istirahat / makan.
+    Jika tidak ada waktu tap out istirahat, default ke SHIFT 1.
+    """
+    if not clock_in_val: 
+        return 'SHIFT 1'
+    try:
+        if isinstance(clock_in_val, datetime): 
+            jam = clock_in_val.hour * 100 + clock_in_val.minute
+        else:
+            val_str = str(clock_in_val).strip()
+            time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
+            t = datetime.strptime(time_str, "%H:%M:%S")
+            jam = t.hour * 100 + t.minute 
+    except Exception: 
+        return 'SHIFT 1'
+
+    if is_saturday:
+        if 1500 <= jam <= 1900: return 'SHIFT 3'
+        elif 1000 <= jam <= 1400: return 'SHIFT 2'
+        else: return 'SHIFT 1'
+    else:
+        if jam >= 2000 or jam < 400: return 'SHIFT 3'
+        elif 1300 <= jam <= 1700: return 'SHIFT 2'
+        else: return 'SHIFT 1'
+
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
-    """Membangun filter WHERE clause dinamis (Sangat Cepat Berkat Normalisasi CTE)"""
+    """Membangun filter WHERE clause dinamis"""
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
@@ -81,7 +108,7 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
             filters.append("k.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
             
-    # 2. Filter Cost Center (ID NUMERIK)
+    # 2. Filter Cost Center
     if department_id:
         filters.append("k.cost_center_id = :department_id")
         params['department_id'] = department_id
@@ -95,33 +122,37 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     return filter_clause, params
 
 def _get_base_karyawan_cte():
-    """CTE TERNORMALISASI: Mengubah string code dan resolve SubCompany & Tipe Karyawan"""
+    """CTE TERNORMALISASI: Mengambil Master Karyawan Tetap & OS berbasis Nomor Kartu"""
     return """
         WITH Karyawan AS (
             SELECT 
                 CONVERT(k.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                CONVERT(k.employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS display_name, 
+                MAX(CONVERT(k.employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS display_name, 
                 CONVERT(k.card_no USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                CONVERT(CAST(COALESCE(occ.id, k.cost_center) AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center_id, 
-                CONVERT(COALESCE(occ.org_name, k.dept_name) USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
+                MAX(CONVERT(CAST(COALESCE(occ.id, k.cost_center) AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS cost_center_id, 
+                MAX(CONVERT(COALESCE(occ.org_name, k.dept_name) USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name, 
                 'sub00003' COLLATE utf8mb4_general_ci AS sub_company_id,
                 'CRS' COLLATE utf8mb4_general_ci AS sub_company_name,
                 'TETAP/KONTRAK' COLLATE utf8mb4_general_ci AS tipe_karyawan
             FROM vw_master_karyawan k
             LEFT JOIN org_cost_center occ ON occ.cost_center = k.cost_center
+            WHERE k.card_no IS NOT NULL AND TRIM(k.card_no) != '' AND k.card_no != '00000.00000'
+            GROUP BY k.employee_id, k.card_no
             
-            UNION
+            UNION ALL
             
             SELECT 
                 CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci AS display_name, 
+                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS display_name, 
                 CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci AS cost_center_id, 
-                CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci AS cc_name, 
-                CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_id,
-                CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci AS sub_company_name,
-                CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci AS tipe_karyawan
+                MAX(CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS cost_center_id, 
+                MAX(CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name, 
+                MAX(CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_id,
+                MAX(CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_name,
+                MAX(CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci) AS tipe_karyawan
             FROM vw_master_os_active
+            WHERE card_number IS NOT NULL AND TRIM(card_number) != '' AND card_number != '00000.00000'
+            GROUP BY employee_code, card_number
         )
     """
 
@@ -139,19 +170,18 @@ def _paginate_data(report_data, page, page_size):
     }
 
 # =============================================================================
-# DATA PROCESSORS DENGAN CONTEXT MANAGER (HIT-AND-RUN)
+# DATA PROCESSORS
 # =============================================================================
-def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data'):
+def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data', shift_filter=''):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
 
-    # Query diupdate untuk memisahkan TANGGAL dan WAKTU secara mandiri
     sql_query = f"""
         {base_cte},
         ClockData AS (
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
+                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id, 
                 clocking_date as clock_date,
                 MIN(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out_dt,
                 MAX(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in_dt,
@@ -160,7 +190,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             FROM VW_TACTIVITIES_STAGING_VALID
             WHERE clocking_date BETWEEN :start_date AND :end_date
               AND (clocking_type = 'Break' OR CAST(node_id AS CHAR) REGEXP :hybrid_pattern)
-            GROUP BY employee_id, clocking_date
+              AND card_id IS NOT NULL AND card_id != '' AND card_id != '00000.00000'
+            GROUP BY card_id, clocking_date
         ),
         MakanData AS (
             SELECT 
@@ -192,7 +223,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             c.node_out,
             c.node_in
         FROM Karyawan k
-        LEFT JOIN ClockData c ON k.emp_id = c.emp_id
+        LEFT JOIN ClockData c ON k.card_number = c.card_id
         LEFT JOIN MakanData m ON k.emp_id = m.emp_id AND c.clock_date = m.tanggal_makan
         WHERE (c.raw_out_dt IS NOT NULL OR m.raw_makan_dt IS NOT NULL OR c.raw_in_dt IS NOT NULL)
         {filter_clause}
@@ -226,6 +257,15 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
 
         start_break_dt = out_dt if out_dt is not None else makan_dt
 
+        # -- DETEKSI SHIFT --
+        is_saturday = (datetime.strptime(str(row['ref_date']), "%Y-%m-%d").weekday() == 5)
+        detected_shift = determine_shift(start_break_dt, is_saturday)
+
+        # -- FILTER SHIFT --
+        if shift_filter and shift_filter != 'all_data':
+            if detected_shift != shift_filter:
+                continue
+
         total_mins = 0
         status = "Lengkap (Normal)"
         
@@ -250,7 +290,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             else:
                 status = "Lengkap (Normal)"
 
-        # Penyesuaian filter logic berdasar parameter UI terbaru
+        # -- FILTER STATUS --
         if status_filter != 'all_data':
             if status_filter == 'lengkap' and status != 'Lengkap (Normal)':
                 continue
@@ -272,6 +312,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             "tipe_karyawan": row['tipe_karyawan'] or '-',
             "cc_name": row['cc_name'] or '-',
             "card_number": row['card_number'] or '-', 
+            "shift": detected_shift, # Ditambahkan ke output JSON
             "tanggal_out": row['tanggal_out'],
             "waktu_out": row['waktu_out'],
             "node_out": get_break_area(row['node_out']),
@@ -295,7 +336,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         {base_cte},
         ClockData AS (
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
+                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id, 
                 clocking_date as clock_date,
                 MIN(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in,
                 MAX(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out,
@@ -304,7 +345,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             FROM VW_TACTIVITIES_STAGING_VALID
             WHERE clocking_date BETWEEN :start_date AND :end_date
               AND (clocking_type = 'Access' OR CAST(node_id AS CHAR) REGEXP :hybrid_pattern)
-            GROUP BY employee_id, clocking_date
+              AND card_id IS NOT NULL AND card_id != '' AND card_id != '00000.00000'
+            GROUP BY card_id, clocking_date
         )
         SELECT 
             k.emp_id, k.display_name, k.sub_company_name, k.tipe_karyawan, k.card_number, k.cc_name,
@@ -313,7 +355,7 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             IF(c.raw_out IS NOT NULL, DATE_FORMAT(c.raw_out, '%H:%i'), '-') as waktu_out,
             c.node_in, c.node_out
         FROM Karyawan k
-        INNER JOIN ClockData c ON k.emp_id = c.emp_id
+        INNER JOIN ClockData c ON k.card_number = c.card_id
         WHERE 1=1 {filter_clause}
     """
     
@@ -355,16 +397,11 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
 def _get_summary_break_data(start_date, end_date):
     """
     Menghitung Summary Review Break Time >= 65 minutes.
-    Melakukan Pivot Data berdasarkan Karyawan Unik dan Total Hari (SLA < 3 detik).
     """
-    # 1. Tarik semua data break untuk range tanggal ini
-    all_breaks = _get_break_data(start_date, end_date, '', '', '', 'all_data')
-    
-    # 2. Filter hanya yang Overbreak >= 65 Menit
+    all_breaks = _get_break_data(start_date, end_date, '', '', '', 'all_data', '')
     over_breaks = [b for b in all_breaks if b['total'] >= 65]
     
     sub_companies = ["CRS", "GLB", "PRO"]
-    
     pivot_emp = defaultdict(lambda: defaultdict(set))
     pivot_days = defaultdict(lambda: defaultdict(int))
     
@@ -373,7 +410,6 @@ def _get_summary_break_data(start_date, end_date):
         sc = b['sub_company_name']
         emp_id = b['emp_id']
         
-        # Kumpulkan entitas unique employee dan total hari (semua baris over_breaks dianggap unik per hari)
         pivot_emp[cc][sc].add(emp_id)
         pivot_days[cc][sc] += 1
         
@@ -414,7 +450,8 @@ def reportBreak():
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
-            request.args.get('status_filter', 'all_data').strip()
+            request.args.get('status_filter', 'all_data').strip(),
+            request.args.get('shift_filter', '').strip() # Ambil parameter filter shift
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -443,9 +480,10 @@ def exportBreak():
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
         status_filter = request.args.get('status_filter', 'all_data').strip()
+        shift_filter = request.args.get('shift_filter', '').strip() # Ambil filter shift
 
         report_data = _get_break_data(
-            start, end, sub_comp, dept, search, status_filter
+            start, end, sub_comp, dept, search, status_filter, shift_filter
         )
 
         if not report_data: 
@@ -453,7 +491,7 @@ def exportBreak():
 
         df = pd.DataFrame(report_data)
         
-        # PENGGANTIAN NAMA KOLOM (Sesuai dengan pemisahan format TANGGAL dan WAKTU)
+        # PENGGANTIAN NAMA KOLOM (Menambahkan kolom 'shift' dan memisahkannya)
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
@@ -461,6 +499,7 @@ def exportBreak():
             'tipe_karyawan': 'Tipe',
             'cc_name': 'Cost Center', 
             'card_number': 'Absence Card No',
+            'shift': 'Shift', # Kolom baru untuk Excel
             'tanggal_out': 'TANGGAL OUT',
             'waktu_out': 'WAKTU OUT', 
             'node_out': 'NODE OUT', 
@@ -473,10 +512,10 @@ def exportBreak():
             'status': 'Status'
         }, inplace=True)
         
-        # PENGURUTAN KOLOM EXPORT (Sesuai Referensi Gambar Baru)
+        # PENGURUTAN KOLOM EXPORT (Menyertakan kolom 'Shift' setelah Absence Card No)
         selected_cols = [
             'Employee Id', 'Display Name', 'Sub Company', 'Tipe', 'Cost Center', 
-            'Absence Card No', 'TANGGAL OUT', 'WAKTU OUT', 'NODE OUT', 
+            'Absence Card No', 'Shift', 'TANGGAL OUT', 'WAKTU OUT', 'NODE OUT', 
             'TANGGAL MAKAN', 'WAKTU MAKAN', 'TANGGAL IN', 'WAKTU IN', 'NODE IN', 
             'Total Menit', 'Status'
         ]

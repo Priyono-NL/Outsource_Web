@@ -122,15 +122,26 @@ def index():
         # 2. OPTIMASI ENTERPRISE: POINT-IN-TIME EXPLICIT JOIN (Anti N+1 Query)
         query = db.session.query(
             OsEmployment,
-            OsPerson.name.label('person_name'),
+            OsPerson,
+            SubCompany.sub_company_name,
+            SubCompany.type_company,
             costCenter.org_name.label('cc_name'),
+            costCenter.id.label('cc_id'),
+            costCenter.cost_center.label('cost_center_code'),
+            costCenter.org_id.label('cc_org_id'),
             OsCostCenter.cc_id.label('cc_code'),
+            OsCostCenter.org_cc_id.label('raw_org_cc_id'),
             OsCard.card_number,
+            OsCard.valid_from.label('card_valid_from'),
+            OsCard.valid_to.label('card_valid_to'),
             OsGrade.grade,
             osType.type_worker,
-            osType.posisi
+            osType.posisi,
+            OsBlacklist.status.label('blist_status')
         ).join(
             OsPerson, OsEmployment.person_id == OsPerson.person_id
+        ).outerjoin(
+            SubCompany, OsEmployment.sub_company_id == SubCompany.sub_company_id
         ).outerjoin(
             OsCostCenter,
             and_(
@@ -161,6 +172,8 @@ def index():
                 osType.valid_from <= target_date,
                 or_(osType.valid_to >= target_date, osType.valid_to == None)
             )
+        ).outerjoin(
+            OsBlacklist, OsPerson.person_id == OsBlacklist.person_id
         )
 
         # 3. LOGIKA FILTER HAK AKSES SUBCOMPANY (SSO)
@@ -181,7 +194,6 @@ def index():
             )
 
         # 5. LOGIKA FILTER AKTIF BERDASARKAN POINT-IN-TIME
-        
         if status == 'active':
             query = query.filter(
                 and_(
@@ -214,20 +226,55 @@ def index():
         # 7. Eksekusi Pagination
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
 
-        # 8. MAPPING DATA
+        # 8. MAPPING DATA (Zero N+1 Query directly from Joined Fields)
         result_data = []
-        for emp, person_name, cc_name, cc_code, card_number, grade, type_worker, posisi in pagination.items:
-            emp_dict = emp.to_dict() 
-            
-            # Override data fluktuatif (SCD Type 2) dari Explicit JOIN Point-in-Time
-            emp_dict['person_name'] = person_name
-            emp_dict['cc_name'] = cc_name if cc_name else '-'
-            emp_dict['cost_center_id'] = cc_code if cc_code else '-'
-            emp_dict['card_number'] = card_number if card_number else '-'
-            emp_dict['grade'] = grade if grade else '-'
-            emp_dict['type_worker'] = type_worker if type_worker else '-'
-            emp_dict['posisi'] = posisi if posisi else '-'
-            
+        for emp, person, sub_con_name, type_company, cc_name, cc_id, cc_cost_center, cc_org_id, cc_code, raw_org_cc_id, card_number, card_from, card_to, grade, type_worker, posisi, blist_status in pagination.items:
+            v_from = emp.valid_from.strftime('%Y-%m-%d') if hasattr(emp.valid_from, 'strftime') else None
+            v_to = emp.valid_to.strftime('%Y-%m-%d') if hasattr(emp.valid_to, 'strftime') else None
+            dob_str = person.dob.strftime('%Y-%m-%d') if (person and hasattr(person.dob, 'strftime')) else None
+            c_from_str = card_from.strftime('%Y-%m-%d') if (card_from and hasattr(card_from, 'strftime')) else None
+            c_to_str = card_to.strftime('%Y-%m-%d') if (card_to and hasattr(card_to, 'strftime')) else None
+
+            emp_dict = {
+                'id': emp.id,
+                'employee_code': emp.employee_code,
+                'sub_company_id': emp.sub_company_id,
+                'sub_con_name': sub_con_name,
+                'type_company': type_company,
+                'person_id': emp.person_id,
+                'use_cc': getattr(emp, 'use_cc', 0),
+                'valid_from': v_from,
+                'valid_to': v_to,
+                'v_valid_from': emp.valid_from.strftime('%d %b %Y') if emp.valid_from else None,
+                'v_valid_to': emp.valid_to.strftime('%d %b %Y') if emp.valid_to else None,
+                'person_name': person.name if person else '-',
+                'gender': person.gender if person else None,
+                'pob': person.pob if person else None,
+                'dob': dob_str,
+                'v_dob': person.dob.strftime('%d %b %Y') if (person and hasattr(person.dob, 'strftime')) else None,
+                'religion': person.religion if person else None,
+                'resident_id': person.resident_id if person else None,
+                'address': person.address if person else None,
+                'photo': person.photo if person else None,
+                'grade': grade if grade else '-',
+                'type_worker': type_worker if type_worker else '-',
+                'posisi': posisi if posisi else '-',
+                'cc_id': cc_id if cc_id else raw_org_cc_id,
+                'cost_center': cc_cost_center if cc_cost_center else (cc_code if cc_code else '-'),
+                'cc_name': cc_name if cc_name else '-',
+                'cost_center_id': cc_code if cc_code else '-',
+                'org_id': cc_org_id,
+                'card_number': card_number if card_number else '-',
+                'c_valid_from': c_from_str,
+                'c_valid_to': c_to_str,
+                'card_number_from': card_from.strftime('%d %b %Y') if card_from else None,
+                'card_number_to': card_to.strftime('%d %b %Y') if card_to else None,
+                'is_blacklist': "Blacklist" if blist_status == 1 else "No in Blacklist",
+                'created_date': emp.created_date.strftime('%d %b %Y') if hasattr(emp.created_date, 'strftime') else None,
+                'created_by': emp.created_by,
+                'modified_date': emp.modified_date.strftime('%d %b %Y') if hasattr(emp.modified_date, 'strftime') else None,
+                'modified_by': emp.modified_by,
+            }
             result_data.append(emp_dict)
 
         return jsonify({

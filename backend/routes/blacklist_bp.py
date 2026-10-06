@@ -1,6 +1,7 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload, contains_eager
 from extensions import db
 from model.blacklist import OsBlacklist
 from model.person import OsPerson
@@ -13,15 +14,17 @@ def index():
         page = request.args.get('page', 1, type=int)
         pageSize = request.args.get('pageSize', 100, type=int)
         search = request.args.get('search', '', type=str)
-        query = OsBlacklist.query
         if search:
-            query = query.join(OsPerson, OsBlacklist.person_id == OsPerson.person_id)   
-            query = query.filter(
-                or_(
-                    OsPerson.name.ilike(f"%{search}%"),
-                    OsPerson.resident_id.ilike(f"%{search}%")
-                )
-            )
+            query = OsBlacklist.query.join(OsPerson, OsBlacklist.person_id == OsPerson.person_id) \
+                                     .options(contains_eager(OsBlacklist.person)) \
+                                     .filter(
+                                         or_(
+                                             OsPerson.name.ilike(f"%{search}%"),
+                                             OsPerson.resident_id.ilike(f"%{search}%")
+                                         )
+                                     )
+        else:
+            query = OsBlacklist.query.options(joinedload(OsBlacklist.person))
         pagination = query.paginate(page=page, per_page=pageSize, error_out=False)
         return jsonify({
             "status": "success",

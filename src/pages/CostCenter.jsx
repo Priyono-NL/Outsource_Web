@@ -3,9 +3,15 @@ import { useCrudPage } from '../utils/useCrudPage';
 import PageHeader from '../components/PageHeader';
 import CCTable from '../components/costCenter/CCTable';
 import CCForm from '../components/costCenter/CCFrom';
+import { invalidateMasterDataCache } from '../utils/masterDataCache';
 
 const CostCenter = () => {
   const crud = useCrudPage();
+
+  const handleSuccess = () => {
+    invalidateMasterDataCache();
+    crud.handleRefresh();
+  };
 
   return (
     <div>
@@ -27,7 +33,7 @@ const CostCenter = () => {
       {crud.showForm && (
         <CCForm
           onClose={crud.handleClose}
-          onSuccess={crud.handleRefresh}
+          onSuccess={handleSuccess}
           initialData={crud.editingData}
         />
       )}

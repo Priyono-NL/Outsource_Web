@@ -53,6 +53,7 @@ def sync_sheet():
         
         success_count = 0
         now = datetime.now()
+        existing_map = {t.terminal_id: t for t in terminal.query.filter_by(company_id=1111).all()}
         
         for index, row in df.iterrows():
             # Formatting Value dari Sheet
@@ -71,11 +72,8 @@ def sync_sheet():
             server_prefix = SERVER_CODE_MAP.get(server_key, server_val[:3].upper() if server_val else 'UNK')
             terminal_id_val = f"{server_prefix}{node_val}"
 
-            # --- CEK KE DATABASE (Cek terminal_id & company_id) ---
-            existing_terminal = terminal.query.filter_by(
-                terminal_id=terminal_id_val, 
-                company_id=1111
-            ).first()
+            # --- CEK KE MEMORY CACHE (Cek terminal_id & company_id) ---
+            existing_terminal = existing_map.get(terminal_id_val)
 
             if existing_terminal:
                 # 4a. UPDATE JIKA DATA SUDAH ADA

@@ -22,7 +22,7 @@ const Datatable = ({
   const [totalPages, setTotalPages]   = useState(0);
   const PAGE_SIZE = 20;
 
-  const fetchData = async () => {
+  const fetchData = async (signal) => {
     try {
       setLoading(true);
       setError(null);
@@ -37,7 +37,7 @@ const Datatable = ({
         target_date: targetDate || ''
       }).toString();
       
-      const res = await api.get(`/employee?${params}`);
+      const res = await api.get(`/employee?${params}`, { signal });
       if (res.data.status === 'success') {
         setEmployees(res.data.data);
         setTotalPages(res.data.total_page);
@@ -45,6 +45,7 @@ const Datatable = ({
         throw new Error(res.data.message);
       }
     } catch (err) { 
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
       setError(err.message); 
       setEmployees([]); 
       setTotalPages(0);
@@ -55,12 +56,16 @@ const Datatable = ({
 
   useEffect(() => { 
     if (!isFilterApplied) return;
-    setCurrentPage(1); 
-  }, [searchTerm, filterStatus, filterSubCompany, filterDepartment, targetDate, isFilterApplied]);
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, filterStatus, filterSubCompany, filterDepartment, targetDate]);
 
   useEffect(() => { 
     if (!isFilterApplied) return;
-    fetchData(); 
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    return () => controller.abort();
   }, [currentPage, refreshTrigger, searchTerm, filterStatus, filterSubCompany, filterDepartment, targetDate, isFilterApplied]);
 
   // Helper Pembanding Status Aktif Presisi (Strict Date Zero-Time Comparison)

@@ -3,6 +3,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import or_
+from sqlalchemy.orm import contains_eager
 from extensions import db
 from model.grade import OsGrade
 from model.employment import OsEmployment
@@ -23,7 +24,8 @@ def index():
         req_dept = request.args.get('department', '', type=str)
         
         query = OsGrade.query.join(OsEmployment, OsGrade.employee_id == OsEmployment.id) \
-                            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
+                            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                            .options(contains_eager(OsGrade.employement).contains_eager(OsEmployment.person))
         
         # Flag tracking untuk mencegah Duplicate Join ke OsCostCenter
         has_joined_cc = False

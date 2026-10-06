@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
+from sqlalchemy.orm import contains_eager
 from extensions import db
 from model.osType import osType
 from model.employment import OsEmployment
@@ -21,7 +22,8 @@ def index():
         req_dept = request.args.get('department', '', type=str)
 
         query = osType.query.join(OsEmployment, osType.employee_id == OsEmployment.id) \
-                            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id)
+                            .join(OsPerson, OsEmployment.person_id == OsPerson.person_id) \
+                            .options(contains_eager(osType.employement).contains_eager(OsEmployment.person))
         
         # Flag tracking untuk mencegah Duplicate Join ke OsCostCenter
         has_joined_cc = False

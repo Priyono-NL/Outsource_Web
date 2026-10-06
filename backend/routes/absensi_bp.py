@@ -137,6 +137,7 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
 # CORE SQL QUERY BUILDER
 # =============================================================================
 def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all'):
+
     where_clauses = ["1=1", "ex.id IS NULL"]
     params = {}
 
@@ -160,7 +161,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             OR 
             (SELECT COUNT(1) 
              FROM `db-webapps`.TBL_ATTENDANCE a2 
-             WHERE a2.employee_id = ta.employee_id 
+             WHERE a2.card_id = ta.card_id 
              AND a2.clocking_date = ta.clocking_date) > 1
         )""")
     elif status_filter == 'no_in':
@@ -172,7 +173,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 AND 
                 EXISTS (
                     SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a2 
-                    WHERE a2.employee_id = ta.employee_id 
+                    WHERE a2.card_id = ta.card_id 
                     AND a2.clocking_date = ta.clocking_date 
                     AND a2.clock_in IS NULL
                 )
@@ -187,7 +188,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 AND 
                 EXISTS (
                     SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a2 
-                    WHERE a2.employee_id = ta.employee_id 
+                    WHERE a2.card_id = ta.card_id 
                     AND a2.clocking_date = ta.clocking_date 
                     AND a2.clock_out IS NULL
                 )
@@ -310,39 +311,46 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         ),
         RawBacData AS (
             SELECT 
-                employee_id,
-                clock_date,
-                id,
-                bac_no,
-                bac_ket,
-                clock_in,
-                clock_out,
-                evidence_photo,
-                created_by,
-                created_date
-            FROM bac_os
-            WHERE status = 1
+                -- Kita join BAC ke Master menggunakan master_card_id agar konsisten lewat Card ID
+                m.master_card_id AS card_id,
+                b.employee_id,
+                b.clock_date,
+                b.id,
+                b.bac_no,
+                b.bac_ket,
+                b.clock_in,
+                b.clock_out,
+                b.evidence_photo,
+                b.created_by,
+                b.created_date
+            FROM bac_os b
+            LEFT JOIN MasterEmp m ON m.emp_code = CONVERT(b.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci
+            WHERE b.status = 1
             
             UNION ALL
             
             SELECT 
-                nrp AS employee_id,
-                DATE(submit_at) AS clock_date,
-                id,
+                m.master_card_id AS card_id,
+                t.nrp AS employee_id,
+                DATE(t.submit_at) AS clock_date,
+                t.id,
                 'BAC' AS bac_no,
                 'BAC (kiosk/backdate)' AS bac_ket,
-                CASE WHEN direction = 0 THEN submit_at ELSE NULL END AS clock_in,
-                CASE WHEN direction = 1 THEN submit_at ELSE NULL END AS clock_out,
+                CASE WHEN t.direction = 0 THEN t.submit_at ELSE NULL END AS clock_in,
+                CASE WHEN t.direction = 1 THEN t.submit_at ELSE NULL END AS clock_out,
                 NULL AS evidence_photo,
                 'system' AS created_by,
-                submit_at AS created_date
-            FROM `db-webapps`.transaksi_absen
-            WHERE status IN (2, 7)
+                t.submit_at AS created_date
+            FROM `db-webapps`.transaksi_absen t
+            LEFT JOIN MasterEmp m ON m.emp_code = CONVERT(t.nrp USING utf8mb4) COLLATE utf8mb4_general_ci
+            WHERE t.status IN (2, 7)
         ),
         BacAgg AS (
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS employee_id,
+                -- Agregasi sekarang berbasis card_id hasil mapping master
+                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
                 clock_date,
+                MAX(employee_id) AS employee_id,
                 MAX(id) AS id,
                 MAX(bac_no) AS bac_no,
                 MAX(bac_ket) AS bac_ket,
@@ -352,24 +360,23 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 MAX(created_by) AS created_by,
                 MAX(created_date) AS created_date
             FROM RawBacData
-            GROUP BY employee_id, clock_date
+            GROUP BY card_id, clock_date
         ),
         UnifiedAttendance AS (
             SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS employee_id,
+                -- HANYA mengambil card_id dari TBL_ATTENDANCE
                 CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
                 clocking_date,
                 clock_in,
                 clock_out,
                 flag
             FROM `db-webapps`.TBL_ATTENDANCE
-            WHERE card_id != '00000.00000'
+            WHERE card_id != '00000.00000' AND card_id IS NOT NULL AND card_id != ''
             
             UNION ALL
             
             SELECT 
-                b.employee_id,
-                '' AS card_id,
+                b.card_id,
                 b.clock_date AS clocking_date,
                 NULL AS clock_in,
                 NULL AS clock_out,
@@ -377,12 +384,11 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             FROM BacAgg b
             WHERE NOT EXISTS (
                 SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a 
-                WHERE a.employee_id = b.employee_id AND a.clocking_date = b.clock_date
+                WHERE a.card_id = b.card_id AND a.clocking_date = b.clock_date
             )
         ),
         AttendanceAgg AS (
             SELECT 
-                employee_id,
                 card_id,
                 clocking_date,
                 clock_in,
@@ -435,19 +441,21 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 ELSE 'Tidak Lengkap'
             END AS status
         FROM MasterEmp m
+        -- 1. UTAMA: Pasangkan MasterEmp dengan Attendance murni lewat card_id
         INNER JOIN AttendanceAgg ta 
-            ON m.emp_code = ta.employee_id
+            ON m.master_card_id = ta.card_id
+        -- 2. Sesuaikan exclusion join dengan card_id master
         LEFT JOIN attendance_exclusions ex 
-            ON CAST(ex.employee_id AS CHAR) = ta.employee_id
+            ON ex.employee_id = m.emp_code
             AND ex.clocking_date = ta.clocking_date
             AND (ex.clock_in <=> ta.clock_in)
             AND (ex.clock_out <=> ta.clock_out)
             AND ex.status = 1
-        AND ex.clocking_date = ta.clocking_date
-        AND ex.status = 1
+        -- 3. Sesuaikan BacAgg join lewat card_id master
         LEFT JOIN BacAgg b 
-            ON b.employee_id = ta.employee_id
-        AND b.clock_date = ta.clocking_date
+            ON b.card_id = ta.card_id
+            AND b.clock_date = ta.clocking_date
+        -- 4. Left join activities & terminal tetap menggunakan card_id dari transaksi attendance
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
             ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
         LEFT JOIN terminal_master tm_in 
@@ -462,7 +470,9 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         WHERE {where_sql}
         ORDER BY clocking_date DESC, employee_code ASC
     """
+
     return sql_query, params
+
 
 # =============================================================================
 # 1. GET LIST ABSENSI

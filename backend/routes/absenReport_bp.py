@@ -98,54 +98,67 @@ def _get_master_dictionaries():
     return os_map, ob_map
 
 def _fetch_daily_attendance(search_date, worker_type='all'):
-    # ANTI-JOIN: LEFT JOIN attendance_exclusions & WHERE ex.id IS NULL
     sql = """
         WITH MasterEmp AS (
             SELECT 
                 CONVERT(employee_id USING utf8mb4) AS emp_id,
+                MAX(CONVERT(card_no USING utf8mb4)) AS card_id,
                 'sub00003' AS sub_company_id,
                 'CRS' AS sub_company_name
             FROM vw_master_karyawan 
-            WHERE employee_id IS NOT NULL AND employee_id != ''
+            WHERE card_no IS NOT NULL AND card_no != ''
+            GROUP BY employee_id
             
             UNION ALL
             
             SELECT 
                 CONVERT(employee_code USING utf8mb4) AS emp_id,
+                MAX(CONVERT(card_number USING utf8mb4)) AS card_id,
                 CONVERT(sub_company_id USING utf8mb4) AS sub_company_id,
                 CONVERT(sub_company_name USING utf8mb4) AS sub_company_name
             FROM vw_master_os_active 
-            WHERE employee_code IS NOT NULL AND employee_code != ''
+            WHERE card_number IS NOT NULL AND card_number != ''
+            GROUP BY employee_code, sub_company_id, sub_company_name
         )
         SELECT 
-            ta.employee_id,
+            m.emp_id AS employee_id,
             ta.card_id,
             MIN(COALESCE(ta.clock_in, ta.clock_out)) AS first_clock_in,
             MIN(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc
             
         FROM `db-webapps`.TBL_ATTENDANCE ta
-        INNER JOIN MasterEmp m ON (CAST(ta.employee_id AS CHAR) = m.emp_id)
+        -- 1. Hubungkan murni lewat card_id
+        INNER JOIN MasterEmp m 
+            ON CONVERT(ta.card_id USING utf8mb4) = m.card_id
+        -- 2. Exclusion dicocokkan ke master employee id
         LEFT JOIN attendance_exclusions ex 
-            ON CAST(ex.employee_id AS CHAR) = CAST(ta.employee_id AS CHAR)
+            ON CAST(ex.employee_id AS CHAR) = m.emp_id
            AND ex.clocking_date = ta.clocking_date
            AND ex.status = 1
-        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-        LEFT JOIN terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
-        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-        LEFT JOIN terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-        LEFT JOIN org_cost_center occ ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
+        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
+            ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
+        LEFT JOIN terminal_master tm_in 
+            ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
+            ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
+        LEFT JOIN terminal_master tm_out 
+            ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+        LEFT JOIN org_cost_center occ 
+            ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) 
+            OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
         
         WHERE ta.clocking_date = :search_date
-          AND ta.employee_id IS NOT NULL 
+          AND ta.card_id IS NOT NULL 
+          AND ta.card_id != '' 
           AND ta.card_id != '00000.00000'
           AND ex.id IS NULL
     """
     if worker_type == 'os':
-        sql += " AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8 "
+        sql += " AND CHAR_LENGTH(CAST(m.emp_id AS CHAR)) < 8 "
     elif worker_type == 'tetap':
-        sql += " AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) >= 8 "        
+        sql += " AND CHAR_LENGTH(CAST(m.emp_id AS CHAR)) >= 8 "        
         
-    sql += " GROUP BY ta.employee_id, ta.card_id, ta.clocking_date "
+    sql += " GROUP BY m.emp_id, ta.card_id, ta.clocking_date "
 
     with db.engine.connect() as conn:
         return conn.execute(text(sql), {'search_date': search_date}).mappings().fetchall()
@@ -283,28 +296,41 @@ def _get_mp_employee_data(start_date, end_date, sub_company_id, department_id, s
             MIN(daily.terminal_org_cc_id) AS terminal_org_cc_id
         FROM (
             SELECT 
-                ta.employee_id, ta.clocking_date, MIN(ta.clock_in) AS true_clock_in, MAX(ta.clock_out) AS true_clock_out,
+                os.employee_code AS employee_id, 
+                ta.clocking_date, 
+                MIN(ta.clock_in) AS true_clock_in, 
+                MAX(ta.clock_out) AS true_clock_out,
                 MIN(CAST(COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc,
                 MIN(CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR)) AS terminal_cc_id,
                 MIN(CAST(COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) AS CHAR)) AS terminal_org_cc_id
             FROM `db-webapps`.TBL_ATTENDANCE ta
-            INNER JOIN vw_master_os_active os ON (CAST(ta.employee_id AS CHAR) = os.employee_code OR CAST(ta.employee_id AS CHAR) = CAST(os.emp_id AS CHAR))
+            -- 1. Hubungkan ta.card_id ke nomor kartu master OS
+            INNER JOIN vw_master_os_active os 
+                ON CONVERT(ta.card_id USING utf8mb4) = CONVERT(os.card_number USING utf8mb4)
+            -- 2. Exclusion dicocokkan ke os.employee_code
             LEFT JOIN attendance_exclusions ex 
-                ON CAST(ex.employee_id AS CHAR) = CAST(ta.employee_id AS CHAR)
+                ON CAST(ex.employee_id AS CHAR) = CAST(os.employee_code AS CHAR)
                AND ex.clocking_date = ta.clocking_date
                AND ex.status = 1
-            LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-            LEFT JOIN terminal_master tm_in ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
-            LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-            LEFT JOIN terminal_master tm_out ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-            LEFT JOIN org_cost_center occ ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
+            LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
+                ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
+            LEFT JOIN terminal_master tm_in 
+                ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
+            LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
+                ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
+            LEFT JOIN terminal_master tm_out 
+                ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
+            LEFT JOIN org_cost_center occ 
+                ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) 
+                OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
             
             WHERE ta.clocking_date BETWEEN :start_date AND :end_date
-              AND ta.employee_id IS NOT NULL 
+              AND ta.card_id IS NOT NULL 
+              AND ta.card_id != '' 
               AND ta.card_id != '00000.00000'
-              AND CHAR_LENGTH(CAST(ta.employee_id AS CHAR)) < 8
+              AND CHAR_LENGTH(CAST(os.employee_code AS CHAR)) < 8
               AND ex.id IS NULL
-            GROUP BY ta.employee_id, ta.clocking_date
+            GROUP BY os.employee_code, ta.card_id, ta.clocking_date
         ) daily
         GROUP BY daily.employee_id
     """

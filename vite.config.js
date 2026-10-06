@@ -8,5 +8,17 @@ export default defineConfig({
     port: 3001, 
     strictPort: true,
   },
-  envDir: './'
+  envDir: './',
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['bootstrap', 'react-select', 'sweetalert2'],
+          'vendor-utils': ['axios', 'file-saver'],
+        },
+      },
+    },
+  },
 })

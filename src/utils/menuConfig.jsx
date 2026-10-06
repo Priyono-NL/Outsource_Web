@@ -1,44 +1,45 @@
-import React from 'react';
+import React, { lazy } from 'react';
 
 // ==========================================
-// 1. IMPORT SEMUA HALAMAN (PAGES)
+// 1. LAZY IMPORT SEMUA HALAMAN (CODE SPLITTING)
+// Mengurangi ukuran bundle awal secara drastis
 // ==========================================
-import Dashboard from '../pages/Dashboard';
-import RolePermission from '../pages/RolePermission';
-import ChangeLogin from '../pages/ChangeLogin';
-import Employement from '../pages/Employment';
-import OsCard from '../pages/OsCard';
-import OsCC from '../pages/OsCC';
-import OsGrade from '../pages/OsGrade';
-import Blacklist from '../pages/Blacklist';
-import Biodata from '../pages/Biodata';
-import OsType from '../pages/OsType';
-import Alokasi from '../pages/Alokasi';
-import OsMedical from '../pages/OsMedical';
-import OsTraining from '../pages/OsTraining';
-import Canteen from '../pages/Canteen';
-import CostCenter from '../pages/CostCenter';
-import SubCompany from '../pages/SubCompany';
-import Training_m from '../pages/Training_m';
-import Medical_m from '../pages/Medical_m';
-import Terminal from '../pages/Terminal';
-import PeriodePuasa from '../pages/periode_puasa';
-import ObEmployee from '../pages/ObEmployee';
-import Absensi from '../pages/Absensi';
-import AbsensiVendor from '../pages/AbsensiVendor';
-import ReportAktif from '../pages/ReportAktif';
-import ReportAbsen from '../pages/ReportAbsen';
-import Report_MPCC from '../pages/Report_MPCC';
-import Report_Absen from '../pages/Report_Absen';
-import Report_MpEmp from '../pages/Report_MpEmp';
-import Report_Break from '../pages/Report_Break';
-import Report_Access from '../pages/Report_Access';
-import ReportAbsenVendor from '../pages/ReportAbsenVendor';
-import Guest from '../pages/Guest';
+const Dashboard = lazy(() => import('../pages/Dashboard'));
+const RolePermission = lazy(() => import('../pages/RolePermission'));
+const ChangeLogin = lazy(() => import('../pages/ChangeLogin'));
+const Employement = lazy(() => import('../pages/Employment'));
+const OsCard = lazy(() => import('../pages/OsCard'));
+const OsCC = lazy(() => import('../pages/OsCC'));
+const OsGrade = lazy(() => import('../pages/OsGrade'));
+const Blacklist = lazy(() => import('../pages/Blacklist'));
+const Biodata = lazy(() => import('../pages/Biodata'));
+const OsType = lazy(() => import('../pages/OsType'));
+const Alokasi = lazy(() => import('../pages/Alokasi'));
+const OsMedical = lazy(() => import('../pages/OsMedical'));
+const OsTraining = lazy(() => import('../pages/OsTraining'));
+const Canteen = lazy(() => import('../pages/Canteen'));
+const CostCenter = lazy(() => import('../pages/CostCenter'));
+const SubCompany = lazy(() => import('../pages/SubCompany'));
+const Training_m = lazy(() => import('../pages/Training_m'));
+const Medical_m = lazy(() => import('../pages/Medical_m'));
+const Terminal = lazy(() => import('../pages/Terminal'));
+const PeriodePuasa = lazy(() => import('../pages/periode_puasa'));
+const ObEmployee = lazy(() => import('../pages/ObEmployee'));
+const Absensi = lazy(() => import('../pages/Absensi'));
+const AbsensiVendor = lazy(() => import('../pages/AbsensiVendor'));
+const ReportAktif = lazy(() => import('../pages/ReportAktif'));
+const ReportAbsen = lazy(() => import('../pages/ReportAbsen'));
+const Report_MPCC = lazy(() => import('../pages/Report_MPCC'));
+const Report_Absen = lazy(() => import('../pages/Report_Absen'));
+const Report_MpEmp = lazy(() => import('../pages/Report_MpEmp'));
+const Report_Break = lazy(() => import('../pages/Report_Break'));
+const Report_Access = lazy(() => import('../pages/Report_Access'));
+const ReportAbsenVendor = lazy(() => import('../pages/ReportAbsenVendor'));
+const Guest = lazy(() => import('../pages/Guest'));
 
 // Import Halaman Khusus SSO & Approval
-import AuthCallback from '../pages/AuthCallback';
-import UserManagement from '../pages/UserManagement';
+const AuthCallback = lazy(() => import('../pages/AuthCallback'));
+const UserManagement = lazy(() => import('../pages/UserManagement'));
 
 // ==========================================
 // 2. COMPONENT REGISTRY (PETA ROUTE DINAMIS)
