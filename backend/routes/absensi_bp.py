@@ -141,7 +141,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
     where_clauses = ["1=1", "ex.id IS NULL"]
     params = {}
 
-    # 1. Parameter Utama Tanggal Luar
     if start_date:
         where_clauses.append("ta.clocking_date >= :start_date")
         params['start_date'] = start_date
@@ -149,38 +148,11 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
         where_clauses.append("ta.clocking_date <= :end_date")
         params['end_date'] = end_date
 
-    # 2. PUSH-DOWN FILTER TANGGAL KE DALAM CTE (KUNCI BEBAS DARI 504 TIMEOUT)
-    tact_date_conds = []
-    bac_os_date_conds = []
-    bac_kiosk_date_conds = []
-    att_date_conds = []
-
-    if start_date:
-        tact_date_conds.append("clocking_date >= :start_dt_tact")
-        params['start_dt_tact'] = f"{start_date} 00:00:00"
-        bac_os_date_conds.append("b.clock_date >= :start_date")
-        bac_kiosk_date_conds.append("t.submit_at >= :start_dt_tact")
-        att_date_conds.append("clocking_date >= :start_date")
-
-    if end_date:
-        tact_date_conds.append("clocking_date <= :end_dt_tact")
-        params['end_dt_tact'] = f"{end_date} 23:59:59"
-        bac_os_date_conds.append("b.clock_date <= :end_date")
-        bac_kiosk_date_conds.append("t.submit_at <= :end_dt_tact")
-        att_date_conds.append("clocking_date <= :end_date")
-
-    tact_date_filter = ("AND " + " AND ".join(tact_date_conds)) if tact_date_conds else ""
-    bac_os_date_filter = ("AND " + " AND ".join(bac_os_date_conds)) if bac_os_date_conds else ""
-    bac_kiosk_date_filter = ("AND " + " AND ".join(bac_kiosk_date_conds)) if bac_kiosk_date_conds else ""
-    att_date_filter = ("AND " + " AND ".join(att_date_conds)) if att_date_conds else ""
-
-    # Filter tipe pekerja
     if worker_type == 'os':
         where_clauses.append("CHAR_LENGTH(CAST(m.emp_code AS CHAR)) < 8")
     elif worker_type == 'tetap':
         where_clauses.append("CHAR_LENGTH(CAST(m.emp_code AS CHAR)) >= 8")
 
-    # Filter status absensi
     if status_filter == 'lengkap':
         where_clauses.append("(COALESCE(b.clock_in, ta.clock_in) IS NOT NULL AND COALESCE(b.clock_out, ta.clock_out) IS NOT NULL AND (ta.flag != 1 OR ta.flag IS NULL))")
     elif status_filter in ('anomali', 'template_revisi'):
@@ -225,7 +197,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
     elif status_filter == 'no_both':
         where_clauses.append("(b.clock_in IS NOT NULL AND b.clock_out IS NOT NULL)")
 
-    # Filter Shift
     if shift_filter in ('SHIFT 1', 'SHIFT 2', 'SHIFT 3'):
         eff_in_sql = "COALESCE(b.clock_in, ta.clock_in)"
         is_sat_sql = "DAYOFWEEK(ta.clocking_date) = 7"
@@ -354,7 +325,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             FROM bac_os b
             LEFT JOIN MasterEmp m ON m.emp_code = CONVERT(b.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci
             WHERE b.status = 1
-            {bac_os_date_filter}
             
             UNION ALL
             
@@ -373,7 +343,6 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             FROM `db-webapps`.transaksi_absen t
             LEFT JOIN MasterEmp m ON m.emp_code = CONVERT(t.nrp USING utf8mb4) COLLATE utf8mb4_general_ci
             WHERE t.status IN (2, 7)
-            {bac_kiosk_date_filter}
         ),
         BacAgg AS (
             SELECT 
@@ -391,9 +360,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
             FROM RawBacData
             GROUP BY card_id, clock_date
         ),
-        
-        -- 1. CTE TBL_ATTENDANCE (Hanya ambil periode yang diminta)
-        AttSummary AS (
+        UnifiedAttendance AS (
             SELECT 
                 CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
                 clocking_date,
@@ -402,51 +369,9 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 flag
             FROM `db-webapps`.TBL_ATTENDANCE
             WHERE card_id != '00000.00000' AND card_id IS NOT NULL AND card_id != ''
-            {att_date_filter}
-        ),
-
-        -- 2. CTE TACTIVITIES FALLBACK (Hanya scan log mentah mesin pada periode terkait)
-        TactivitiesSummary AS (
-            SELECT 
-                CONVERT(CARD_ID USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
-                CAST(clocking_date AS DATE) AS clocking_date,
-                MIN(clocking_date) AS clock_in,
-                MAX(clocking_date) AS clock_out,
-                0 AS flag
-            FROM `db-webapps`.TBL_TACTIVITIES
-            WHERE CARD_ID != '00000.00000' AND CARD_ID IS NOT NULL AND CARD_ID != ''
-            {tact_date_filter}
-            GROUP BY CARD_ID, CAST(clocking_date AS DATE)
-        ),
-
-        -- 3. GABUNGKAN DENGAN MEMORY HASH-JOIN (SANGAT CEPAT)
-        UnifiedAttendance AS (
-            -- Sumber Utama: TBL_ATTENDANCE
-            SELECT 
-                card_id,
-                clocking_date,
-                clock_in,
-                clock_out,
-                flag
-            FROM AttSummary
             
             UNION ALL
             
-            -- Fallback Tactivities: Hanya jika card_id & tanggal belum ada di AttSummary
-            SELECT 
-                ts.card_id,
-                ts.clocking_date,
-                ts.clock_in,
-                ts.clock_out,
-                ts.flag
-            FROM TactivitiesSummary ts
-            LEFT JOIN AttSummary a 
-                ON a.card_id = ts.card_id AND a.clocking_date = ts.clocking_date
-            WHERE a.card_id IS NULL
-
-            UNION ALL
-            
-            -- Fallback BAC: Jika hanya ada pengajuan BAC
             SELECT 
                 b.card_id,
                 b.clock_date AS clocking_date,
@@ -454,11 +379,10 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
                 NULL AS clock_out,
                 0 AS flag
             FROM BacAgg b
-            LEFT JOIN AttSummary a 
-                ON a.card_id = b.card_id AND a.clocking_date = b.clock_date
-            LEFT JOIN TactivitiesSummary ts 
-                ON ts.card_id = b.card_id AND ts.clocking_date = b.clock_date
-            WHERE a.card_id IS NULL AND ts.card_id IS NULL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a 
+                WHERE a.card_id = b.card_id AND a.clocking_date = b.clock_date
+            )
         ),
         AttendanceAgg AS (
             SELECT 
@@ -541,6 +465,7 @@ def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift
     """
 
     return sql_query, params
+
 
 
 # =============================================================================
