@@ -34,6 +34,7 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   
   const formRef = useRef(null);
   const isEditMode = !!initialData;
+  const isReadOnly = isEditMode;
   
   useEffect(() => {
     if (initialData) {
