@@ -353,6 +353,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         else: status = 'Tidak Lengkap'
         
         if status_filter == 'lengkap' and status != 'Lengkap': continue
+        if status_filter == 'bac' and status != 'BAC Found': continue
         if status_filter in ('anomali', 'template_revisi') and status != 'Tidak Lengkap': continue
         if status_filter == 'no_in' and pd.notnull(eff_in): continue
         if status_filter == 'no_out' and pd.notnull(eff_out): continue
