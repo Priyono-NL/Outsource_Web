@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, search }) => { 
+const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, startDate, endDate, search }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -24,6 +24,7 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
             const params = new URLSearchParams({
                 sub_company: subCompany || '',
                 department: department || '',
+                shift: shift || '',
                 start_date: startDate || '',
                 end_date: endDate || '',
                 search: search || '',
@@ -53,11 +54,11 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, startDate, endDate, search]);
+    }, [subCompany, department, shift, startDate, endDate, search]);
 
     useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, search, currentPage]);
+    }, [refreshTrigger, subCompany, department, shift, startDate, endDate, search, currentPage]);
 
     const formatDisplayDate = (dateStr) => {
         if (!dateStr) return '-';
@@ -141,8 +142,11 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
                             <th>Display Name</th>
                             <th>Cost Center</th>
                             <th className="text-center">Card Number</th>
+                            <th className="text-center">Shift</th>
+                            <th className="text-center">Tanggal IN</th>
                             <th className="text-center">Waktu IN</th>
                             <th className="text-center">Node IN</th>
+                            <th className="text-center">Tanggal OUT</th>
                             <th className="text-center">Waktu OUT</th>
                             <th className="text-center">Node OUT</th>
                         </tr>
@@ -150,7 +154,7 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
                     <tbody>
                         { loading ? (
                             <tr>
-                                <td colSpan="8" className="text-center py-4 text-muted">
+                                <td colSpan="11" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                                     Memuat data log akses...
                                 </td>
@@ -162,15 +166,18 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, startDate,
                                     <td>{emp.display_name || '-'}</td>
                                     <td>{emp.cc_name || '-'}</td>
                                     <td className="text-center">{emp.card_number || '-'}</td>
+                                    <td className="text-center">{emp.shift || '-'}</td>
+                                    <td className="text-center">{emp.tanggal_in || '-'}</td>
                                     <td className="text-center">{emp.waktu_in || '-'}</td>
                                     <td className="text-center">{emp.node_in || '-'}</td>
+                                    <td className="text-center">{emp.tanggal_out || '-'}</td>
                                     <td className="text-center">{emp.waktu_out || '-'}</td>
                                     <td className="text-center">{emp.node_out || '-'}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="8" className="empty-state text-center py-4 text-muted">
+                                <td colSpan="11" className="empty-state text-center py-4 text-muted">
                                     <i className="bi bi-inbox d-block mb-1 fs-4"></i>
                                     Data absensi tidak ditemukan untuk periode ini
                                 </td>

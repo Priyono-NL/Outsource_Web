@@ -38,18 +38,35 @@ const AbsensiReportTable = ({
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
-                shift: shiftFilter || '', // DITAMBAHKAN: Disuntikkan ke parameter API Flask
+                shift: shiftFilter || '', 
                 worker_type: workerType || 'all' 
             }).toString();
 
             const response = await api.get(`/absensi?${params}`);
-            const result = response.data;
             
-            if (result.status === 'success') { 
-                setAbsensi(result.data || []);
-                setTotalPages(result.total_page || 0);
+            // 1. Defensive Extraction: Tangani Axios Interceptor yang memotong response.data
+            let result = response.data !== undefined ? response.data : response;
+            
+            // 2. Tangani Fallback jika Backend lupa set header application/json
+            if (typeof result === 'string') {
+                try {
+                    result = JSON.parse(result);
+                } catch (e) {
+                    throw new Error('Format respons server tidak valid (Bukan JSON murni).');
+                }
+            }
+            
+            // 3. Validasi Longgar (Toleransi case-sensitive atau hilangnya key status)
+            const isSuccess = 
+                result?.status?.toLowerCase() === 'success' || 
+                result?.code === 200 || 
+                Array.isArray(result?.data);
+
+            if (isSuccess) { 
+                setAbsensi(Array.isArray(result.data) ? result.data : []);
+                setTotalPages(result.total_page || 1);
             } else { 
-                throw new Error(result.message || 'Terjadi kesalahan pada data absensi'); 
+                throw new Error(result?.message || result?.error || 'Terjadi kesalahan struktur data dari server.'); 
             }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');

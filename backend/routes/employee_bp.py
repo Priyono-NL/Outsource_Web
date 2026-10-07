@@ -391,25 +391,33 @@ def search_all():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @employee_bp.route('/employee/search/<string:emp_id>', methods=['GET'])
 def search_employee(emp_id):
     try:
+        today = datetime.now().date()
+        
         query = db.session.query(OsPerson.name, OsEmployment.id) \
             .join(OsEmployment, OsPerson.person_id == OsEmployment.person_id) \
-            .filter(OsEmployment.employee_code == emp_id)
+            .filter(
+                OsEmployment.employee_code == emp_id,
+                OsEmployment.valid_from.is_not(None),
+                OsEmployment.valid_from <= today,
+                or_(OsEmployment.valid_to >= today, OsEmployment.valid_to == None)
+            )
         
         allowed_subcos = get_allowed_subcompanies()
         if allowed_subcos:
             query = query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+        query = query.order_by(OsEmployment.id.desc())
 
         result = query.first()
         if result:
             return jsonify({"status": "success", "full_name": result.name, "emp_pk_id": result.id}), 200
-        return jsonify({"status": "error", "message": "Employee ID tidak ditemukan atau akses ditolak"}), 404
+            
+        return jsonify({"status": "error", "message": "Employee ID tidak ditemukan, sudah tidak aktif, atau akses ditolak"}), 404
+        
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():

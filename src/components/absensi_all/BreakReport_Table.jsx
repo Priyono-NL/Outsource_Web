@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, isFilterApplied }) => { 
+const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, shift, search, isFilterApplied }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -27,6 +27,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                 start_date: startDate || '',
                 end_date: endDate || '',
                 status_filter: statusFilter || 'all_data',
+                shift: shift || '',
                 search: search || '',
                 page: currentPage,
                 pageSize: pageSize
@@ -54,12 +55,12 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, startDate, endDate, statusFilter, search]);
+    }, [subCompany, department, startDate, endDate, statusFilter, shift, search]);
 
     useEffect(() => {
         if (!startDate || !endDate || !isFilterApplied) return;
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, search, currentPage, isFilterApplied]);
+    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, shift, search, currentPage, isFilterApplied]);
 
     // Format tampilan tanggal ke format lokal Indonesia (contoh: 25 Sep 2026)
     const formatDisplayDate = (dateStr) => {
@@ -161,6 +162,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                             <th>Display Name</th>
                             <th className="text-center">Absence Card No</th>
                             <th>Tipe</th>
+                            <th>Shift</th>
                             <th className="text-center">Tanggal OUT</th>
                             <th className="text-center">Waktu OUT</th>
                             <th className="text-center">Node OUT</th>
@@ -176,7 +178,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                     <tbody>
                         {!isFilterApplied ? (
                             <tr>
-                                <td colSpan="16" className="empty-state text-center py-5 text-muted">
+                                <td colSpan="17" className="empty-state text-center py-5 text-muted">
                                     <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
                                     Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
                                 </td> 
@@ -184,7 +186,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                         
                         ) : loading ? (
                             <tr>
-                                <td colSpan="16" className="text-center py-4 text-muted">
+                                <td colSpan="17" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                                     Memuat data log istirahat...
                                 </td>
@@ -198,6 +200,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                                     <td>{emp.display_name || '-'}</td>
                                     <td className="text-center">{emp.card_number || '-'}</td>                                    
                                     <td>{emp.tipe_karyawan || '-'}</td>
+                                    <td>{emp.shift || '-'}</td>
                                     <td className="text-center">{formatDisplayDate(emp.tanggal_out) || '-'}</td>
                                     <td className="text-center">{emp.waktu_out || '-'}</td>
                                     <td className="text-center">{emp.node_out || '-'}</td>

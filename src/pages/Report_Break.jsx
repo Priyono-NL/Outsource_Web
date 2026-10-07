@@ -40,6 +40,7 @@ const Report_Break = () => {
   const [startDate, setStartDate]             = useState(todayStr);
   const [endDate, setEndDate]                 = useState(todayStr);
   const [statusInput, setStatusInput]         = useState('all_data');
+  const [shiftInput, setShiftInput]           = useState('');
 
   // --- STATE APPLIED FILTER (TERAPAN) ---
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
@@ -48,6 +49,7 @@ const Report_Break = () => {
   const [appliedEndDate, setAppliedEndDate]       = useState(todayStr);
   const [appliedStatus, setAppliedStatus]         = useState('all_data');
   const [appliedSearch, setAppliedSearch]         = useState('');
+  const [appliedShift, setAppliedShift]           = useState(''); 
 
   // --- FLAG FILTER STATES ---
   const [isFilterApplied, setIsFilterApplied] = useState(false);
@@ -105,7 +107,7 @@ const Report_Break = () => {
     setAppliedDepartment(departmentInput);
     setAppliedStatus(statusInput);
     setAppliedSearch(crud.searchInput);
-    
+    setAppliedShift(shiftInput); 
     setIsFilterApplied(true);
     setIsFilterDirty(false);
 
@@ -117,6 +119,7 @@ const Report_Break = () => {
     setStatusInput('all_data');
     setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
     setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
+    setShiftInput('');
     setStartDate(todayStr);
     setEndDate(todayStr);
     crud.setSearchInput('');
@@ -142,10 +145,11 @@ const Report_Break = () => {
       setIsExporting(true);
       const params = new URLSearchParams({
         sub_company: appliedSubCompany || '',
-        department: appliedDepartment || '',
+        department: appliedDepartment || '',        
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
         status_filter: appliedStatus || 'all_data',
+        shift: appliedShift || '',
         search: appliedSearch || '',
       }).toString();
 
@@ -205,6 +209,13 @@ const Report_Break = () => {
     { value: 'over90', label: '> 90 menit (male only)' },
   ];
 
+  const shiftOptions = [
+    { value: '', label: 'Semua Shift' },
+    { value: 'SHIFT 1', label: 'SHIFT 1' },
+    { value: 'SHIFT 2', label: 'SHIFT 2' },
+    { value: 'SHIFT 3', label: 'SHIFT 3' },
+  ];
+
   return (
     <div>
       <PageHeader 
@@ -259,6 +270,20 @@ const Report_Break = () => {
               options={statusOptions}
               value={statusOptions.find(o => o.value === statusInput)}
               onChange={o => handleFilterChange(setStatusInput, o?.value || 'all_data')}
+              isSearchable={false}
+              menuPortalTarget={document.body}
+              styles={compactSelectStyle}
+            />
+          </div>
+
+          <div className="filter-group m-0" style={{ minWidth: 120, flex: 0.8 }}>
+            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Shift</label>
+            <Select
+              options={shiftOptions}
+              placeholder="Pilih Shift..."
+              value={shiftOptions.find(o => o.value === shiftInput) || shiftOptions[0]}
+              onChange={o => handleFilterChange(setShiftInput, o?.value || '')}
+              isClearable
               isSearchable={false}
               menuPortalTarget={document.body}
               styles={compactSelectStyle}
@@ -349,6 +374,7 @@ const Report_Break = () => {
             startDate={appliedStartDate}
             endDate={appliedEndDate}
             statusFilter={appliedStatus}
+            shift={appliedShift}
             search={appliedSearch}
             isFilterApplied={isFilterApplied}
           />

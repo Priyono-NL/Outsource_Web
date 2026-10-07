@@ -30,11 +30,7 @@ def teardown_request(exception=None):
 # =============================================================================
 # REUSABLE HELPERS (DRY CORE)
 # =============================================================================
-
 def _format_period_string(start_str, end_str):
-    """
-    Format string periode tanggal agar rapi di file Excel.
-    """
     if not start_str and not end_str:
         return "-"
 
@@ -53,37 +49,46 @@ def _format_period_string(start_str, end_str):
     return f"{formatted_start} s/d {formatted_end}"
 
 def _get_hybrid_pattern():
-    """Mengonversi array HYBRID_NODES menjadi pola REGEXP MySQL"""
     if not HYBRID_NODES:
         return "^$"  
     return "|".join(HYBRID_NODES)
 
 def determine_shift(clock_in_val, is_saturday):
-    """
-    Menentukan shift kerja berdasarkan waktu mulai istirahat / makan.
-    Jika tidak ada waktu tap out istirahat, default ke SHIFT 1.
-    """
     if not clock_in_val: 
         return 'SHIFT 1'
+        
     try:
         if isinstance(clock_in_val, datetime): 
             jam = clock_in_val.hour * 100 + clock_in_val.minute
         else:
             val_str = str(clock_in_val).strip()
             time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
-            t = datetime.strptime(time_str, "%H:%M:%S")
-            jam = t.hour * 100 + t.minute 
+            time_parts = time_str.split(':')
+            jam = int(time_parts[0]) * 100 + int(time_parts[1])
     except Exception: 
         return 'SHIFT 1'
 
     if is_saturday:
-        if 1500 <= jam <= 1900: return 'SHIFT 3'
-        elif 1000 <= jam <= 1400: return 'SHIFT 2'
-        else: return 'SHIFT 1'
-    else:
-        if jam >= 2000 or jam < 400: return 'SHIFT 3'
-        elif 1300 <= jam <= 1700: return 'SHIFT 2'
-        else: return 'SHIFT 1'
+        # Shift 1: 04:00 s/d 10:59
+        if 400 <= jam <= 1059: 
+            return 'SHIFT 1'
+        # Shift 2: 11:00 s/d 14:59
+        elif 1100 <= jam <= 1459: 
+            return 'SHIFT 2'
+        # Shift 3: 15:00 s/d 03:59 (Lintas Malam)
+        else: 
+            return 'SHIFT 3'
+            
+    else: # HARI NORMAL
+        # Shift 1: 04:00 s/d 12:59
+        if 400 <= jam <= 1259: 
+            return 'SHIFT 1'
+        # Shift 2: 13:00 s/d 19:59 (Jam 18:00 akan aman masuk ke sini)
+        elif 1300 <= jam <= 1959: 
+            return 'SHIFT 2'
+        # Shift 3: 20:00 s/d 03:59 (Lintas Malam)
+        else: 
+            return 'SHIFT 3'
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
     """Membangun filter WHERE clause dinamis"""
@@ -271,24 +276,30 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         
         if not start_break_dt and not in_dt:
             status = "Tidak Lengkap (No Both)"
+            total_mins = 0
         elif not start_break_dt:
             status = "Tidak Lengkap (No OUT)"
+            total_mins = 0
         elif not in_dt:
             status = "Tidak Lengkap (No IN)"
+            total_mins = 0
         else:
             diff_seconds = (in_dt - start_break_dt).total_seconds()
-            total_mins = int(diff_seconds // 60)
+            calculated_mins = int(diff_seconds // 60)
             
-            if total_mins <= 0:
+            if calculated_mins <= 0:
                 status = "Tidak Lengkap (0 Menit)"
-            elif total_mins > 90:
-                status = "> 90 Menit"
-            elif total_mins >= 65:
-                status = "> 65 Menit"
-            elif total_mins > 60:
-                status = "> 60 Menit"
+                total_mins = 0
             else:
-                status = "Lengkap (Normal)"
+                total_mins = calculated_mins
+                if total_mins > 90:
+                    status = "> 90 Menit"
+                elif total_mins >= 65:
+                    status = "> 65 Menit"
+                elif total_mins > 60:
+                    status = "> 60 Menit"
+                else:
+                    status = "Lengkap (Normal)"
 
         # -- FILTER STATUS --
         if status_filter != 'all_data':
@@ -312,7 +323,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             "tipe_karyawan": row['tipe_karyawan'] or '-',
             "cc_name": row['cc_name'] or '-',
             "card_number": row['card_number'] or '-', 
-            "shift": detected_shift, # Ditambahkan ke output JSON
+            "shift": detected_shift,
             "tanggal_out": row['tanggal_out'],
             "waktu_out": row['waktu_out'],
             "node_out": get_break_area(row['node_out']),
@@ -327,7 +338,7 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
 
     return report_data
 
-def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None):
+def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None, shift_filter=''):
     filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
     params['hybrid_pattern'] = _get_hybrid_pattern()
     base_cte = _get_base_karyawan_cte()
@@ -338,8 +349,8 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             SELECT 
                 CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id, 
                 clocking_date as clock_date,
-                MIN(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in,
-                MAX(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out,
+                MIN(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in_dt,
+                MAX(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out_dt,
                 MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in,
                 MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out
             FROM VW_TACTIVITIES_STAGING_VALID
@@ -351,8 +362,12 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         SELECT 
             k.emp_id, k.display_name, k.sub_company_name, k.tipe_karyawan, k.card_number, k.cc_name,
             c.clock_date,
-            IF(c.raw_in IS NOT NULL, DATE_FORMAT(c.raw_in, '%H:%i'), '-') as waktu_in,
-            IF(c.raw_out IS NOT NULL, DATE_FORMAT(c.raw_out, '%H:%i'), '-') as waktu_out,
+            c.raw_in_dt,
+            c.raw_out_dt,
+            IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y')), '-') as tanggal_in,
+            IF(c.raw_in_dt IS NOT NULL, DATE_FORMAT(c.raw_in_dt, '%H:%i'), '-') as waktu_in,
+            IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y')), '-') as tanggal_out,
+            IF(c.raw_out_dt IS NOT NULL, DATE_FORMAT(c.raw_out_dt, '%H:%i'), '-') as waktu_out,
             c.node_in, c.node_out
         FROM Karyawan k
         INNER JOIN ClockData c ON k.card_number = c.card_id
@@ -377,6 +392,18 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
         unique_key = f"{row['emp_id']}_{row['clock_date']}"        
         if unique_key in seen_records:
             continue
+
+        # -- DETEKSI SHIFT --
+        is_saturday = (datetime.strptime(str(row['clock_date']), "%Y-%m-%d").weekday() == 5)
+        # Menentukan shift dari waktu masuk (raw_in_dt) atau fallback keluar (raw_out_dt)
+        ref_time = row['raw_in_dt'] if row['raw_in_dt'] else row['raw_out_dt']
+        detected_shift = determine_shift(ref_time, is_saturday)
+
+        # -- FILTER SHIFT --
+        if shift_filter and shift_filter != 'all_data':
+            if detected_shift != shift_filter:
+                continue
+
         seen_records.add(unique_key)
 
         report_data.append({
@@ -386,8 +413,11 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             "tipe_karyawan": row['tipe_karyawan'] or '-',
             "cc_name": row['cc_name'] or '-', 
             "card_number": row['card_number'] or '-',
+            "shift": detected_shift, # Menambahkan field Shift
+            "tanggal_in": row['tanggal_in'],
             "waktu_in": row['waktu_in'],
             "node_in": get_access_area(row['node_in']),
+            "tanggal_out": row['tanggal_out'],
             "waktu_out": row['waktu_out'],
             "node_out": get_access_area(row['node_out'])
         })
@@ -451,7 +481,7 @@ def reportBreak():
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
             request.args.get('status_filter', 'all_data').strip(),
-            request.args.get('shift_filter', '').strip() # Ambil parameter filter shift
+            request.args.get('shift_filter', '').strip()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -465,7 +495,8 @@ def reportAccess():
             request.args.get('end_date', '').strip(),
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
-            request.args.get('search', '').strip()
+            request.args.get('search', '').strip(),
+            request.args.get('shift', '').strip()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -480,7 +511,7 @@ def exportBreak():
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
         status_filter = request.args.get('status_filter', 'all_data').strip()
-        shift_filter = request.args.get('shift_filter', '').strip() # Ambil filter shift
+        shift_filter = request.args.get('shift', '').strip()
 
         report_data = _get_break_data(
             start, end, sub_comp, dept, search, status_filter, shift_filter
@@ -491,7 +522,6 @@ def exportBreak():
 
         df = pd.DataFrame(report_data)
         
-        # PENGGANTIAN NAMA KOLOM (Menambahkan kolom 'shift' dan memisahkannya)
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
@@ -499,7 +529,7 @@ def exportBreak():
             'tipe_karyawan': 'Tipe',
             'cc_name': 'Cost Center', 
             'card_number': 'Absence Card No',
-            'shift': 'Shift', # Kolom baru untuk Excel
+            'shift': 'Shift',
             'tanggal_out': 'TANGGAL OUT',
             'waktu_out': 'WAKTU OUT', 
             'node_out': 'NODE OUT', 
@@ -512,7 +542,6 @@ def exportBreak():
             'status': 'Status'
         }, inplace=True)
         
-        # PENGURUTAN KOLOM EXPORT (Menyertakan kolom 'Shift' setelah Absence Card No)
         selected_cols = [
             'Employee Id', 'Display Name', 'Sub Company', 'Tipe', 'Cost Center', 
             'Absence Card No', 'Shift', 'TANGGAL OUT', 'WAKTU OUT', 'NODE OUT', 
@@ -563,13 +592,14 @@ def exportAccess():
         sub_comp = request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip()
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
-
-        report_data = _get_access_data(start, end, sub_comp, dept, search)
+        shift_filter = request.args.get('shift', '').strip()
+        report_data = _get_access_data(start, end, sub_comp, dept, search, shift_filter)
 
         if not report_data: 
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
+        
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
@@ -577,15 +607,19 @@ def exportAccess():
             'tipe_karyawan': 'Tipe',
             'cc_name': 'Cost Center',
             'card_number': 'Absence Card No', 
-            'waktu_in': 'Waktu IN', 
+            'shift': 'Shift',
+            'tanggal_in': 'TANGGAL IN', 
+            'waktu_in': 'WAKTU IN', 
             'node_in': 'Node IN', 
-            'waktu_out': 'Waktu OUT', 
+            'tanggal_out': 'TANGGAL OUT', 
+            'waktu_out': 'WAKTU OUT', 
             'node_out': 'Node OUT'
         }, inplace=True)
         
+        # Penataan letak susunan kolom yang simetris (Shift disisipkan setelah Absence Card No)
         selected_cols = [
             'Employee Id', 'Display Name', 'Sub Company', 'Tipe', 'Cost Center', 
-            'Absence Card No', 'Waktu IN', 'Node IN', 'Waktu OUT', 'Node OUT'
+            'Absence Card No', 'Shift', 'TANGGAL IN', 'WAKTU IN', 'Node IN', 'TANGGAL OUT', 'WAKTU OUT', 'Node OUT'
         ]
         df = df[selected_cols]
         

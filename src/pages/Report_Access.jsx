@@ -37,12 +37,14 @@ const Report_Access = () => {
   // --- STATE FORM FILTER (DRAFT) ---
   const [subCompanyInput, setSubCompanyInput] = useState('');
   const [departmentInput, setDepartmentInput] = useState('');
+  const [shiftInput, setShiftInput]           = useState(''); // State Baru: Draft Input Shift
   const [startDate, setStartDate]             = useState(todayStr);
   const [endDate, setEndDate]                 = useState(todayStr);
 
   // --- STATE APPLIED FILTER (TERAPAN) ---
   const [appliedSubCompany, setAppliedSubCompany] = useState('');
   const [appliedDepartment, setAppliedDepartment] = useState('');
+  const [appliedShift, setAppliedShift]           = useState(''); // State Baru: Terapan Shift
   const [appliedStartDate, setAppliedStartDate]   = useState(todayStr);
   const [appliedEndDate, setAppliedEndDate]       = useState(todayStr);
   const [appliedSearch, setAppliedSearch]         = useState('');
@@ -101,6 +103,7 @@ const Report_Access = () => {
     setAppliedEndDate(endDate);
     setAppliedSubCompany(subCompanyInput);
     setAppliedDepartment(departmentInput);
+    setAppliedShift(shiftInput); // Terapkan Filter Shift
     setAppliedSearch(crud.searchInput);
     
     setIsFilterApplied(true);
@@ -113,12 +116,14 @@ const Report_Access = () => {
   const handleResetFilters = () => {
     setSubCompanyInput(isSubCompanyRestricted ? appliedSubCompany : '');
     setDepartmentInput(isDeptRestricted ? appliedDepartment : '');
+    setShiftInput(''); // Reset Input Shift ke Default
     setStartDate(todayStr);
     setEndDate(todayStr);
     crud.setSearchInput('');
 
     if (!isSubCompanyRestricted) setAppliedSubCompany('');
     if (!isDeptRestricted) setAppliedDepartment('');
+    setAppliedShift(''); // Kosongkan Terapan Shift
     setAppliedStartDate(todayStr);
     setAppliedEndDate(todayStr);
     setAppliedSearch('');
@@ -138,6 +143,7 @@ const Report_Access = () => {
       const params = new URLSearchParams({
         sub_company: appliedSubCompany || '',
         department: appliedDepartment || '',
+        shift: appliedShift || '', // Sertakan Parameter Shift Filter
         start_date: appliedStartDate || '',
         end_date: appliedEndDate || '',
         search: appliedSearch || '',
@@ -190,6 +196,14 @@ const Report_Access = () => {
         ...departments.map(d => ({ value: d.id, label: d.org_name })),
       ];
 
+  // Opsi Dropdown Shift Baru
+  const shiftOptions = [
+    { value: '', label: 'Semua Shift' },
+    { value: 'SHIFT 1', label: 'SHIFT 1' },
+    { value: 'SHIFT 2', label: 'SHIFT 2' },
+    { value: 'SHIFT 3', label: 'SHIFT 3' },
+  ];
+
   return (
     <div>
       <PageHeader 
@@ -232,6 +246,21 @@ const Report_Access = () => {
               onChange={o => handleFilterChange(setDepartmentInput, o?.value || '')}
               isClearable={!isDeptRestricted}
               isSearchable
+              menuPortalTarget={document.body}
+              styles={compactSelectStyle}
+            />
+          </div>
+
+          {/* Shift Filter Dropdown Baru */}
+          <div className="filter-group m-0" style={{ minWidth: 120, flex: 0.8 }}>
+            <label className="fw-semibold mb-1" style={{ fontSize: 13, display: 'block' }}>Shift</label>
+            <Select
+              options={shiftOptions}
+              placeholder="Pilih Shift..."
+              value={shiftOptions.find(o => o.value === shiftInput) || shiftOptions[0]}
+              onChange={o => handleFilterChange(setShiftInput, o?.value || '')}
+              isClearable
+              isSearchable={false}
               menuPortalTarget={document.body}
               styles={compactSelectStyle}
             />
@@ -318,6 +347,7 @@ const Report_Access = () => {
             refreshTrigger={crud.refreshKey}
             subCompany={appliedSubCompany}
             department={appliedDepartment}
+            shift={appliedShift}
             startDate={appliedStartDate}
             endDate={appliedEndDate}
             search={appliedSearch}

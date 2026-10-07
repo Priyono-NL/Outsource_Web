@@ -6,7 +6,8 @@ from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
 from PIL import Image, ImageOps
 from openpyxl.styles import Font
-from openpyxl.worksheet.datavalidation import DataValidation  # TAMBAHAN IMPORT
+from openpyxl.worksheet.datavalidation import DataValidation
+import numpy as np
 
 from extensions import db
 from model.bac_os import BAC_os
@@ -60,42 +61,42 @@ def format_dt(val, is_time=False, iso=False):
     val_str = str(val).strip().replace('T', ' ')
     return val_str[:16] if is_time else val_str[:10]
 
-def determine_shift(clock_in_val, clocking_date_val):
-    if not clock_in_val or str(clock_in_val).lower() in ('none', 'null', '', 'kosong'):
+def determine_shift(clock_in_val, is_saturday):
+    if not clock_in_val: 
         return 'SHIFT 1'
-    is_saturday = False
-    if clocking_date_val:
-        try:
-            if isinstance(clocking_date_val, datetime):
-                is_saturday = (clocking_date_val.weekday() == 5)
-            elif hasattr(clocking_date_val, 'weekday'):
-                is_saturday = (clocking_date_val.weekday() == 5)
-            else:
-                c_date_str = str(clocking_date_val).strip()[:10]
-                is_saturday = (datetime.strptime(c_date_str, '%Y-%m-%d').weekday() == 5)
-        except Exception:
-            is_saturday = False
-
-    jam = 0
+        
     try:
-        if isinstance(clock_in_val, datetime):
+        if isinstance(clock_in_val, datetime): 
             jam = clock_in_val.hour * 100 + clock_in_val.minute
         else:
-            val_str = str(clock_in_val).strip().replace('T', ' ')
+            val_str = str(clock_in_val).strip()
             time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
             time_parts = time_str.split(':')
             jam = int(time_parts[0]) * 100 + int(time_parts[1])
-    except Exception:
+    except Exception: 
         return 'SHIFT 1'
 
     if is_saturday:
-        if 1500 <= jam <= 1900: return 'SHIFT 3'
-        elif 1000 <= jam <= 1400: return 'SHIFT 2'
-        else: return 'SHIFT 1'
-    else:
-        if jam >= 2000 or jam < 400: return 'SHIFT 3'
-        elif 1300 <= jam <= 1700: return 'SHIFT 2'
-        else: return 'SHIFT 1'
+        # Shift 1: 04:00 s/d 10:59
+        if 400 <= jam <= 1059: 
+            return 'SHIFT 1'
+        # Shift 2: 11:00 s/d 14:59
+        elif 1100 <= jam <= 1459: 
+            return 'SHIFT 2'
+        # Shift 3: 15:00 s/d 03:59 (Lintas Malam)
+        else: 
+            return 'SHIFT 3'
+            
+    else: # HARI NORMAL
+        # Shift 1: 04:00 s/d 12:59
+        if 400 <= jam <= 1259: 
+            return 'SHIFT 1'
+        # Shift 2: 13:00 s/d 19:59 (Jam 18:00 akan aman masuk ke sini)
+        elif 1300 <= jam <= 1959: 
+            return 'SHIFT 2'
+        # Shift 3: 20:00 s/d 03:59 (Lintas Malam)
+        else: 
+            return 'SHIFT 3'
 
 def process_and_save_bac_evidence(file_storage, target_folder, filename_without_ext, max_width=1000, quality=80):
     try:
@@ -136,337 +137,247 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
 # =============================================================================
 # CORE SQL QUERY BUILDER
 # =============================================================================
-def _build_absensi_raw_sql(start_date, end_date, status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all'):
-
-    where_clauses = ["1=1", "ex.id IS NULL"]
-    params = {}
-
-    if start_date:
-        where_clauses.append("ta.clocking_date >= :start_date")
-        params['start_date'] = start_date
-    if end_date:
-        where_clauses.append("ta.clocking_date <= :end_date")
-        params['end_date'] = end_date
-
-    if worker_type == 'os':
-        where_clauses.append("CHAR_LENGTH(CAST(m.emp_code AS CHAR)) < 8")
-    elif worker_type == 'tetap':
-        where_clauses.append("CHAR_LENGTH(CAST(m.emp_code AS CHAR)) >= 8")
-
-    if status_filter == 'lengkap':
-        where_clauses.append("(COALESCE(b.clock_in, ta.clock_in) IS NOT NULL AND COALESCE(b.clock_out, ta.clock_out) IS NOT NULL AND (ta.flag != 1 OR ta.flag IS NULL))")
-    elif status_filter in ('anomali', 'template_revisi'):
-        where_clauses.append("""(
-            ta.flag = 1 
-            OR 
-            (SELECT COUNT(1) 
-             FROM `db-webapps`.TBL_ATTENDANCE a2 
-             WHERE a2.card_id = ta.card_id 
-             AND a2.clocking_date = ta.clocking_date) > 1
-        )""")
-    elif status_filter == 'no_in':
-        where_clauses.append("""(
-            COALESCE(b.clock_in, ta.clock_in) IS NULL 
-            OR 
-            (
-                b.clock_in IS NULL 
-                AND 
-                EXISTS (
-                    SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a2 
-                    WHERE a2.card_id = ta.card_id 
-                    AND a2.clocking_date = ta.clocking_date 
-                    AND a2.clock_in IS NULL
-                )
-            )
-        )""")
-    elif status_filter == 'no_out':
-       where_clauses.append("""(
-            COALESCE(b.clock_out, ta.clock_out) IS NULL 
-            OR 
-            (
-                b.clock_out IS NULL 
-                AND 
-                EXISTS (
-                    SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a2 
-                    WHERE a2.card_id = ta.card_id 
-                    AND a2.clocking_date = ta.clocking_date 
-                    AND a2.clock_out IS NULL
-                )
-            )
-        )""")
-    elif status_filter == 'no_both':
-        where_clauses.append("(b.clock_in IS NOT NULL AND b.clock_out IS NOT NULL)")
-
-    if shift_filter in ('SHIFT 1', 'SHIFT 2', 'SHIFT 3'):
-        eff_in_sql = "COALESCE(b.clock_in, ta.clock_in)"
-        is_sat_sql = "DAYOFWEEK(ta.clocking_date) = 7"
-        time_num_sql = f"(HOUR({eff_in_sql}) * 100 + MINUTE({eff_in_sql}))"
-
-        sat_s2 = f"({is_sat_sql} AND {time_num_sql} >= 1000 AND {time_num_sql} <= 1400)"
-        sat_s3 = f"({is_sat_sql} AND {time_num_sql} >= 1500 AND {time_num_sql} <= 1900)"
-
-        weekday_s2 = f"(NOT ({is_sat_sql}) AND {time_num_sql} >= 1300 AND {time_num_sql} <= 1700)"
-        weekday_s3 = f"(NOT ({is_sat_sql}) AND ({time_num_sql} >= 2000 OR {time_num_sql} < 400))"
-
-        if shift_filter == 'SHIFT 2':
-            where_clauses.append(f"({eff_in_sql} IS NOT NULL AND ({sat_s2} OR {weekday_s2}))")
-        elif shift_filter == 'SHIFT 3':
-            where_clauses.append(f"({eff_in_sql} IS NOT NULL AND ({sat_s3} OR {weekday_s3}))")
-        elif shift_filter == 'SHIFT 1':
-            where_clauses.append(f"({eff_in_sql} IS NULL OR (NOT ({sat_s2} OR {sat_s3} OR {weekday_s2} OR {weekday_s3})))")
-
+def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all'):
+    """
+    Arsitektur eksekusi 4 Tahap (Hit-and-Run) menggunakan Pandas Dataframe
+    untuk mencegah Full Table Scan dan MySQL Thread Blocking.
+    """
+    
+    # =========================================================================
+    # TAHAP 1: PRE-SELECTION (MASTER DATA KARYAWAN)
+    # =========================================================================
+    master_params = {}
+    
+    # Pisahkan array kondisi untuk masing-masing view/tabel
+    where_tetap = ["employee_id IS NOT NULL", "employee_id != ''"]
+    where_os = ["employee_code IS NOT NULL", "employee_code != ''"]
+    
     if search:
-        where_clauses.append("(m.emp_code LIKE :search OR m.emp_name LIKE :search OR m.master_card_id LIKE :search OR ta.card_id LIKE :search OR b.bac_no LIKE :search)")
-        params['search'] = f"%{search}%"
+        search_param = f"%{search}%"
+        master_params['search'] = search_param
+        where_tetap.append("(employee_id LIKE :search OR employee_name LIKE :search OR card_no LIKE :search)")
+        where_os.append("(employee_code LIKE :search OR employee_name LIKE :search OR card_number LIKE :search)")
+        
+    if worker_type == 'os':
+        where_tetap.append("1=0") # Abaikan pencarian di karyawan tetap
+        where_os.append("CHAR_LENGTH(CAST(employee_code AS CHAR)) < 8")
+    elif worker_type == 'tetap':
+        where_tetap.append("CHAR_LENGTH(CAST(employee_id AS CHAR)) >= 8")
+        where_os.append("1=0") # Abaikan pencarian di OS
 
     if sub_company_id:
         if sub_company_id == 'TYPE_OS': 
-            where_clauses.append("m.emp_type = 'OS'")
+            where_tetap.append("1=0")
+            where_os.append("COALESCE(type_worker, 'OS') = 'OS'")
         elif sub_company_id == 'TYPE_VENDOR': 
-            where_clauses.append("m.emp_type = 'Vendor'")
+            where_tetap.append("1=0")
+            where_os.append("COALESCE(type_worker, 'OS') = 'Vendor'")
         else:
-            where_clauses.append("(m.sub_company_id = :sub_company_id OR m.sub_company_name = :sub_company_id)")
-            params['sub_company_id'] = sub_company_id
+            # Karena karyawan tetap di-hardcode ke 'sub00003'/'CRS'
+            where_tetap.append("('sub00003' = :sub_company_id OR 'CRS' = :sub_company_id)")
+            where_os.append("(sub_company_id = :sub_company_id OR sub_company_name = :sub_company_id)")
+            master_params['sub_company_id'] = sub_company_id
 
-    if department_id:
-        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id OR org_name = :dept_id")
-        with db.engine.connect() as conn:
-            cc_res = conn.execute(sql_cc, {'dept_id': department_id}).fetchone()
+    # Eksekusi Terpisah untuk Menghindari Error Collation UNION di MySQL
+    sql_tetap = text(f"""
+        SELECT 
+            employee_id AS emp_code, employee_name AS emp_name, card_no AS master_card_id,
+            '-' AS gender, 'sub00003' AS sub_company_id, 'CRS' AS sub_company_name,
+            CAST(cost_center AS CHAR) AS dept_code, dept_name AS cc_name, 
+            'TETAP/KONTRAK' AS emp_type, 1 AS use_cc
+        FROM vw_master_karyawan
+        WHERE {" AND ".join(where_tetap)}
+    """)
 
-        if cc_res:
-            dept_cc_id = str(cc_res[0]).strip()
-            dept_cc_code = str(cc_res[1]).strip()
-            dept_cc_name = str(cc_res[2]).strip() if cc_res[2] else ''
+    sql_os = text(f"""
+        SELECT 
+            employee_code AS emp_code, employee_name AS emp_name, card_number AS master_card_id,
+            COALESCE(gender, '-') AS gender, sub_company_id, sub_company_name,
+            CAST(cost_center_id AS CHAR) AS dept_code, cc_name, 
+            COALESCE(type_worker, 'OS') AS emp_type, COALESCE(use_cc, 0) AS use_cc
+        FROM vw_master_os_active
+        WHERE {" AND ".join(where_os)}
+    """)
 
-            where_clauses.append("""(
-                (m.use_cc = 1 AND (
-                    m.dept_id = :dept_cc_id 
-                    OR m.dept_code = :dept_cc_code 
-                    OR m.cc_name = :dept_cc_name
-                ))
-                OR
-                (m.use_cc = 0 AND (
-                    CAST(COALESCE(tm_in.org_cc_id, tm_out.org_cc_id, occ.id) AS CHAR) = :dept_cc_id
-                    OR CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR) = :dept_cc_code
-                    OR occ.org_name = :dept_cc_name
-                    OR (tm_in.id IS NULL AND tm_out.id IS NULL AND (
-                        m.dept_id = :dept_cc_id OR m.dept_code = :dept_cc_code OR m.cc_name = :dept_cc_name
-                    ))
-                ))
-            )""")
-            params.update({
-                'dept_cc_id': dept_cc_id,
-                'dept_cc_code': dept_cc_code,
-                'dept_cc_name': dept_cc_name
-            })
-        else:
-            where_clauses.append("""(
-                (m.use_cc = 1 AND (m.dept_id = :dept_id OR m.dept_code = :dept_id OR m.cc_name = :dept_id))
-                OR
-                (m.use_cc = 0 AND (
-                    CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR) = :dept_id
-                    OR occ.org_name = :dept_id
-                    OR (m.dept_id = :dept_id OR m.dept_code = :dept_id OR m.cc_name = :dept_id)
-                ))
-            )""")
-            params['dept_id'] = department_id
+    # Hit-and-Run Connection via Context Manager
+    with db.engine.connect() as conn:
+        rows_tetap = conn.execute(sql_tetap, master_params).mappings().fetchall()
+        rows_os = conn.execute(sql_os, master_params).mappings().fetchall()
+        
+    df_tetap = pd.DataFrame([dict(r) for r in rows_tetap])
+    df_os = pd.DataFrame([dict(r) for r in rows_os])
+    
+    # PANDAS CONCAT: Setara dengan UNION ALL, tapi dieksekusi di RAM Python (Ultra Fast & No Collation Issue)
+    df_master = pd.concat([df_tetap, df_os], ignore_index=True)
 
-    where_sql = " AND ".join(where_clauses)
+    if df_master.empty:
+        return [] # Fast Exit jika Master kosong
+        
+    df_master['master_card_id'] = df_master['master_card_id'].astype(str).str.strip()
+    df_master['emp_code'] = df_master['emp_code'].astype(str).str.strip()
+    
+    # Ambil Tuple ID untuk di-inject ke query absensi/BAC (Pre-Selection Parameter)
+    card_ids = tuple(df_master['master_card_id'].dropna().unique().tolist())
+    emp_ids = tuple(df_master['emp_code'].dropna().unique().tolist())
+    
+    if not card_ids: card_ids = ('-1',)
+    if not emp_ids: emp_ids = ('-1',)
 
-    sql_query = f"""
-        WITH MasterEmp AS (
-            SELECT 
-                CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
-                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_name,
-                MAX(CONVERT(card_no USING utf8mb4) COLLATE utf8mb4_general_ci) AS master_card_id,
-                '-' AS gender,
-                'sub00003' AS sub_company_id,
-                'CRS' AS sub_company_name,
-                MAX(CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_code,
-                MAX(CONVERT(CAST(cost_center AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_id,
-                MAX(CONVERT(dept_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name,
-                'TETAP/KONTRAK' AS emp_type,
-                1 AS use_cc
-            FROM vw_master_karyawan
-            WHERE employee_id IS NOT NULL AND employee_id != ''
-            GROUP BY employee_id
-            
-            UNION ALL
-            
-            SELECT 
-                CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_code,
-                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_name,
-                MAX(CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_general_ci) AS master_card_id,
-                MAX(CONVERT(COALESCE(gender, '-') USING utf8mb4) COLLATE utf8mb4_general_ci) AS gender,
-                MAX(CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_id,
-                MAX(CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_name,
-                MAX(CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_code,
-                MAX(CONVERT(CAST(org_cc_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS dept_id,
-                MAX(CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name,
-                MAX(CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci) AS emp_type,
-                MAX(COALESCE(use_cc, 0)) AS use_cc
-            FROM vw_master_os_active
-            WHERE employee_code IS NOT NULL AND employee_code != ''
-            GROUP BY employee_code
-        ),
-        RawBacData AS (
-            SELECT 
-                m.master_card_id AS card_id,
-                b.employee_id,
-                b.clock_date,
-                b.id,
-                b.bac_no,
-                b.bac_ket,
-                b.clock_in,
-                b.clock_out,
-                b.evidence_photo,
-                b.created_by,
-                b.created_date
-            FROM bac_os b
-            LEFT JOIN MasterEmp m ON m.emp_code = CONVERT(b.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci
-            WHERE b.status = 1
-            
-            UNION ALL
-            
-            SELECT 
-                m.master_card_id AS card_id,
-                t.nrp AS employee_id,
-                DATE(t.submit_at) AS clock_date,
-                t.id,
-                'BAC' AS bac_no,
-                'BAC (kiosk/backdate)' AS bac_ket,
-                CASE WHEN t.direction = 0 THEN t.submit_at ELSE NULL END AS clock_in,
-                CASE WHEN t.direction = 1 THEN t.submit_at ELSE NULL END AS clock_out,
-                NULL AS evidence_photo,
-                'system' AS created_by,
-                t.submit_at AS created_date
-            FROM `db-webapps`.transaksi_absen t
-            LEFT JOIN MasterEmp m ON m.emp_code = CONVERT(t.nrp USING utf8mb4) COLLATE utf8mb4_general_ci
-            WHERE t.status IN (2, 7)
-        ),
-        BacAgg AS (
-            SELECT 
-                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
-                clock_date,
-                MAX(employee_id) AS employee_id,
-                MAX(id) AS id,
-                MAX(bac_no) AS bac_no,
-                MAX(bac_ket) AS bac_ket,
-                MAX(clock_in) AS clock_in,
-                MAX(clock_out) AS clock_out,
-                MAX(evidence_photo) AS evidence_photo,
-                MAX(created_by) AS created_by,
-                MAX(created_date) AS created_date
-            FROM RawBacData
-            GROUP BY card_id, clock_date
-        ),
-        UnifiedAttendance AS (
-            SELECT 
-                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id,
-                clocking_date,
-                clock_in,
-                clock_out,
-                flag
-            FROM `db-webapps`.TBL_ATTENDANCE
-            WHERE card_id != '00000.00000' AND card_id IS NOT NULL AND card_id != ''
-            
-            UNION ALL
-            
-            SELECT 
-                b.card_id,
-                b.clock_date AS clocking_date,
-                NULL AS clock_in,
-                NULL AS clock_out,
-                0 AS flag
-            FROM BacAgg b
-            WHERE NOT EXISTS (
-                SELECT 1 FROM `db-webapps`.TBL_ATTENDANCE a 
-                WHERE a.card_id = b.card_id AND a.clocking_date = b.clock_date
-            )
-        ),
-        AttendanceAgg AS (
-            SELECT 
-                card_id,
-                clocking_date,
-                clock_in,
-                clock_out,
-                flag
-            FROM UnifiedAttendance
-        )
-        SELECT DISTINCT 
-            m.emp_code AS employee_id,
-            m.emp_code AS employee_code,
-            m.emp_name AS employee_name,
-            m.gender AS gender,
-            COALESCE(m.sub_company_name, '-') AS subCom,
-            
-            COALESCE(NULLIF(ta.card_id, ''), NULLIF(m.master_card_id, ''), '-') AS card,
-            
-            CASE 
-                WHEN m.use_cc = 1 THEN COALESCE(m.cc_name, '-')
-                ELSE COALESCE(occ.org_name, tm_in.cost_center, tm_out.cost_center, m.cc_name, '-')
-            END AS cc,
-            
-            m.emp_type AS type,
-
-            DATE_FORMAT(ta.clock_in, '%Y-%m-%d %H:%i:%s') AS raw_ta_in,
-            DATE_FORMAT(ta.clock_out, '%Y-%m-%d %H:%i:%s') AS raw_ta_out,
-            
-            DATE_FORMAT(ta.clocking_date, '%d %b %Y') AS v_clocking_date,
-            DATE_FORMAT(ta.clocking_date, '%Y-%m-%d') AS clocking_date,
-            
-            IF(b.clock_in IS NOT NULL, DATE_FORMAT(b.clock_in, '%H:%i'), IF(ta.clock_in IS NOT NULL, DATE_FORMAT(ta.clock_in, '%H:%i'), 'KOSONG')) AS clock_in,
-            IF(b.clock_out IS NOT NULL, DATE_FORMAT(b.clock_out, '%H:%i'), IF(ta.clock_out IS NOT NULL, DATE_FORMAT(ta.clock_out, '%H:%i'), 'KOSONG')) AS clock_out,
-            
-            COALESCE(DATE_FORMAT(b.clock_in, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(ta.clock_in, '%Y-%m-%d %H:%i:%s'), 'null') AS full_clock_in,
-            COALESCE(DATE_FORMAT(b.clock_out, '%Y-%m-%d %H:%i:%s'), DATE_FORMAT(ta.clock_out, '%Y-%m-%d %H:%i:%s'), 'null') AS full_clock_out,
-            
-            COALESCE(b.id, NULL) AS bac_id,
-            COALESCE(b.bac_no, '-') AS bac_no,
-            COALESCE(b.bac_ket, '-') AS bac_ket,
-            DATE_FORMAT(b.clock_in, '%Y-%m-%dT%H:%i') AS bac_clock_in,
-            DATE_FORMAT(b.clock_out, '%Y-%m-%dT%H:%i') AS bac_clock_out,
-            COALESCE(b.evidence_photo, '') AS bac_evidence,
-            COALESCE(b.evidence_photo, '') AS evidence_photo,
-            COALESCE(b.created_by, '-') AS bac_updated_by,
-            IF(b.created_date IS NOT NULL, DATE_FORMAT(b.created_date, '%d %b %Y'), '-') AS bac_updated_date,
-            
-            CASE 
-                WHEN b.clock_in IS NOT NULL OR b.clock_out IS NOT NULL THEN 'BAC Found'
-                WHEN ta.flag = 1 THEN 'Tidak Lengkap'
-                WHEN ta.clock_in IS NOT NULL AND ta.clock_out IS NOT NULL THEN 'Lengkap'
-                ELSE 'Tidak Lengkap'
-            END AS status
-        FROM MasterEmp m
-        INNER JOIN AttendanceAgg ta 
-            ON m.master_card_id = ta.card_id
+    # =========================================================================
+    # TAHAP 2: FETCH TRANSAKSI ABSEN (INDEXED HIT-AND-RUN)
+    # =========================================================================
+    # Sangat ringan karena difilter ketat oleh card_ids dari Tahap 1
+    att_sql = text("""
+        SELECT 
+            ta.card_id, DATE(ta.clocking_date) AS clocking_date, 
+            ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag, ex.id AS is_excluded
+        FROM `db-webapps`.TBL_ATTENDANCE ta
         LEFT JOIN attendance_exclusions ex 
-            ON ex.employee_id = m.emp_code
-            AND ex.clocking_date = ta.clocking_date
-            AND (ex.clock_in <=> ta.clock_in)
-            AND (ex.clock_out <=> ta.clock_out)
-            AND ex.status = 1
-        LEFT JOIN BacAgg b 
-            ON b.card_id = ta.card_id
-            AND b.clock_date = ta.clocking_date
-        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
-            ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-        LEFT JOIN terminal_master tm_in 
-            ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111' AND tm_in.terminal_type = 'Attendance'
-        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
-            ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-        LEFT JOIN terminal_master tm_out 
-            ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111' AND tm_out.terminal_type = 'Attendance'
-        LEFT JOIN org_cost_center occ 
-            ON occ.id = COALESCE(tm_in.org_cc_id, tm_out.org_cc_id) 
-            OR (tm_in.org_cc_id IS NULL AND tm_out.org_cc_id IS NULL AND occ.cost_center = CAST(COALESCE(tm_in.cost_center, tm_out.cost_center) AS CHAR))
-        WHERE {where_sql}
-        ORDER BY clocking_date DESC, employee_code ASC
-    """
+            ON ex.clocking_date = ta.clocking_date AND (ex.clock_in <=> ta.clock_in) AND (ex.clock_out <=> ta.clock_out) AND ex.status = 1
+        WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
+        AND ta.card_id IN :card_ids
+    """)
+    
+    with db.engine.connect() as conn:
+        att_rows = conn.execute(att_sql, {'start_date': start_date, 'end_date': end_date, 'card_ids': card_ids}).mappings().fetchall()
+        
+    df_att = pd.DataFrame([dict(r) for r in att_rows])
+    if not df_att.empty:
+        # Singkirkan data yang di-exclude
+        df_att = df_att[df_att['is_excluded'].isnull()].drop(columns=['is_excluded'])
+        df_att['clocking_date'] = pd.to_datetime(df_att['clocking_date']).dt.strftime('%Y-%m-%d')
+        # Map card_id ke emp_code agar bisa digabung (merge)
+        card_to_emp = dict(zip(df_master['master_card_id'], df_master['emp_code']))
+        df_att['emp_code'] = df_att['card_id'].map(card_to_emp)
+        df_att = df_att.dropna(subset=['emp_code'])
 
-    return sql_query, params
+    # =========================================================================
+    # TAHAP 3: FETCH DATA BAC (INDEXED HIT-AND-RUN)
+    # =========================================================================
+    bac_sql = text("""
+        SELECT 
+            employee_id AS emp_code, DATE(clock_date) AS clocking_date, id AS bac_id,
+            bac_no, bac_ket, clock_in AS bac_in, clock_out AS bac_out, 
+            evidence_photo, created_by AS bac_updated_by, created_date AS bac_updated_date
+        FROM bac_os
+        WHERE status = 1 AND clock_date >= :start_date AND clock_date <= :end_date AND employee_id IN :emp_ids
+        
+        UNION ALL
+        
+        SELECT 
+            nrp AS emp_code, DATE(submit_at) AS clocking_date, id AS bac_id,
+            'BAC' AS bac_no, 'BAC (kiosk/backdate)' AS bac_ket,
+            CASE WHEN direction = 0 THEN submit_at ELSE NULL END AS bac_in,
+            CASE WHEN direction = 1 THEN submit_at ELSE NULL END AS bac_out,
+            NULL AS evidence_photo, 'system' AS bac_updated_by, submit_at AS bac_updated_date
+        FROM `db-webapps`.transaksi_absen
+        WHERE status IN (2, 7) AND submit_at >= :start_date AND submit_at <= :end_date_2359 AND nrp IN :emp_ids
+    """)
+    
+    with db.engine.connect() as conn:
+        bac_rows = conn.execute(bac_sql, {
+            'start_date': start_date, 'end_date': end_date, 
+            'end_date_2359': f"{end_date} 23:59:59", 'emp_ids': emp_ids
+        }).mappings().fetchall()
+        
+    df_bac = pd.DataFrame([dict(r) for r in bac_rows])
+    if not df_bac.empty:
+        df_bac['clocking_date'] = pd.to_datetime(df_bac['clocking_date']).dt.strftime('%Y-%m-%d')
+        # Grouping setara dengan CTE BacAgg
+        df_bac = df_bac.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
+            'bac_id': 'max', 'bac_no': 'max', 'bac_ket': 'max',
+            'bac_in': 'max', 'bac_out': 'max', 'evidence_photo': 'max',
+            'bac_updated_by': 'max', 'bac_updated_date': 'max'
+        })
 
+    # =========================================================================
+    # TAHAP 4: PANDAS MERGE (CPU LEVEL) & WRANGLING
+    # =========================================================================
+    # Outer Join transaksi (Att & BAC) lalu Inner Join ke Master
+    if not df_att.empty and not df_bac.empty:
+        df_trans = pd.merge(df_att, df_bac, on=['emp_code', 'clocking_date'], how='outer')
+    elif not df_att.empty:
+        df_trans = df_att.copy()
+        for col in ['bac_id', 'bac_no', 'bac_ket', 'bac_in', 'bac_out', 'evidence_photo', 'bac_updated_by', 'bac_updated_date']: df_trans[col] = None
+    elif not df_bac.empty:
+        df_trans = df_bac.copy()
+        for col in ['card_id', 'ta_in', 'ta_out', 'ta_flag']: df_trans[col] = None
+    else:
+        return [] # Tidak ada data absensi sama sekali
+        
+    df_final = pd.merge(df_master, df_trans, on='emp_code', how='inner')
+    df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
+    df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
+    raw_records = df_final.to_dict('records')
+    formatted_data = []
 
+    for r in raw_records:
+        # Resolve Nulls
+        b_in, b_out = r.get('bac_in'), r.get('bac_out')
+        t_in, t_out = r.get('ta_in'), r.get('ta_out')
+        
+        # Hitung Clocking Efektif (BAC diutamakan dibanding TA)
+        eff_in = b_in if pd.notnull(b_in) else (t_in if pd.notnull(t_in) else None)
+        eff_out = b_out if pd.notnull(b_out) else (t_out if pd.notnull(t_out) else None)
+        
+        # Penentuan Status
+        if pd.notnull(b_in) or pd.notnull(b_out): status = 'BAC Found'
+        elif r.get('ta_flag') == 1: status = 'Tidak Lengkap'
+        elif pd.notnull(t_in) and pd.notnull(t_out): status = 'Lengkap'
+        else: status = 'Tidak Lengkap'
+        
+        # Status Filter Logic
+        if status_filter == 'lengkap' and status != 'Lengkap': continue
+        if status_filter in ('anomali', 'template_revisi') and status != 'Tidak Lengkap': continue
+        if status_filter == 'no_in' and pd.notnull(eff_in): continue
+        if status_filter == 'no_out' and pd.notnull(eff_out): continue
+        if status_filter == 'no_both' and (pd.isnull(eff_in) or pd.isnull(eff_out)): continue
+
+        # Format Kolom Persis Seperti Output SQL Lama
+        c_date_obj = datetime.strptime(r['clocking_date'], '%Y-%m-%d')
+        
+        fmt = {
+            'employee_id': r['emp_code'],
+            'employee_code': r['emp_code'],
+            'employee_name': r['emp_name'],
+            'gender': r['gender'],
+            'subCom': r['sub_company_name'] if pd.notnull(r['sub_company_name']) else '-',
+            'card': r.get('card_id') or r['master_card_id'] or '-',
+            'cc': r['cc_name'] if pd.notnull(r['cc_name']) else '-',
+            'type': r['emp_type'],
+            
+            'raw_ta_in': t_in.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_in) else None,
+            'raw_ta_out': t_out.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_out) else None,
+            'v_clocking_date': c_date_obj.strftime('%d %b %Y'),
+            'clocking_date': r['clocking_date'],
+            
+            'clock_in': eff_in.strftime('%H:%M') if eff_in else 'KOSONG',
+            'clock_out': eff_out.strftime('%H:%M') if eff_out else 'KOSONG',
+            'full_clock_in': eff_in.strftime('%Y-%m-%d %H:%M:%S') if eff_in else 'null',
+            'full_clock_out': eff_out.strftime('%Y-%m-%d %H:%M:%S') if eff_out else 'null',
+            
+            'bac_id': r.get('bac_id'),
+            'bac_no': r.get('bac_no') if pd.notnull(r.get('bac_no')) else '-',
+            'bac_ket': r.get('bac_ket') if pd.notnull(r.get('bac_ket')) else '-',
+            'bac_clock_in': b_in.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_in) else None,
+            'bac_clock_out': b_out.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_out) else None,
+            'evidence_photo': r.get('evidence_photo') if pd.notnull(r.get('evidence_photo')) else '',
+            'bac_updated_by': r.get('bac_updated_by') if pd.notnull(r.get('bac_updated_by')) else '-',
+            'bac_updated_date': r['bac_updated_date'].strftime('%d %b %Y') if pd.notnull(r.get('bac_updated_date')) else '-',
+            
+            'status': status
+        }
+        
+        fmt['shift'] = determine_shift(eff_in, c_date_obj)
+        
+        # Shift Filter Logic
+        if shift_filter and shift_filter != fmt['shift']: continue
+            
+        formatted_data.append(fmt)
+
+    # Sort berdasarkan Tanggal DESC, Employee ASC (seperti ORDER BY sql lama)
+    formatted_data.sort(key=lambda x: (x['clocking_date'], x['employee_code']), reverse=True)
+    return formatted_data
 
 # =============================================================================
 # 1. GET LIST ABSENSI
@@ -486,21 +397,17 @@ def get_absensi():
         department_id = request.args.get('department', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
 
-        sql_query, params = _build_absensi_raw_sql(
+        all_rows = get_absensi_hybrid_data(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
             shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
             department_id=department_id, worker_type=worker_type
         )
-        with db.engine.connect() as conn:
-            all_rows = conn.execute(text(sql_query), params).mappings().fetchall()
 
         total_item = len(all_rows)
         start_idx = (page - 1) * pageSize
-        end_idx = start_idx + pageSize
-        paged_rows = [dict(r) for r in all_rows[start_idx:end_idx]]
-        for r in paged_rows:
-            eff_in = r.get('bac_clock_in') or r.get('full_clock_in') or r.get('clock_in')
-            r['shift'] = determine_shift(eff_in, r.get('clocking_date'))
+        end_idx = start_idx + pageSize        
+        paged_rows = all_rows[start_idx:end_idx]
+        
         return jsonify({
             "status": "success",
             "data": paged_rows,
@@ -509,6 +416,8 @@ def get_absensi():
             "total_item": total_item
         }), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # =============================================================================
@@ -583,19 +492,19 @@ def export_absensi():
         department_id = request.args.get('department', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
         
-        sql_query, params = _build_absensi_raw_sql(
+        # LANGSUNG TERIMA DATA MATANG
+        rows = get_absensi_hybrid_data(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
             shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
             department_id=department_id, worker_type=worker_type
         )
-        with db.engine.connect() as conn:
-            rows = conn.execute(text(sql_query), params).mappings().fetchall()
         
         if not rows:
             return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
         
-        df = pd.DataFrame([dict(r) for r in rows])
-        df['Shift'] = df.apply(lambda r: determine_shift(r['bac_clock_in'] or r['full_clock_in'] or r['clock_in'], r['clocking_date']), axis=1)
+        df = pd.DataFrame(rows)
+        
+        # Mapping nama kolom agar sesuai dengan format Excel
         df.rename(columns={
             'employee_code': 'Employee ID',
             'employee_name': 'Nama Karyawan',
@@ -604,6 +513,7 @@ def export_absensi():
             'card': 'Absence Card',
             'cc': 'Cost Center',
             'type': 'Type',
+            'shift': 'Shift',
             'v_clocking_date': 'Clocking Date',
             'clock_in': 'Clocking In',
             'clock_out': 'Clocking Out',
@@ -612,6 +522,7 @@ def export_absensi():
             'bac_updated_by': 'Updated By',
             'bac_updated_date': 'Updated Date'
         }, inplace=True)
+        
         selected_cols = [
             'Employee ID', 'Nama Karyawan', 'Gender', 'Sub Company', 'Absence Card',
             'Cost Center', 'Type', 'Shift', 'Clocking Date', 'Clocking In',
@@ -620,21 +531,15 @@ def export_absensi():
         df = df[selected_cols]
 
         def _format_date_label(dt_str):
-            if not dt_str:
-                return "-"
-            try:
-                return datetime.strptime(dt_str, '%Y-%m-%d').strftime('%d-%b-%Y').upper()
-            except Exception:
-                return dt_str
+            if not dt_str: return "-"
+            try: return datetime.strptime(dt_str, '%Y-%m-%d').strftime('%d-%b-%Y').upper()
+            except: return dt_str
         
         start_label = _format_date_label(start_date)
         end_label = _format_date_label(end_date)
-        if worker_type == 'os':
-            worker_label = "YAYASAN"
-        elif worker_type == 'tetap':
-            worker_label = "TETAP / KONTRAK"
-        else:
-            worker_label = "SEMUA KARYAWAN"
+        if worker_type == 'os': worker_label = "YAYASAN"
+        elif worker_type == 'tetap': worker_label = "TETAP / KONTRAK"
+        else: worker_label = "SEMUA KARYAWAN"
             
         header_title = f"DATA ABSENSI KARYAWAN {worker_label} Periode Tanggal: {start_label} Sampai: {end_label}"
         output = BytesIO()
@@ -643,8 +548,10 @@ def export_absensi():
             ws = writer.sheets['Absensi_Karyawan']
             ws['A1'] = header_title
             ws['A1'].font = Font(name='Calibri', size=11, bold=True)
+        
         output.seek(0)
         filename = f"Export_Absensi_{worker_type.upper()}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"Export_Absensi_{worker_type.upper()}.xlsx"
+        
         return send_file(
             output,
             as_attachment=True,
@@ -652,6 +559,8 @@ def export_absensi():
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # =============================================================================
@@ -685,7 +594,7 @@ def delete_absensi():
                 status = 1
         """)
         
-        with db.engine.connect() as conn:
+        with db.engine.begin() as conn:
             conn.execute(sql_upsert, {
                 'employee_id': emp_id,
                 'clock_date': clock_date,
@@ -694,7 +603,6 @@ def delete_absensi():
                 'reason': reason,
                 'deleted_by': deleted_by
             })
-            conn.commit()
             
         return jsonify({
             "status": "success",
@@ -717,12 +625,11 @@ def template():
         sub_company_id = request.args.get('sub_company', '', type=str).strip()
         department_id = request.args.get('department', '', type=str).strip()
         shift_filter = request.args.get('shift', '', type=str).strip().upper()
-        user_email = request.headers.get('X-User-Email', '')
 
         if not start_date_raw or not end_date_raw:
             return jsonify({"status": "error", "message": "Parameter start_date dan end_date wajib diisi."}), 400
 
-        sql_query, params = _build_absensi_raw_sql(
+        query_results = get_absensi_hybrid_data(
             start_date=start_date_raw,
             end_date=end_date_raw,
             status_filter='template_revisi', 
@@ -733,9 +640,6 @@ def template():
             worker_type='os'
         )
         
-        with db.engine.connect() as conn:
-            query_results = conn.execute(text(sql_query), params).mappings().fetchall()
-            
         enriched_results = [r for r in query_results if not r.get('bac_id')]
 
         if not enriched_results:
@@ -746,22 +650,17 @@ def template():
             emp_name = d.get('employee_name')
             if not emp_name or str(emp_name).strip() in ('', '-', 'None', 'null'):
                 emp_name = '-'
-
-            effective_in = d.get('full_clock_in') or d.get('clock_in')            
-            c_date = d.get('clocking_date') 
-            row_shift = determine_shift(effective_in, c_date)
-            val_in = d.get('clock_in')
-            val_out = d.get('clock_out')            
-            excel_in = "" if (val_in == 'KOSONG') else val_in
-            excel_out = "" if (val_out == 'KOSONG') else val_out
+                
+            excel_in = "" if (d.get('clock_in') == 'KOSONG') else d.get('clock_in')
+            excel_out = "" if (d.get('clock_out') == 'KOSONG') else d.get('clock_out')
 
             dynamic_data.append({
                 "Employee ID": str(d.get('employee_id')),
                 "Nama Karyawan": emp_name,
                 "Sub Company": d.get('subCom') or '-',
                 "Cost Center": d.get('cc') or '-',
-                "Shift": row_shift,
-                "Tanggal Absen": c_date,
+                "Shift": d.get('shift'),
+                "Tanggal Absen": d.get('clocking_date'),
                 "Clocking In": excel_in,
                 "Clocking Out": excel_out,
                 "No BAC": "",
