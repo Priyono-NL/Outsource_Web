@@ -255,6 +255,7 @@ const Absensi = () => {
   const statusOptions = [
     { value: 'all_data', label: 'Semua Status Absensi' },
     { value: 'lengkap', label: 'Data Lengkap' },
+    { value: 'bac', label: 'BAC'},  
     { value: 'anomali', label: 'Semua Pelanggaran (Violation)' },
     { value: 'no_in', label: 'Clock In Kosong' },
     { value: 'no_out', label: 'Clock Out Kosong' },
