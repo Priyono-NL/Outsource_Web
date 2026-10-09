@@ -115,6 +115,7 @@ const AbsensiReportTable = ({
                     <th>Clocking In</th>
                     <th>Clocking Out</th>
                     <th style={{ textAlign: 'center' }}>Status</th>
+                    <th>No BAC</th>
                     <th>Ket BAC</th>
                     <th>Updated By</th>
                     <th>Updated Date</th>
@@ -233,6 +234,7 @@ const AbsensiReportTable = ({
                                     {statusElement}
                                 </td>
 
+                                <td>{emp.bac_no || '-'}</td>
                                 <td>{emp.bac_ket || '-'}</td>
                                 <td>{emp.bac_updated_by || '-'}</td>
                                 <td>{emp.bac_updated_date || '-'}</td>

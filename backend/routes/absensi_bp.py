@@ -140,7 +140,7 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
 def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shift_filter='', search='', sub_company_id='', department_id='', worker_type='all'):
     
     # =========================================================================
-    # PERSIAPAN PANDAS FILTER DEPARTMENT (Ambil Alias Cost Center)
+    # PERSIAPAN PANDAS FILTER DEPARTMENT
     # =========================================================================
     target_dept_aliases = []
     if department_id:
@@ -153,80 +153,132 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             target_dept_aliases = [str(department_id)]
 
     # =========================================================================
-    # TAHAP 1: PRE-SELECTION (MASTER DATA KARYAWAN) - SPLIT QUERY & PANDAS CONCAT
+    # TAHAP 1: PRE-SELECTION (MASTER DATA KARYAWAN & HISTORY CC)
     # =========================================================================
-    master_params = {}
+    master_params = {'start_date': start_date, 'end_date': end_date}
+    where_os = [
+        "e.employee_code IS NOT NULL", 
+        "e.employee_code != ''",
+        "e.valid_from <= :end_date",
+        "COALESCE(e.valid_to, '2099-12-31') >= :start_date"
+    ]
     where_tetap = ["employee_id IS NOT NULL", "employee_id != ''"]
-    where_os = ["employee_code IS NOT NULL", "employee_code != ''"]
-    
+
     if search:
         search_param = f"%{search}%"
         master_params['search'] = search_param
         where_tetap.append("(employee_id LIKE :search OR employee_name LIKE :search OR card_no LIKE :search)")
-        where_os.append("(employee_code LIKE :search OR employee_name LIKE :search OR card_number LIKE :search)")
+        where_os.append("(e.employee_code LIKE :search OR p.name LIKE :search OR c.card_number LIKE :search)")
         
     if worker_type == 'os':
         where_tetap.append("1=0") 
-        where_os.append("CHAR_LENGTH(CAST(employee_code AS CHAR)) < 8")
     elif worker_type == 'tetap':
-        where_tetap.append("CHAR_LENGTH(CAST(employee_id AS CHAR)) >= 8")
         where_os.append("1=0") 
 
     if sub_company_id:
         if sub_company_id == 'TYPE_OS': 
             where_tetap.append("1=0")
-            where_os.append("COALESCE(type_worker, 'OS') = 'OS'")
+            where_os.append("sc.type_company = 'OS'")
         elif sub_company_id == 'TYPE_VENDOR': 
             where_tetap.append("1=0")
-            where_os.append("COALESCE(type_worker, 'OS') = 'Vendor'")
+            where_os.append("sc.type_company = 'Vendor'")
         else:
             where_tetap.append("('sub00003' = :sub_company_id OR 'CRS' = :sub_company_id)")
-            where_os.append("(sub_company_id = :sub_company_id OR sub_company_name = :sub_company_id)")
+            where_os.append("e.sub_company_id = :sub_company_id")
             master_params['sub_company_id'] = sub_company_id
 
     sql_tetap = text(f"""
         SELECT 
+            CAST(NULL AS CHAR) AS emp_pk_id,
             employee_id AS emp_code, employee_name AS emp_name, card_no AS master_card_id,
             '-' AS gender, 'sub00003' AS sub_company_id, 'CRS' AS sub_company_name,
             CAST(cost_center AS CHAR) AS dept_code, dept_name AS cc_name, 
-            'TETAP/KONTRAK' AS emp_type, 1 AS use_cc
+            'TETAP/KONTRAK' AS emp_type, 1 AS use_cc,
+            '2000-01-01' AS valid_from, '2099-12-31' AS valid_to
         FROM vw_master_karyawan
         WHERE {" AND ".join(where_tetap)}
     """)
 
     sql_os = text(f"""
         SELECT 
-            employee_code AS emp_code, employee_name AS emp_name, card_number AS master_card_id,
-            COALESCE(gender, '-') AS gender, sub_company_id, sub_company_name,
-            CAST(cost_center_id AS CHAR) AS dept_code, cc_name, 
-            COALESCE(type_worker, 'OS') AS emp_type, COALESCE(use_cc, 0) AS use_cc
-        FROM vw_master_os_active
+            CAST(e.id AS CHAR) AS emp_pk_id,
+            CAST(e.employee_code AS CHAR) AS emp_code, 
+            p.name AS emp_name, 
+            c.card_number AS master_card_id,
+            COALESCE(p.gender, '-') AS gender, 
+            e.sub_company_id, 
+            sc.sub_company_name,
+            COALESCE(t.type_worker, 'OS') AS emp_type, 
+            COALESCE(e.use_cc, 0) AS use_cc,
+            e.valid_from, 
+            COALESCE(
+                CASE WHEN e.valid_to > '2099-12-31' THEN '2099-12-31' ELSE e.valid_to END, 
+                '2099-12-31'
+            ) AS valid_to
+        FROM os_employment e
+        JOIN os_person p ON p.person_id = e.person_id
+        LEFT JOIN sub_company sc ON sc.sub_company_id = e.sub_company_id
+        LEFT JOIN os_card c ON c.employee_id = e.id 
+            AND COALESCE(c.valid_from, '2000-01-01') <= :end_date 
+            AND COALESCE(c.valid_to, '2099-12-31') >= :start_date
+        LEFT JOIN os_type t ON t.employee_id = e.id 
+            AND COALESCE(t.valid_from, '2000-01-01') <= :end_date 
+            AND COALESCE(t.valid_to, '2099-12-31') >= :start_date
         WHERE {" AND ".join(where_os)}
+    """)
+    
+    sql_history_cc = text("""
+        SELECT 
+            CAST(occ.employee_id AS CHAR) AS emp_pk_id,
+            CAST(occ.cc_id AS CHAR) AS history_cc_code,
+            c.org_name AS history_cc_name,
+            occ.org_cc_id AS history_cc_id,
+            occ.valid_from,
+            COALESCE(
+                CASE WHEN occ.valid_to > '2099-12-31' THEN '2099-12-31' ELSE occ.valid_to END, 
+                '2099-12-31'
+            ) AS valid_to
+        FROM os_org occ
+        LEFT JOIN org_cost_center c ON c.id = occ.org_cc_id
+        WHERE occ.employee_id IN (
+            SELECT id FROM os_employment e WHERE e.valid_from <= :end_date AND COALESCE(e.valid_to, '2099-12-31') >= :start_date
+        )
+        AND COALESCE(occ.valid_from, '2000-01-01') <= :end_date 
+        AND COALESCE(occ.valid_to, '2099-12-31') >= :start_date
     """)
 
     with db.engine.connect() as conn:
         rows_tetap = conn.execute(sql_tetap, master_params).mappings().fetchall()
         rows_os = conn.execute(sql_os, master_params).mappings().fetchall()
+        hist_rows = conn.execute(sql_history_cc, {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
         
-    df_tetap = pd.DataFrame([dict(r) for r in rows_tetap])
-    df_os = pd.DataFrame([dict(r) for r in rows_os])
-    df_master = pd.concat([df_tetap, df_os], ignore_index=True)
-
+    df_master = pd.concat([pd.DataFrame([dict(r) for r in rows_tetap]), pd.DataFrame([dict(r) for r in rows_os])], ignore_index=True)
+        
     if df_master.empty:
-        return [] 
-        
-    df_master = df_master.drop_duplicates(subset=['emp_code'], keep='first')
+        return []
+
+    # Standarisasi tipe data vektor (Paksa emp_pk_id menjadi string agar aman di join)
+    df_master['emp_pk_id'] = df_master['emp_pk_id'].astype(str).str.strip().replace({'None': None, 'nan': None, '<NA>': None})
+    df_master['valid_from'] = pd.to_datetime(df_master['valid_from']).dt.strftime('%Y-%m-%d')
+    df_master['valid_to'] = pd.to_datetime(df_master['valid_to']).dt.strftime('%Y-%m-%d')
     df_master['master_card_id'] = df_master['master_card_id'].astype(str).str.strip()
     df_master['emp_code'] = df_master['emp_code'].astype(str).str.strip()
     
-    card_ids = tuple(df_master['master_card_id'].dropna().unique().tolist())
-    emp_ids = tuple(df_master['emp_code'].dropna().unique().tolist())
+    card_list = [c for c in df_master['master_card_id'].unique() if c not in ('None', 'nan', '', '-', 'null')]
+    card_ids = tuple(card_list) if card_list else ('-1',)
+    emp_ids = tuple(df_master['emp_code'].unique()) if not df_master.empty else ('-1',)
     
-    if not card_ids: card_ids = ('-1',)
-    if not emp_ids: emp_ids = ('-1',)
+    df_history = pd.DataFrame([dict(r) for r in hist_rows])
+    if not df_history.empty:
+        df_history['emp_pk_id'] = df_history['emp_pk_id'].astype(str).str.strip()
+        df_history['valid_from_hist'] = pd.to_datetime(df_history['valid_from']).dt.strftime('%Y-%m-%d')
+        df_history['valid_to_hist'] = pd.to_datetime(df_history['valid_to']).dt.strftime('%Y-%m-%d')
+        df_history = df_history.drop(columns=['valid_from', 'valid_to'])
+    else:
+        df_history = pd.DataFrame(columns=['emp_pk_id', 'history_cc_code', 'history_cc_name', 'history_cc_id', 'valid_from_hist', 'valid_to_hist'])
 
     # =========================================================================
-    # TAHAP 2: FETCH TRANSAKSI ABSEN (DITAMBAHKAN JOIN TERMINAL UNTUK USE_CC 0)
+    # TAHAP 2: FETCH TRANSAKSI ABSEN
     # =========================================================================
     att_sql = text("""
         SELECT 
@@ -238,23 +290,18 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         FROM `db-webapps`.TBL_ATTENDANCE ta
         LEFT JOIN attendance_exclusions ex 
             ON ex.clocking_date = ta.clocking_date AND (ex.clock_in <=> ta.clock_in) AND (ex.clock_out <=> ta.clock_out) AND ex.status = 1
-        
-        -- Mapping Terminal Clock IN
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
             ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
         LEFT JOIN terminal_master tm_in 
             ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111'
         LEFT JOIN org_cost_center occ_in 
             ON occ_in.id = tm_in.org_cc_id
-            
-        -- Mapping Terminal Clock OUT
         LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
             ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
         LEFT JOIN terminal_master tm_out 
             ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111'
         LEFT JOIN org_cost_center occ_out 
             ON occ_out.id = tm_out.org_cc_id
-            
         WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
         AND ta.card_id IN :card_ids
     """)
@@ -266,20 +313,28 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if not df_att.empty:
         df_att = df_att[df_att['is_excluded'].isnull()].drop(columns=['is_excluded'])
         df_att['clocking_date'] = pd.to_datetime(df_att['clocking_date']).dt.strftime('%Y-%m-%d')
-        card_to_emp = dict(zip(df_master['master_card_id'], df_master['emp_code']))
-        df_att['emp_code'] = df_att['card_id'].map(card_to_emp)
-        df_att = df_att.dropna(subset=['emp_code'])
+        df_att['card_id'] = df_att['card_id'].astype(str).str.strip()
         
-        # Agregasi untuk mencegah Double-Tap di mesin
-        df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
-            'card_id': 'first',
-            'ta_in': 'min',    
-            'ta_out': 'max',   
-            'ta_flag': 'max',
-            'terminal_cc_name': 'first',
-            'terminal_cc_code': 'first',
-            'terminal_cc_id': 'first'
-        })
+        # Mapping card_id ke emp_code master
+        master_map = df_master[['master_card_id', 'emp_code', 'valid_from', 'valid_to']].dropna(subset=['master_card_id'])
+        df_att_merged = pd.merge(df_att, master_map, left_on='card_id', right_on='master_card_id', how='left')
+        
+        df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['valid_to'])
+        df_att_merged = df_att_merged.sort_values(['card_id', 'clocking_date', 'ta_in', 'is_exact'], ascending=[True, True, True, False])
+        df_att_merged = df_att_merged.drop_duplicates(subset=['card_id', 'clocking_date', 'ta_in', 'ta_out'], keep='first')
+        
+        df_att = df_att_merged.dropna(subset=['emp_code']).drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact'])
+        
+        if not df_att.empty:
+            df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
+                'card_id': 'first',
+                'ta_in': 'min',    
+                'ta_out': 'max',   
+                'ta_flag': 'max',
+                'terminal_cc_name': 'first',
+                'terminal_cc_code': 'first',
+                'terminal_cc_id': 'first'
+            })
 
     # =========================================================================
     # TAHAP 3: FETCH DATA BAC
@@ -319,24 +374,61 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             'bac_updated_by': 'max', 'bac_updated_date': 'max'
         })
 
+    # Cek ketersediaan transaksi harian
+    if df_att.empty and df_bac.empty:
+        return []
+
     # =========================================================================
-    # TAHAP 4: PANDAS MERGE (CPU LEVEL) & WRANGLING
+    # TAHAP 4: PANDAS MERGE & WRANGLING
     # =========================================================================
     if not df_att.empty and not df_bac.empty:
         df_trans = pd.merge(df_att, df_bac, on=['emp_code', 'clocking_date'], how='outer')
     elif not df_att.empty:
         df_trans = df_att.copy()
-        for col in ['bac_id', 'bac_no', 'bac_ket', 'bac_in', 'bac_out', 'evidence_photo', 'bac_updated_by', 'bac_updated_date']: df_trans[col] = None
+        for col in ['bac_id', 'bac_no', 'bac_ket', 'bac_in', 'bac_out', 'evidence_photo', 'bac_updated_by', 'bac_updated_date']: 
+            df_trans[col] = None
     elif not df_bac.empty:
         df_trans = df_bac.copy()
-        for col in ['card_id', 'ta_in', 'ta_out', 'ta_flag', 'terminal_cc_name', 'terminal_cc_code', 'terminal_cc_id']: df_trans[col] = None
+        for col in ['card_id', 'ta_in', 'ta_out', 'ta_flag', 'terminal_cc_name', 'terminal_cc_code', 'terminal_cc_id']: 
+            df_trans[col] = None
     else:
         return [] 
-        
+
+    # Merge master dengan transaksi
     df_final = pd.merge(df_master, df_trans, on='emp_code', how='inner')
-    df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
-    df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
     
+    # Filter validasi rentang tanggal aktif
+    df_final = df_final[
+        (df_final['valid_from'] <= df_final['clocking_date']) & 
+        (df_final['valid_to'] >= df_final['clocking_date'])
+    ]
+    df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
+
+    # Evaluasi relasi dengan history CC
+    has_os_data = df_final['emp_pk_id'].notnull().any() if not df_final.empty else False
+
+    if not df_history.empty and not df_final.empty and has_os_data:
+        # Samakan tipe kolom ke str agar merge terjamin bebas dari mismatch types
+        df_final['emp_pk_id_merge'] = df_final['emp_pk_id'].astype(str).str.strip().replace({'None': '', 'nan': '', '<NA>': ''})
+        df_history_clean = df_history.copy()
+        df_history_clean['emp_pk_id_merge'] = df_history_clean['emp_pk_id'].astype(str).str.strip()
+
+        df_final = pd.merge(df_final, df_history_clean, on='emp_pk_id_merge', how='left')
+        
+        # Validasi baris history mana yang tanggalnya masuk ke rentang
+        df_final['hist_valid'] = (df_final['clocking_date'] >= df_final['valid_from_hist']) & (df_final['clocking_date'] <= df_final['valid_to_hist'])
+        
+        df_final = df_final.sort_values(['emp_code', 'clocking_date', 'hist_valid'], ascending=[True, True, False])
+        df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
+        
+        df_final.loc[~df_final['hist_valid'], ['history_cc_name', 'history_cc_code', 'history_cc_id']] = None
+        df_final = df_final.drop(columns=['emp_pk_id_merge', 'valid_from_hist', 'valid_to_hist', 'hist_valid'], errors='ignore')
+    else:
+        df_final['history_cc_name'] = None
+        df_final['history_cc_code'] = None
+        df_final['history_cc_id'] = None
+
+    df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
     raw_records = df_final.to_dict('records')
     formatted_data = []
 
@@ -348,7 +440,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         eff_out = b_out if pd.notnull(b_out) else (t_out if pd.notnull(t_out) else None)
         
         if pd.notnull(b_in) or pd.notnull(b_out): status = 'BAC Found'
-        elif r.get('ta_flag') == 1: status = 'Tidak Lengkap'
         elif pd.notnull(t_in) and pd.notnull(t_out): status = 'Lengkap'
         else: status = 'Tidak Lengkap'
         
@@ -359,39 +450,46 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         if status_filter == 'no_out' and pd.notnull(eff_out): continue
         if status_filter == 'no_both' and (pd.isnull(eff_in) or pd.isnull(eff_out)): continue
 
-        # ---------------------------------------------------------------------
-        # LOGIKA COST CENTER (USE_CC = 1 vs USE_CC = 0)
-        # ---------------------------------------------------------------------
+        # Penentuan Cost Center
+        master_cc_name = r.get('history_cc_name') or r.get('cc_name')
+        master_cc_code = r.get('history_cc_code') or r.get('dept_code')
+        master_cc_id = r.get('history_cc_id')
         use_cc = r.get('use_cc', 0)
-        master_cc_name = r.get('cc_name')
         term_cc_name = r.get('terminal_cc_name')
-        master_cc_code = r.get('dept_code')
         term_cc_code = r.get('terminal_cc_code')
         term_cc_id = r.get('terminal_cc_id')
 
         if use_cc == 1:
             final_cc_name = master_cc_name
-            match_vals = [str(master_cc_code), str(master_cc_name)]
+            match_vals = [str(master_cc_id), str(master_cc_code), str(master_cc_name)]
         else:
-            # Jika karyawan menggunakan mesin tanpa Cost Center (contoh mesin rusak), fallback ke Master
-            final_cc_name = term_cc_name if pd.notnull(term_cc_name) else master_cc_name
-            if pd.notnull(term_cc_id):
-                match_vals = [str(term_cc_id), str(term_cc_code), str(term_cc_name)]
+            if pd.isnull(term_cc_name):
+                final_cc_name = master_cc_name
+                match_vals = [str(master_cc_id), str(master_cc_code), str(master_cc_name)]
             else:
-                match_vals = [str(master_cc_code), str(master_cc_name)]
+                m_code_str = str(master_cc_code).strip() if pd.notnull(master_cc_code) else ""
+                t_code_str = str(term_cc_code).strip() if pd.notnull(term_cc_code) else ""
+                t_id_str = str(term_cc_id).strip() if pd.notnull(term_cc_id) else ""
+                m_name_str = str(master_cc_name).strip() if pd.notnull(master_cc_name) else ""
+                t_name_str = str(term_cc_name).strip() if pd.notnull(term_cc_name) else ""
 
-        # Eksekusi Filter Department 
+                is_different = False
+                if m_code_str or m_name_str:
+                    is_different = (m_code_str != t_code_str) and (m_code_str != t_id_str) and (m_name_str != t_name_str)
+
+                if is_different:
+                    final_cc_name = master_cc_name
+                    match_vals = [str(master_cc_id), str(master_cc_code), str(master_cc_name)]
+                else:
+                    final_cc_name = term_cc_name
+                    match_vals = [str(term_cc_id), str(term_cc_code), str(term_cc_name)]
+
         if department_id:
             if not any(val in target_dept_aliases for val in match_vals if pd.notnull(val)):
                 continue
-        # ---------------------------------------------------------------------
 
         c_date_obj = datetime.strptime(r['clocking_date'], '%Y-%m-%d')
-        
-        # Mencegah NaN merusak respons JSON React
         bac_id_val = r.get('bac_id')
-        safe_bac_id = None if pd.isna(bac_id_val) else bac_id_val
-
         fmt = {
             'employee_id': r['emp_code'],
             'employee_code': r['emp_code'],
@@ -399,10 +497,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             'gender': r['gender'],
             'subCom': r['sub_company_name'] if pd.notnull(r['sub_company_name']) else '-',
             'card': r.get('card_id') or r['master_card_id'] or '-',
-            
-            # Terapkan Final Cost Center
             'cc': final_cc_name if pd.notnull(final_cc_name) else '-',
-            
             'type': r['emp_type'],
             'raw_ta_in': t_in.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_in) else None,
             'raw_ta_out': t_out.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_out) else None,
@@ -412,7 +507,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             'clock_out': eff_out.strftime('%H:%M') if eff_out else 'KOSONG',
             'full_clock_in': eff_in.strftime('%Y-%m-%d %H:%M:%S') if eff_in else 'null',
             'full_clock_out': eff_out.strftime('%Y-%m-%d %H:%M:%S') if eff_out else 'null',
-            'bac_id': safe_bac_id,
+            'bac_id': None if pd.isna(bac_id_val) else bac_id_val,
             'bac_no': r.get('bac_no') if pd.notnull(r.get('bac_no')) else '-',
             'bac_ket': r.get('bac_ket') if pd.notnull(r.get('bac_ket')) else '-',
             'bac_clock_in': b_in.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_in) else None,
@@ -424,7 +519,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         }
         
         fmt['shift'] = determine_shift(eff_in, c_date_obj)
-        
         if shift_filter and shift_filter != fmt['shift']: continue
             
         formatted_data.append(fmt)
