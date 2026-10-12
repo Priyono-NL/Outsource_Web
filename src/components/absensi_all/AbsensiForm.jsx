@@ -12,9 +12,14 @@ const formatPhotoUrl = (path) => {
 };
 
 function AbsensiForm({ onClose, onSuccess, initialData }) {
-  const [empId, setEmpId] = useState('');
-  const [empPk, setEmpPk] = useState('');
-  const [fullName, setFullName] = useState('');
+  // State Autocomplete Karyawan
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState([]);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  
+  // State untuk menyimpan NRP 5 digit secara spesifik
+  const [empCode, setEmpCode] = useState('');
+  
   const [clockDate, setClockDate] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
@@ -34,22 +39,21 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   
   const formRef = useRef(null);
   const isEditMode = !!initialData;
-  const isReadOnly = isEditMode;
   
+  // Efek Inisialisasi Data Edit
   useEffect(() => {
     if (initialData) {
-      const code = initialData.employee_code || initialData.employee_id || '';
-      const pk = initialData.employee_id || '';
-      const dateVal = initialData.clocking_date || initialData.date_clocking || '';
+      // Set employee_code 5 digit dari data existing
+      setEmpCode(initialData.employee_code || '');
+      setClockDate(initialData.clocking_date || initialData.date_clocking || '');
       
-      setEmpId(code); 
-      setEmpPk(pk);
-      setClockDate(dateVal);
-
-      if (initialData.employee_name) {
-        setFullName(initialData.employee_name);
-        setIsEmployeeFound(true);
-      }
+      setSearchTerm(initialData.employee_code ? `${initialData.employee_name} (${initialData.employee_code})` : initialData.employee_name || '');
+      setSelectedEmployee({
+        emp_pk_id: initialData.employee_id,
+        employee_code: initialData.employee_code,
+        name: initialData.employee_name
+      });
+      setIsEmployeeFound(true);
       
       setHasClockIn(!!(initialData.clock_in && initialData.clock_in !== 'KOSONG' && !initialData.bac_clock_in));
       setHasClockOut(!!(initialData.clock_out && initialData.clock_out !== 'KOSONG' && !initialData.bac_clock_out));
@@ -69,6 +73,52 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
       }
     }
   }, [initialData]);
+
+  // Efek Debounce Pencarian Karyawan (SLA Performance)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchTerm.length >= 3 && !selectedEmployee && !isEditMode) {
+        fetchEmployees();
+      } else {
+        setResults([]);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, selectedEmployee, isEditMode]);
+
+  const fetchEmployees = async () => {
+    setIsSearching(true);
+    try {
+      // Pastikan endpoint ini me-return field 'employee_code' (5 digit) di dalam array datanya
+      const response = await api.get(`/employee/search-autocomplete?q=${searchTerm}`);
+      setResults(response.data.data || []);
+    } catch (err) {
+      Toast.fire({ icon: 'error', title: 'Pencarian Gagal' });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelect = (emp) => {
+    setSelectedEmployee(emp);
+    setSearchTerm(`${emp.name} (${emp.employee_code})`);
+    
+    // Simpan NRP 5 digit saat user memilih dari dropdown
+    setEmpCode(emp.employee_code);
+    
+    setIsEmployeeFound(true);
+    setResults([]);
+  };
+
+  const handleReset = () => {
+    if (isEditMode) return;
+    setSelectedEmployee(null);
+    setSearchTerm("");
+    setEmpCode(""); // Reset NRP
+    setIsEmployeeFound(false);
+    setResults([]);
+  };
 
   const handleFileChange = (e) => {    
     const file = e.target.files[0];
@@ -91,17 +141,27 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
   const handleSave = async (e) => {
     e.preventDefault();    
 
+    // Validasi berbasis employee_code (NRP 5 digit)
+    if (!empCode) {
+      Toast.fire({ icon: 'warning', title: 'Pilih Karyawan terlebih dahulu!' });
+      return;
+    }
+
     const formData = new FormData(formRef.current);
     
-    formData.set('employee_id', empId || empPk);
+    // Set field yang akan disimpan ke backend menggunakan NRP 5 Digit
+    formData.set('employee_code', empCode);
+    
+    // Jika backend Anda mengharuskan parameter bernama 'employee_id' 
+    // tetapi isinya adalah NRP 5 digit, gunakan baris di bawah ini:
+    formData.set('employee_id', empCode); 
+    
     formData.set('clock_date', clockDate);
     formData.set('bac_no', bacOS.bac_no || '');
     formData.set('bac_ket', bacOS.bac_ket || '');
     
     if (bacOS.clock_in) formData.set('clock_in', bacOS.clock_in);
     if (bacOS.clock_out) formData.set('clock_out', bacOS.clock_out);
-    
-    formData.delete('employee_code');
 
     try {
       const response = await api.post('/absensi/bac', formData, {
@@ -118,40 +178,6 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
     }    
   };
 
-  const handleSearchEmployee = async (id) => {
-    if (!id || isReadOnly) {
-      if (!id) setFullName('');
-      return;
-    }
-    setIsSearching(true);
-    try {
-      const response = await api.get(`/employee/search/${id}`);
-      if (response.data.status === "success") { 
-        setFullName(response.data.full_name);
-        setEmpPk(response.data.emp_pk_id);
-        setIsEmployeeFound(true);
-      }
-    } catch (err) {
-      setFullName('Karyawan ID tidak terdaftar!');
-      setEmpPk('');
-      setIsEmployeeFound(false);
-      Toast.fire({ icon: 'warning', title: 'Pencarian Gagal', text: "ID Karyawan tidak ditemukan." });
-    } finally { setIsSearching(false); }
-  };
-
-  const handleIdChange = (e) => {
-    if (isEditMode || isReadOnly) return;
-    const value = e.target.value;
-    setEmpId(value);    
-    if (value === "") {
-      setIsEmployeeFound(false);
-      setFullName("");
-      setEmpPk("");
-    } else {
-      setIsEmployeeFound(false);
-    }
-  };
-
   return (
     <>
       <div 
@@ -164,7 +190,6 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
         <div className="modal-dialog modal-md modal-dialog-centered">
           <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '8px', overflow: 'hidden' }}>
             
-            {/* Header */}
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${isEditMode ? 'bi-pencil-square text-warning' : 'bi-plus-circle text-success'} me-2`}></i>
@@ -176,43 +201,53 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
             <form ref={formRef} onSubmit={handleSave} encType="multipart/form-data">
               <div className="modal-body p-3 bg-white">
                 
-                {/* Section Employee Search */}
+                {/* Autocomplete Karyawan */}
                 <div className="row g-2 mb-3">
-                  <div className="col-md-5">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Employee ID</label>
+                  <div className="col-md-12 position-relative">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Cari Karyawan (Nama / NRP)</label>
                     <div className="input-group input-group-sm">
-                      <span className="input-group-text bg-light border-end-0"><i className="bi bi-person-badge" style={{ fontSize: '0.8rem' }}></i></span>
+                      <span className="input-group-text bg-light border-end-0">
+                        <i className={`bi ${isSearching ? 'spinner-border spinner-border-sm text-primary' : 'bi-search text-muted'}`} style={{ fontSize: '0.8rem' }}></i>
+                      </span>
                       <input 
                         type="text" 
-                        name="employee_code" 
-                        className={`form-control border-start-0 ${(isEditMode || isReadOnly) ? 'bg-light fw-bold' : ''}`} 
-                        placeholder="Ketik ID..."
+                        className={`form-control border-start-0 ps-0 ${selectedEmployee ? 'bg-light fw-bold text-primary' : ''}`} 
+                        placeholder="Ketik Nama atau NRP minimal 3 karakter..."
                         required
-                        value={empId}
-                        onChange={handleIdChange}
-                        onBlur={(e) => !isEditMode && handleSearchEmployee(e.target.value)}
-                        readOnly={isEditMode}
-                        style={(isEditMode) ? { cursor: 'not-allowed' } : {}}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        readOnly={isEditMode || !!selectedEmployee}
+                        autoComplete="off"
+                        style={isEditMode ? { cursor: 'not-allowed' } : { fontSize: '0.85rem' }}
                       />
-                    </div>
-                  </div>
-                  <div className="col-md-7">
-                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Karyawan</label>
-                    <div className="position-relative">
-                      <input 
-                        type="text" 
-                        className={`form-control form-control-sm ${fullName.includes('tidak terdaftar') ? 'is-invalid' : ''}`}
-                        value={isSearching ? "Mencari..." : fullName}
-                        readOnly
-                        placeholder="Otomatis..."
-                        style={{ backgroundColor: '#f8f9fa', fontWeight: '600', fontSize: '0.85rem' }} 
-                      />
-                      {isSearching && (
-                        <div className="position-absolute end-0 top-50 translate-middle-y me-2">
-                          <div className="spinner-border spinner-border-sm text-primary" style={{ width: '0.8rem', height: '0.8rem' }} role="status"></div>
-                        </div>
+                      {selectedEmployee && !isEditMode && (
+                        <button className="btn btn-outline-danger btn-sm" type="button" onClick={handleReset} style={{ fontSize: '0.7rem' }}>
+                          <i className="bi bi-x-circle"></i>
+                        </button>
                       )}
                     </div>
+
+                    {results.length > 0 && (
+                      <div className="list-group position-absolute w-100 shadow-lg border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                        {results.map((emp) => (
+                          <button
+                            key={emp.emp_pk_id}
+                            type="button"
+                            className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1 px-3"
+                            onClick={() => handleSelect(emp)}
+                            style={{ fontSize: '0.8rem' }}
+                          >
+                            <div>
+                              <div className="fw-bold text-dark">{emp.name}</div>
+                              <small className="text-muted" style={{ fontSize: '0.7rem' }}>NRP: {emp.employee_code}</small>
+                            </div>
+                            <span className={`badge ${emp.is_active ? 'bg-success' : 'bg-secondary'}`} style={{ fontSize: '0.65rem' }}>
+                              {emp.status_text}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -301,24 +336,20 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
 
                 {/* BUKTI FOTO / DOKUMEN BAC + PREVIEW */}
                 <div className="col-md-12">
-                  {(
-                    <>
-                      <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
-                        Upload Foto Bukti / Dokumen <span className="text-muted fw-normal">(Opsional)</span>
-                      </label>
-                      <input 
-                        type="file" 
-                        name="evidence_photo"
-                        accept="image/*"
-                        className="form-control form-control-sm"
-                        disabled={(!isEmployeeFound && !isEditMode) || isSearching}
-                        onChange={handleFileChange}
-                      />
-                      <div className="form-text mt-1 text-muted" style={{ fontSize: '0.65rem' }}>
-                        Format: JPG, PNG, WEBP.
-                      </div>
-                    </>
-                  )}
+                  <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>
+                    Upload Foto Bukti / Dokumen <span className="text-muted fw-normal">(Opsional)</span>
+                  </label>
+                  <input 
+                    type="file" 
+                    name="evidence_photo"
+                    accept="image/*"
+                    className="form-control form-control-sm"
+                    disabled={(!isEmployeeFound && !isEditMode) || isSearching}
+                    onChange={handleFileChange}
+                  />
+                  <div className="form-text mt-1 text-muted" style={{ fontSize: '0.65rem' }}>
+                    Format: JPG, PNG, WEBP.
+                  </div>
 
                   {/* KOTAK PREVIEW FOTO BUKTI */}
                   {previewUrl ? (
@@ -346,20 +377,16 @@ function AbsensiForm({ onClose, onSuccess, initialData }) {
 
               {/* Footer */}
               <div className="modal-footer bg-light border-top p-2 px-3">
-                {(
-                  <>
-                    <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
-                    <button 
-                      type="submit" 
-                      className="btn btn-sm btn-primary px-3 shadow-sm" 
-                      style={{ fontSize: '0.8rem' }}
-                      disabled={(!isEmployeeFound && !isEditMode) || isSearching}
-                    >
-                      <i className="bi bi-save me-1"></i>
-                      {isEditMode ? 'Update' : 'Simpan'}
-                    </button>
-                  </>
-                )}
+                <button type="button" className="btn btn-sm btn-light border" style={{ fontSize: '0.8rem' }} onClick={onClose}>Batal</button>
+                <button 
+                  type="submit" 
+                  className="btn btn-sm btn-primary px-3 shadow-sm" 
+                  style={{ fontSize: '0.8rem' }}
+                  disabled={(!isEmployeeFound && !isEditMode) || isSearching}
+                >
+                  <i className="bi bi-save me-1"></i>
+                  {isEditMode ? 'Update' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

@@ -283,49 +283,75 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     att_sql = text("""
         SELECT 
             ta.card_id, DATE(ta.clocking_date) AS clocking_date, 
-            ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag, ex.id AS is_excluded,
-            COALESCE(occ_in.org_name, occ_out.org_name) AS terminal_cc_name,
-            COALESCE(occ_in.cost_center, occ_out.cost_center) AS terminal_cc_code,
-            COALESCE(occ_in.id, occ_out.id) AS terminal_cc_id
+            ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag, ex.id AS is_excluded
         FROM `db-webapps`.TBL_ATTENDANCE ta
         LEFT JOIN attendance_exclusions ex 
             ON ex.clocking_date = ta.clocking_date AND (ex.clock_in <=> ta.clock_in) AND (ex.clock_out <=> ta.clock_out) AND ex.status = 1
-        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_in 
-            ON ta.card_id = tt_in.CARD_ID AND ta.clock_in = tt_in.CLOCKING_DATE
-        LEFT JOIN terminal_master tm_in 
-            ON tm_in.node_id = tt_in.TERMINAL_ID AND tm_in.company_id = '1111'
-        LEFT JOIN org_cost_center occ_in 
-            ON occ_in.id = tm_in.org_cc_id
-        LEFT JOIN `db-webapps`.TBL_TACTIVITIES tt_out 
-            ON ta.card_id = tt_out.CARD_ID AND ta.clock_out = tt_out.CLOCKING_DATE
-        LEFT JOIN terminal_master tm_out 
-            ON tm_out.node_id = tt_out.TERMINAL_ID AND tm_out.company_id = '1111'
-        LEFT JOIN org_cost_center occ_out 
-            ON occ_out.id = tm_out.org_cc_id
         WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
         AND ta.card_id IN :card_ids
     """)
-    
+
+    raw_sql = text("""
+        SELECT 
+            tt.CARD_ID AS card_id, DATE(tt.CLOCKING_DATE) AS clocking_date,
+            MIN(tt.CLOCKING_DATE) AS ta_in, 
+            MAX(tt.CLOCKING_DATE) AS ta_out,
+            MAX(occ.org_name) AS terminal_cc_name,
+            MAX(occ.cost_center) AS terminal_cc_code,
+            MAX(occ.id) AS terminal_cc_id
+        FROM `db-webapps`.TBL_TACTIVITIES tt
+        LEFT JOIN terminal_master tm 
+            ON tm.node_id = tt.TERMINAL_ID AND tm.company_id = '1111'
+        LEFT JOIN org_cost_center occ 
+            ON occ.id = tm.org_cc_id
+        WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date_2359
+        AND tt.CARD_ID IN :card_ids
+        GROUP BY tt.CARD_ID, DATE(tt.CLOCKING_DATE)
+    """)
+
     with db.engine.connect() as conn:
-        att_rows = conn.execute(att_sql, {'start_date': start_date, 'end_date': end_date, 'card_ids': card_ids}).mappings().fetchall()
+        att_rows = conn.execute(att_sql, {
+            'start_date': start_date, 'end_date': end_date, 'card_ids': card_ids
+        }).mappings().fetchall()
         
-    df_att = pd.DataFrame([dict(r) for r in att_rows])
+        raw_rows = conn.execute(raw_sql, {
+            'start_date': start_date, 'end_date_2359': f"{end_date} 23:59:59", 'card_ids': card_ids
+        }).mappings().fetchall()
+
+    df_att_rekapan = pd.DataFrame([dict(r) for r in att_rows])
+    df_att_raw = pd.DataFrame([dict(r) for r in raw_rows])
+
+    if not df_att_rekapan.empty:
+        df_att_rekapan['terminal_cc_name'] = None
+        df_att_rekapan['terminal_cc_code'] = None
+        df_att_rekapan['terminal_cc_id'] = None
+
+    if not df_att_raw.empty:
+        df_att_raw['ta_flag'] = None
+        df_att_raw['is_excluded'] = None
+
+    df_att = pd.concat([df_att_rekapan, df_att_raw], ignore_index=True)
+
     if not df_att.empty:
         df_att = df_att[df_att['is_excluded'].isnull()].drop(columns=['is_excluded'])
         df_att['clocking_date'] = pd.to_datetime(df_att['clocking_date']).dt.strftime('%Y-%m-%d')
         df_att['card_id'] = df_att['card_id'].astype(str).str.strip()
         
-        # Mapping card_id ke emp_code master
         master_map = df_master[['master_card_id', 'emp_code', 'valid_from', 'valid_to']].dropna(subset=['master_card_id'])
         df_att_merged = pd.merge(df_att, master_map, left_on='card_id', right_on='master_card_id', how='left')
         
         df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['valid_to'])
-        df_att_merged = df_att_merged.sort_values(['card_id', 'clocking_date', 'ta_in', 'is_exact'], ascending=[True, True, True, False])
-        df_att_merged = df_att_merged.drop_duplicates(subset=['card_id', 'clocking_date', 'ta_in', 'ta_out'], keep='first')
+        
+        df_att_merged = df_att_merged.sort_values(
+            by=['emp_code', 'clocking_date', 'terminal_cc_name', 'is_exact'], 
+            ascending=[True, True, False, False], 
+            na_position='last'
+        )
         
         df_att = df_att_merged.dropna(subset=['emp_code']).drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact'])
         
         if not df_att.empty:
+            # Agregasi akhir berdasar emp_code (NRP) untuk menggabungkan log beda kartu di satu tanggal
             df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
                 'card_id': 'first',
                 'ta_in': 'min',    
