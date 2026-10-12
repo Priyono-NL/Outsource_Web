@@ -976,9 +976,7 @@ def upload():
                     adjusted_valid_to = new_start_date - timedelta(days=1)
                     # -------------------------------------------
 
-                    target_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()
-                    if not target_person:
-                        target_person = OsPerson.query.filter(OsPerson.name.ilike(nama_input)).first()
+                    target_person = OsPerson.query.filter(OsPerson.resident_id == nik_input).first()                  
                     
                     if target_person:
                         person_id = target_person.person_id
