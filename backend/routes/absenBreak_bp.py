@@ -92,7 +92,12 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     if sub_company_id:
         if sub_company_id in ('TYPE_OS', 'TYPE_VENDOR'):
             target_type = 'OS' if sub_company_id == 'TYPE_OS' else 'Vendor'
-            sc_rows = db.session.query(SubCompany.sub_company_id).filter(SubCompany.type_company == target_type).all()
+            sql_sc = text("SELECT sub_company_id FROM sub_company WHERE type_company = :target_type")
+            
+            # Hit-and-Run Connection
+            with db.engine.connect() as conn:
+                sc_rows = conn.execute(sql_sc, {'target_type': target_type}).fetchall()
+                
             sc_list = [str(r[0]).strip() for r in sc_rows if r[0]]            
             if sc_list:
                 in_clause = ", ".join([f"'{sc}'" for sc in sc_list])
@@ -103,9 +108,20 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
             filters.append("k.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
             
+    # FILTER DEPARTMENT TERNORMALISASI
     if department_id:
-        filters.append("k.cost_center_id = :department_id")
-        params['department_id'] = department_id
+        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id OR org_name = :dept_id LIMIT 1")
+        with db.engine.connect() as conn:
+            cc_res = conn.execute(sql_cc, {'dept_id': department_id}).fetchone()
+        
+        if cc_res:
+            filters.append("(k.cost_center_id IN (:d_id, :d_code, :d_name) OR k.cc_name IN (:d_id, :d_code, :d_name))")
+            params['d_id'] = str(cc_res[0])
+            params['d_code'] = str(cc_res[1])
+            params['d_name'] = str(cc_res[2])
+        else:
+            filters.append("(k.cost_center_id = :dept_id OR k.cc_name = :dept_id)")
+            params['dept_id'] = department_id
             
     if search_text:
         filters.append("(k.emp_id LIKE :search OR k.display_name LIKE :search OR k.card_number LIKE :search)")
