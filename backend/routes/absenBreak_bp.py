@@ -3,7 +3,7 @@ from io import BytesIO
 from collections import defaultdict
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timedelta
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -11,11 +11,6 @@ from extensions import db
 from model.subCompany import SubCompany
 
 AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
-
-# =============================================================================
-# CONFIGURATION CONSTANTS (CLEAN & MAINTAINABLE)
-# =============================================================================
-HYBRID_NODES = ['161', '162', '166', '167', '191', '192', '188', '189', '175', '173']
 
 # =============================================================================
 # ZERO-ZOMBIE CONNECTION POLICY (TEARDOWN HOOK)
@@ -33,30 +28,21 @@ def teardown_request(exception=None):
 def _format_period_string(start_str, end_str):
     if not start_str and not end_str:
         return "-"
-
     def parse_and_format(date_val):
         try:
             dt = datetime.strptime(str(date_val).strip(), '%Y-%m-%d')
             return dt.strftime('%d %b %Y')
         except Exception:
             return str(date_val)
-
     formatted_start = parse_and_format(start_str)
     formatted_end = parse_and_format(end_str)
-
     if formatted_start == formatted_end:
         return formatted_start
     return f"{formatted_start} s/d {formatted_end}"
 
-def _get_hybrid_pattern():
-    if not HYBRID_NODES:
-        return "^$"  
-    return "|".join(HYBRID_NODES)
-
 def determine_shift(clock_in_val, is_saturday):
     if not clock_in_val: 
         return 'SHIFT 1'
-        
     try:
         if isinstance(clock_in_val, datetime): 
             jam = clock_in_val.hour * 100 + clock_in_val.minute
@@ -69,36 +55,39 @@ def determine_shift(clock_in_val, is_saturday):
         return 'SHIFT 1'
 
     if is_saturday:
-        # Shift 1: 04:00 s/d 10:59
-        if 400 <= jam <= 1059: 
-            return 'SHIFT 1'
-        # Shift 2: 11:00 s/d 14:59
-        elif 1100 <= jam <= 1459: 
-            return 'SHIFT 2'
-        # Shift 3: 15:00 s/d 03:59 (Lintas Malam)
-        else: 
-            return 'SHIFT 3'
-            
-    else: # HARI NORMAL
-        # Shift 1: 04:00 s/d 12:59
-        if 400 <= jam <= 1259: 
-            return 'SHIFT 1'
-        # Shift 2: 13:00 s/d 19:59 (Jam 18:00 akan aman masuk ke sini)
-        elif 1300 <= jam <= 1959: 
-            return 'SHIFT 2'
-        # Shift 3: 20:00 s/d 03:59 (Lintas Malam)
-        else: 
-            return 'SHIFT 3'
+        if 400 <= jam <= 1059: return 'SHIFT 1'
+        elif 1100 <= jam <= 1459: return 'SHIFT 2'
+        else: return 'SHIFT 3'
+    else: 
+        if 400 <= jam <= 1259: return 'SHIFT 1'
+        elif 1300 <= jam <= 1959: return 'SHIFT 2'
+        else: return 'SHIFT 3'
+
+def fmt_date(dt):
+    """Helper formatting Datetime ke String dengan Proteksi NaT"""
+    if pd.isna(dt):
+        return '-'
+    try:
+        return dt.strftime('%d-%b-%Y').upper()
+    except Exception:
+        return '-'
+
+def fmt_time(dt):
+    """Helper formatting Datetime ke Time String dengan Proteksi NaT"""
+    if pd.isna(dt):
+        return '-'
+    try:
+        return dt.strftime('%H:%M')
+    except Exception:
+        return '-'
 
 def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
-    """Membangun filter WHERE clause dinamis"""
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
     filters = []
     params = {'start_date': start_date, 'end_date': end_date}
     
-    # 1. Filter Sub Company
     if sub_company_id:
         if sub_company_id in ('TYPE_OS', 'TYPE_VENDOR'):
             target_type = 'OS' if sub_company_id == 'TYPE_OS' else 'Vendor'
@@ -113,12 +102,10 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
             filters.append("k.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
             
-    # 2. Filter Cost Center
     if department_id:
         filters.append("k.cost_center_id = :department_id")
         params['department_id'] = department_id
             
-    # 3. Filter Pencarian Teks
     if search_text:
         filters.append("(k.emp_id LIKE :search OR k.display_name LIKE :search OR k.card_number LIKE :search)")
         params['search'] = f"%{search_text}%"
@@ -126,9 +113,35 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     filter_clause = " AND " + " AND ".join(filters) if filters else ""
     return filter_clause, params
 
-def _get_base_karyawan_cte():
-    """CTE TERNORMALISASI: Mengambil Master Karyawan Tetap & OS berbasis Nomor Kartu"""
-    return """
+def _paginate_data(report_data, page, page_size):
+    total_item = len(report_data)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    return {
+        "status": "success",
+        "data": report_data[start_idx:end_idx],
+        "total_item": total_item,
+        "current_page": page,
+        "total_page": (total_item + page_size - 1) // page_size if total_item > 0 else 1
+    }
+
+# =============================================================================
+# SINGLE-PASS DATABASE QUERY (UNIFIED AGGREGATION)
+# =============================================================================
+def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text=None):
+    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
+    
+    # 1. PERPANJANGAN WAKTU UNTUK SHIFT 3
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+    end_date_extended = (end_date_obj + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    params['start_dt'] = f"{start_date} 00:00:00"
+    params['end_dt'] = f"{end_date_extended} 06:00:00"
+    params['start_date_str'] = start_date
+    params['end_date_extended_str'] = end_date_extended
+    
+    # 2. SQL QUERY 1: HANYA MASTER KARYAWAN
+    sql_karyawan = f"""
         WITH Karyawan AS (
             SELECT 
                 CONVERT(k.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
@@ -159,163 +172,300 @@ def _get_base_karyawan_cte():
             WHERE card_number IS NOT NULL AND TRIM(card_number) != '' AND card_number != '00000.00000'
             GROUP BY employee_code, card_number
         )
+        SELECT * FROM Karyawan k WHERE 1=1 {filter_clause}
     """
 
-def _paginate_data(report_data, page, page_size):
-    total_item = len(report_data)
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    
-    return {
-        "status": "success",
-        "data": report_data[start_idx:end_idx],
-        "total_item": total_item,
-        "current_page": page,
-        "total_page": (total_item + page_size - 1) // page_size if total_item > 0 else 1
-    }
-
-# =============================================================================
-# DATA PROCESSORS
-# =============================================================================
-def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data', shift_filter=''):
-    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
-    params['hybrid_pattern'] = _get_hybrid_pattern()
-    base_cte = _get_base_karyawan_cte()
-
-    sql_query = f"""
-        {base_cte},
-        ClockData AS (
-            SELECT 
-                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id, 
-                clocking_date as clock_date,
-                MIN(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out_dt,
-                MAX(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in_dt,
-                MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out,
-                MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in
-            FROM VW_TACTIVITIES_STAGING_VALID
-            WHERE clocking_date BETWEEN :start_date AND :end_date
-              AND (clocking_type = 'Break' OR CAST(node_id AS CHAR) REGEXP :hybrid_pattern)
-              AND card_id IS NOT NULL AND card_id != '' AND card_id != '00000.00000'
-            GROUP BY card_id, clocking_date
-        ),
-        MakanData AS (
-            SELECT 
-                CONVERT(EMPLOYEE_ID USING utf8mb4) COLLATE utf8mb4_general_ci as emp_id, 
-                TANGGAL_MAKAN as tanggal_makan, 
-                MIN(JAM_MAKAN) as raw_makan_time,
-                MIN(STR_TO_DATE(CONCAT(DATE_FORMAT(TANGGAL_MAKAN, '%Y-%m-%d'), ' ', JAM_MAKAN), '%Y-%m-%d %H:%i:%s')) as raw_makan_dt
-            FROM `db-webapps`.`KANTIN_KARYAWAN_MAKAN_TBL`
-            WHERE TANGGAL_MAKAN BETWEEN :start_date AND :end_date
-            GROUP BY EMPLOYEE_ID, TANGGAL_MAKAN
-        )
-        SELECT 
-            k.emp_id, 
-            k.display_name, 
-            k.sub_company_name,
-            k.tipe_karyawan,
-            k.cc_name, 
-            k.card_number,
-            COALESCE(c.clock_date, m.tanggal_makan) AS ref_date,
-            c.raw_out_dt,
-            m.raw_makan_dt,
-            c.raw_in_dt,
-            IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y')), '-') as tanggal_out,
-            IF(c.raw_out_dt IS NOT NULL, DATE_FORMAT(c.raw_out_dt, '%H:%i'), '-') as waktu_out,
-            IF(m.raw_makan_time IS NOT NULL, UPPER(DATE_FORMAT(m.tanggal_makan, '%d-%b-%Y')), '-') as tanggal_makan,
-            IF(m.raw_makan_time IS NOT NULL, DATE_FORMAT(m.raw_makan_time, '%H:%i'), '-') as waktu_makan,
-            IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y')), '-') as tanggal_in,
-            IF(c.raw_in_dt IS NOT NULL, DATE_FORMAT(c.raw_in_dt, '%H:%i'), '-') as waktu_in,
-            c.node_out,
-            c.node_in
-        FROM Karyawan k
-        LEFT JOIN ClockData c ON k.card_number = c.card_id
-        LEFT JOIN MakanData m ON k.emp_id = m.emp_id AND c.clock_date = m.tanggal_makan
-        WHERE (c.raw_out_dt IS NOT NULL OR m.raw_makan_dt IS NOT NULL OR c.raw_in_dt IS NOT NULL)
-        {filter_clause}
+    # 3. SQL QUERY 2: DATA RAW TRANSAKSI (Bypass View, Langsung Tembak Index Range)
+    sql_absen = """
+        SELECT CARD_ID, CLOCKING_DATE, DIRECTION, TAGS, TERMINAL_ID 
+        FROM vw_tactitives_non_attendance
+        WHERE CLOCKING_DATE BETWEEN :start_dt AND :end_dt
+          AND (FIND_IN_SET('access', LOWER(TAGS)) > 0 OR FIND_IN_SET('break', LOWER(TAGS)) > 0)
     """
-    
+
+    # 4. SQL QUERY 3: DATA RAW KANTIN
+    sql_makan = """
+        SELECT EMPLOYEE_ID, TANGGAL_MAKAN, JAM_MAKAN 
+        FROM `db-webapps`.`KANTIN_KARYAWAN_MAKAN_TBL`
+        WHERE TANGGAL_MAKAN BETWEEN :start_date_str AND :end_date_extended_str
+    """
+
+    # ZERO-ZOMBIE POLICY: Tarik Cepat, Tutup Seketika
     with db.engine.connect() as conn:
-        rows = conn.execute(text(sql_query), params).mappings().fetchall()
+        df_k = pd.read_sql(text(sql_karyawan), conn, params=params)
         
+        # Stop komputasi jika filter UI tidak menemukan karyawan satupun
+        if df_k.empty:
+            return []
+
+        # Tembak Raw Data Absen & Kantin
+        df_a = pd.read_sql(text(sql_absen), conn, params=params)
+        df_m = pd.read_sql(text(sql_makan), conn, params=params)
+
+    # =========================================================================
+    # IN-MEMORY DATA PROCESSING PANDAS (SLA < 1 Detik)
+    # =========================================================================
+    
+    # Normalisasi Kolom ke Lowercase
+    df_k.columns = df_k.columns.str.lower()
+    if not df_a.empty:
+        df_a.columns = df_a.columns.str.lower()
+    if not df_m.empty:
+        df_m.columns = df_m.columns.str.lower()
+
+    # Hybrid Pushdown Filter: Buang data transaksi milik karyawan luar filter
+    valid_cards = set(df_k['card_number'].dropna())
+    valid_emps = set(df_k['emp_id'].dropna())
+    
+    df_a = df_a[df_a['card_id'].isin(valid_cards)].copy()
+    df_m = df_m[df_m['employee_id'].isin(valid_emps)].copy()
+
+    if df_a.empty and df_m.empty:
+        return []
+
+    # PANDAS: LOGICAL DATE & TIME EXTRACTOR (Menggeser Waktu Shift 3 ke Hari Sebelumnya)
+    if not df_a.empty:
+        df_a['clocking_date'] = pd.to_datetime(df_a['clocking_date'])
+        df_a['logical_date'] = (df_a['clocking_date'] - pd.Timedelta(hours=4)).dt.strftime('%Y-%m-%d')
+        df_a['time_str'] = df_a['clocking_date'].dt.strftime('%H:%M:%S')
+        df_a['is_sat'] = df_a['clocking_date'].dt.dayofweek == 5
+
+        # PANDAS: TIME-WINDOW VECTORIZATION (Pengganti CASE WHEN di SQL)
+        m_sat1 = (df_a['time_str'] >= '11:00:00') & (df_a['time_str'] <= '15:00:00')
+        m_sat2 = (df_a['time_str'] >= '16:00:00') & (df_a['time_str'] <= '19:00:00')
+        m_sat3 = (df_a['time_str'] >= '21:00:00') & (df_a['time_str'] <= '23:59:59')
+        m_sat_valid = df_a['is_sat'] & (m_sat1 | m_sat2 | m_sat3)
+
+        m_nsat1 = (df_a['time_str'] >= '10:00:00') & (df_a['time_str'] <= '14:00:00')
+        m_nsat2 = (df_a['time_str'] >= '16:30:00') & (df_a['time_str'] <= '20:30:00')
+        m_nsat3 = (df_a['time_str'] >= '02:00:00') & (df_a['time_str'] <= '06:00:00')
+        m_nsat_valid = ~df_a['is_sat'] & (m_nsat1 | m_nsat2 | m_nsat3)
+
+        is_valid_break_time = m_sat_valid | m_nsat_valid
+
+        # PANDAS: DIRECTION & TAGS BOOLEAN MASK
+        is_acc = df_a['tags'].str.contains('access', case=False, na=False)
+        is_brk = df_a['tags'].str.contains('break', case=False, na=False) & is_valid_break_time
+        is_in = df_a['direction'].isin(['IN', '0'])
+        is_out = df_a['direction'].isin(['OUT', '1'])
+
+        # Pengurutan WAJIB agar fungsi 'first' dan 'last' sesuai dengan alur waktu (Bypass MAX/MIN Error)
+        df_a = df_a.sort_values(['card_id', 'clocking_date'])
+
+        # PANDAS: AGGREGATE EXACT TIMEFRAME & NODE
+        df_acc_in = df_a[is_acc & is_in].groupby(['card_id', 'logical_date']).agg(
+            access_in_dt=('clocking_date', 'first'), access_node_in=('terminal_id', 'first')).reset_index()
+
+        df_acc_out = df_a[is_acc & is_out].groupby(['card_id', 'logical_date']).agg(
+            access_out_dt=('clocking_date', 'last'), access_node_out=('terminal_id', 'last')).reset_index()
+
+        df_brk_out = df_a[is_brk & is_out].groupby(['card_id', 'logical_date']).agg(
+            break_out_dt=('clocking_date', 'first'), break_node_out=('terminal_id', 'first')).reset_index()
+
+        df_brk_in = df_a[is_brk & is_in].groupby(['card_id', 'logical_date']).agg(
+            break_in_dt=('clocking_date', 'last'), break_node_in=('terminal_id', 'last')).reset_index()
+    else:
+        df_acc_in = df_acc_out = df_brk_out = df_brk_in = pd.DataFrame()
+
+    # PANDAS: KANTIN PROCESSING
+    if not df_m.empty:
+        df_m = df_m.dropna(subset=['tanggal_makan']).copy()
+        
+        dt_tanggal = pd.to_datetime(df_m['tanggal_makan'], errors='coerce')
+        df_m = df_m[dt_tanggal.notna()].copy()
+        tanggal_str = dt_tanggal.dropna().dt.strftime('%Y-%m-%d')
+        
+        jam_str = df_m['jam_makan'].astype(str).str.replace(r'.*days?\s+', '', regex=True).str.split('.').str[0]
+        df_m['raw_makan_dt'] = pd.to_datetime(tanggal_str + ' ' + jam_str, errors='coerce')
+        
+        df_m = df_m.dropna(subset=['raw_makan_dt']).copy()
+        df_m['logical_date'] = (df_m['raw_makan_dt'] - pd.Timedelta(hours=4)).dt.strftime('%Y-%m-%d')
+        
+        df_m_agg = df_m.groupby(['employee_id', 'logical_date']).agg(
+            raw_makan_dt=('raw_makan_dt', 'min')
+        ).reset_index()
+    else:
+        df_m_agg = pd.DataFrame()
+
+    # =========================================================================
+    # PANDAS SPINE MERGE (Penyatuan Tulang Punggung Tabel)
+    # =========================================================================
+    
+    # 1. Kumpulkan semua pasangan unik Karyawan <-> Tanggal Logis yang memiliki aktivitas
+    spines = []
+    if not df_acc_in.empty: spines.append(df_acc_in[['card_id', 'logical_date']])
+    if not df_acc_out.empty: spines.append(df_acc_out[['card_id', 'logical_date']])
+    if not df_brk_out.empty: spines.append(df_brk_out[['card_id', 'logical_date']])
+    if not df_brk_in.empty: spines.append(df_brk_in[['card_id', 'logical_date']])
+    
+    df_spine_a = pd.concat(spines).drop_duplicates() if spines else pd.DataFrame(columns=['card_id', 'logical_date'])
+    
+    # Hubungkan Card_id milik Absen ke Emp_id Karyawan
+    if not df_spine_a.empty:
+        df_spine_a = pd.merge(df_spine_a, df_k[['card_number', 'emp_id']], left_on='card_id', right_on='card_number', how='inner')
+        df_spine_a = df_spine_a[['emp_id', 'card_id', 'logical_date']]
+    
+    # Hubungkan Emp_id milik Kantin ke Card_id Karyawan
+    if not df_m_agg.empty:
+        df_spine_m = df_m_agg[['employee_id', 'logical_date']].rename(columns={'employee_id': 'emp_id'})
+        df_spine_m = pd.merge(df_spine_m, df_k[['emp_id', 'card_number']], on='emp_id', how='inner')
+        df_spine_m = df_spine_m.rename(columns={'card_number': 'card_id'})[['emp_id', 'card_id', 'logical_date']]
+    else:
+        df_spine_m = pd.DataFrame(columns=['emp_id', 'card_id', 'logical_date'])
+
+    # Gabungkan Tulang Punggung
+    df_spine = pd.concat([df_spine_a, df_spine_m]).drop_duplicates()
+    
+    # Filter Mutlak: Pastikan kita hanya menampilkan rentang tanggal Logical yang diminta User
+    df_spine = df_spine[(df_spine['logical_date'] >= start_date) & (df_spine['logical_date'] <= end_date)]
+
+    if df_spine.empty:
+        return []
+
+    # 2. RENDER MASTER TABLE
+    # Base spine di-join (VLOOKUP) dengan Karyawan, Access, Break, dan Kantin
+    df_final = pd.merge(df_spine, df_k, on=['emp_id'], how='left')
+    
+    if not df_acc_in.empty: df_final = pd.merge(df_final, df_acc_in, on=['card_id', 'logical_date'], how='left')
+    if not df_acc_out.empty: df_final = pd.merge(df_final, df_acc_out, on=['card_id', 'logical_date'], how='left')
+    if not df_brk_out.empty: df_final = pd.merge(df_final, df_brk_out, on=['card_id', 'logical_date'], how='left')
+    if not df_brk_in.empty: df_final = pd.merge(df_final, df_brk_in, on=['card_id', 'logical_date'], how='left')
+    if not df_m_agg.empty: df_final = pd.merge(df_final, df_m_agg, left_on=['emp_id', 'logical_date'], right_on=['employee_id', 'logical_date'], how='left')
+
+    # =========================================================================
+    # PANDAS: HYBRID NODE CLASH PROTECTOR
+    # =========================================================================
+    
+    if 'break_in_dt' in df_final.columns and 'access_in_dt' in df_final.columns:
+        mask_in_clash = df_final['break_in_dt'] == df_final['access_in_dt']
+        df_final.loc[mask_in_clash, ['break_in_dt', 'break_node_in']] = [pd.NaT, None]
+        
+    if 'break_out_dt' in df_final.columns and 'access_out_dt' in df_final.columns:
+        mask_out_clash = df_final['break_out_dt'] == df_final['access_out_dt']
+        df_final.loc[mask_out_clash, ['break_out_dt', 'break_node_out']] = [pd.NaT, None]
+
+    # Pastikan struktur Dictionary lengkap sekalipun pandas belum sempat membentuk kolom
+    expected_cols = [
+        'access_in_dt', 'access_out_dt', 'access_node_in', 'access_node_out',
+        'break_out_dt', 'break_in_dt', 'break_node_out', 'break_node_in', 'raw_makan_dt'
+    ]
+    for col in expected_cols:
+        if col not in df_final.columns:
+            df_final[col] = None
+
+    # Cleaning Akhir (Ubah DataFrame NaT menjadi Standard Null/None Python)
+    df_final = df_final.astype(object).where(pd.notnull(df_final), None)
+    df_final.rename(columns={'logical_date': 'ref_date'}, inplace=True)
+    
+    return df_final.to_dict(orient='records')
+
+# =============================================================================
+# DATA PROCESSORS (MAPPING PYTHON)
+# =============================================================================
+def get_break_area(node_id):
+    if not node_id: return "-"
+    node_str = str(node_id).split('-')[-1]
+    if node_str in ('161', '162'): return 'Access Dekat Loker 94'
+    if node_str in ('166', '167'): return 'Access Dekat Loker Garuda'
+    if node_str in ('191', '192'): return 'Access Gerbang Biru'
+    if node_str in ('188', '189'): return 'Access 86'
+    if node_str in ('175', '173'): return 'Access Gerbang 92'
+    if node_str in ('114', '115', '215', '216'): return 'Access Bike'
+    return f"Node {node_str}"
+
+def get_access_area(node_id):
+    if not node_id: return "-"
+    node_str = str(node_id).split('-')[-1]
+    if node_str in ('188', '189'): return 'Access 86'
+    if node_str in ('173', '175'): return 'Access 92'
+    if node_str in ('111', '112', '113', '114', '115', '215', '219', '116', '117', '118'): return 'Access 94'
+    return f"Node {node_str}"
+
+def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data', shift_filter=''):
+    raw_rows = _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text)
     report_data = []
-
-    def get_break_area(node_id):
-        if not node_id: return "-"
-        node_str = str(node_id).split('-')[-1]
-        if node_str in ('161', '162'): return 'Access Dekat Loker 94'
-        if node_str in ('166', '167'): return 'Access Dekat Loker Garuda'
-        if node_str in ('191', '192'): return 'Access Gerbang Biru'
-        if node_str in ('188', '189'): return 'Access 86'
-        if node_str in ('175', '173'): return 'Access Gerbang 92'
-        if node_str in ('114', '115', '215', '216'): return 'Access Bike'
-        return f"Node {node_str}"
-
     seen_records = set()
-    for row in rows:
+
+    for row in raw_rows:
+        if row.get('break_out_dt') is None and row.get('break_in_dt') is None and row.get('raw_makan_dt') is None:
+            continue
+
         unique_key = f"{row['emp_id']}_{row['ref_date']}"        
         if unique_key in seen_records:
             continue
-        
-        out_dt = row['raw_out_dt']
-        makan_dt = row['raw_makan_dt']
-        in_dt = row['raw_in_dt']
 
-        start_break_dt = out_dt if out_dt is not None else makan_dt
+        out_dt = row.get('break_out_dt')
+        in_dt = row.get('break_in_dt')
+        makan_dt = row.get('raw_makan_dt')
 
-        # -- DETEKSI SHIFT --
         is_saturday = (datetime.strptime(str(row['ref_date']), "%Y-%m-%d").weekday() == 5)
-        detected_shift = determine_shift(start_break_dt, is_saturday)
+        
+        ref_shift_dt = row.get('access_in_dt') if pd.notna(row.get('access_in_dt')) else row.get('access_out_dt')
+        if pd.isna(ref_shift_dt):
+            ref_shift_dt = out_dt if pd.notna(out_dt) else makan_dt
+            
+        detected_shift = determine_shift(ref_shift_dt, is_saturday)
 
-        # -- FILTER SHIFT --
-        if shift_filter and shift_filter != 'all_data':
+        if shift_filter and shift_filter not in ('ALL_DATA', 'ALL', 'SEMUA'):
             if detected_shift != shift_filter:
                 continue
 
+        def is_valid_break_window(dt, shift, is_sat):
+            if pd.isna(dt): return False
+            t_str = dt.strftime('%H:%M:%S')
+            if is_sat:
+                if shift == 'SHIFT 1' and '11:00:00' <= t_str <= '15:00:00': return True
+                if shift == 'SHIFT 2' and '16:00:00' <= t_str <= '19:00:00': return True
+                if shift == 'SHIFT 3' and ('21:00:00' <= t_str <= '23:59:59' or '00:00:00' <= t_str <= '01:00:00'): return True
+            else:
+                if shift == 'SHIFT 1' and '10:00:00' <= t_str <= '14:00:00': return True
+                if shift == 'SHIFT 2' and '16:30:00' <= t_str <= '20:30:00': return True
+                if shift == 'SHIFT 3' and '02:00:00' <= t_str <= '06:00:00': return True
+            return False
+
+        if pd.notna(out_dt) and not is_valid_break_window(out_dt, detected_shift, is_saturday):
+            out_dt = pd.NaT
+            row['break_node_out'] = None
+        if pd.notna(in_dt) and not is_valid_break_window(in_dt, detected_shift, is_saturday):
+            in_dt = pd.NaT
+            row['break_node_in'] = None
+
+        if pd.isna(out_dt) and pd.isna(in_dt) and pd.isna(makan_dt):
+            continue
+
+        start_break_dt = out_dt if pd.notna(out_dt) else makan_dt
+        
+        # 3. PERHITUNGAN STATUS & MENIT
         total_mins = 0
         status = "Lengkap (Normal)"
         
-        if not start_break_dt and not in_dt:
+        if pd.isna(start_break_dt) and pd.isna(in_dt):
             status = "Tidak Lengkap (No Both)"
-            total_mins = 0
-        elif not start_break_dt:
+        elif pd.isna(start_break_dt):
             status = "Tidak Lengkap (No OUT)"
-            total_mins = 0
-        elif not in_dt:
+        elif pd.isna(in_dt):
             status = "Tidak Lengkap (No IN)"
-            total_mins = 0
         else:
             diff_seconds = (in_dt - start_break_dt).total_seconds()
             calculated_mins = int(diff_seconds // 60)
             
             if calculated_mins <= 0:
-                status = "Tidak Lengkap (0 Menit)"
+                status = "Tidak Lengkap (Invalid Duration)"
                 total_mins = 0
             else:
                 total_mins = calculated_mins
-                if total_mins > 90:
-                    status = "> 90 Menit"
-                elif total_mins >= 65:
-                    status = "> 65 Menit"
-                elif total_mins > 60:
-                    status = "> 60 Menit"
-                else:
-                    status = "Lengkap (Normal)"
+                if total_mins > 90: status = "> 90 Menit"
+                elif total_mins >= 65: status = "> 65 Menit"
+                elif total_mins > 60: status = "> 60 Menit"
 
-        # -- FILTER STATUS --
         if status_filter != 'all_data':
-            if status_filter == 'lengkap' and status != 'Lengkap (Normal)':
-                continue
-            elif status_filter == 'tidak_lengkap' and not status.startswith('Tidak Lengkap'):
-                continue
-            elif status_filter == 'over60' and total_mins <= 60:
-                continue
-            elif status_filter == 'over65' and total_mins < 65:
-                continue
-            elif status_filter == 'over90' and total_mins <= 90:
-                continue
+            if status_filter == 'lengkap' and status != 'Lengkap (Normal)': continue
+            elif status_filter == 'tidak_lengkap' and not status.startswith('Tidak Lengkap'): continue
+            elif status_filter == 'over60' and total_mins <= 60: continue
+            elif status_filter == 'over65' and total_mins < 65: continue
+            elif status_filter == 'over90' and total_mins <= 90: continue
 
         seen_records.add(unique_key)
-
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
@@ -324,14 +474,14 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
             "cc_name": row['cc_name'] or '-',
             "card_number": row['card_number'] or '-', 
             "shift": detected_shift,
-            "tanggal_out": row['tanggal_out'],
-            "waktu_out": row['waktu_out'],
-            "node_out": get_break_area(row['node_out']),
-            "tanggal_makan": row['tanggal_makan'],
-            "waktu_makan": row['waktu_makan'],
-            "tanggal_in": row['tanggal_in'],
-            "waktu_in": row['waktu_in'],
-            "node_in": get_break_area(row['node_in']),
+            "tanggal_out": fmt_date(out_dt),
+            "waktu_out": fmt_time(out_dt),
+            "node_out": get_break_area(row['break_node_out']),
+            "tanggal_makan": fmt_date(makan_dt),
+            "waktu_makan": fmt_time(makan_dt),
+            "tanggal_in": fmt_date(in_dt),
+            "waktu_in": fmt_time(in_dt),
+            "node_in": get_break_area(row['break_node_in']),
             "total": total_mins, 
             "status": status
         })
@@ -339,73 +489,31 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
     return report_data
 
 def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None, shift_filter=''):
-    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
-    params['hybrid_pattern'] = _get_hybrid_pattern()
-    base_cte = _get_base_karyawan_cte()
-
-    sql_query = f"""
-        {base_cte},
-        ClockData AS (
-            SELECT 
-                CONVERT(card_id USING utf8mb4) COLLATE utf8mb4_general_ci AS card_id, 
-                clocking_date as clock_date,
-                MIN(CASE WHEN direction IN ('IN', '0') THEN clocking_time END) as raw_in_dt,
-                MAX(CASE WHEN direction IN ('OUT', '1') THEN clocking_time END) as raw_out_dt,
-                MAX(CASE WHEN direction IN ('IN', '0') THEN node_id END) as node_in,
-                MAX(CASE WHEN direction IN ('OUT', '1') THEN node_id END) as node_out
-            FROM VW_TACTIVITIES_STAGING_VALID
-            WHERE clocking_date BETWEEN :start_date AND :end_date
-              AND (clocking_type = 'Access' OR CAST(node_id AS CHAR) REGEXP :hybrid_pattern)
-              AND card_id IS NOT NULL AND card_id != '' AND card_id != '00000.00000'
-            GROUP BY card_id, clocking_date
-        )
-        SELECT 
-            k.emp_id, k.display_name, k.sub_company_name, k.tipe_karyawan, k.card_number, k.cc_name,
-            c.clock_date,
-            c.raw_in_dt,
-            c.raw_out_dt,
-            IF(c.raw_in_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_in_dt, '%d-%b-%Y')), '-') as tanggal_in,
-            IF(c.raw_in_dt IS NOT NULL, DATE_FORMAT(c.raw_in_dt, '%H:%i'), '-') as waktu_in,
-            IF(c.raw_out_dt IS NOT NULL, UPPER(DATE_FORMAT(c.raw_out_dt, '%d-%b-%Y')), '-') as tanggal_out,
-            IF(c.raw_out_dt IS NOT NULL, DATE_FORMAT(c.raw_out_dt, '%H:%i'), '-') as waktu_out,
-            c.node_in, c.node_out
-        FROM Karyawan k
-        INNER JOIN ClockData c ON k.card_number = c.card_id
-        WHERE 1=1 {filter_clause}
-    """
-    
-    with db.engine.connect() as conn:
-        rows = conn.execute(text(sql_query), params).mappings().fetchall()
-        
+    raw_rows = _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text)
     report_data = []
     seen_records = set()
     
-    def get_access_area(node_id):
-        if not node_id: return "-"
-        node_str = str(node_id).split('-')[-1]
-        if node_str in ('188', '189'): return 'Access 86'
-        if node_str in ('173', '175'): return 'Access 92'
-        if node_str in ('111', '112', '113', '114', '115', '215', '219', '116', '117', '118'): return 'Access 94'
-        return f"Node {node_str}"
+    for row in raw_rows:
+        # Abaikan jika data mutlak kosong di ranah Access (hanya ada tap Break)
+        if row['access_in_dt'] is None and row['access_out_dt'] is None:
+            continue
 
-    for row in rows:
-        unique_key = f"{row['emp_id']}_{row['clock_date']}"        
+        unique_key = f"{row['emp_id']}_{row['ref_date']}"        
         if unique_key in seen_records:
             continue
 
-        # -- DETEKSI SHIFT --
-        is_saturday = (datetime.strptime(str(row['clock_date']), "%Y-%m-%d").weekday() == 5)
-        # Menentukan shift dari waktu masuk (raw_in_dt) atau fallback keluar (raw_out_dt)
-        ref_time = row['raw_in_dt'] if row['raw_in_dt'] else row['raw_out_dt']
+        in_dt = row['access_in_dt']
+        out_dt = row['access_out_dt']
+
+        is_saturday = (datetime.strptime(str(row['ref_date']), "%Y-%m-%d").weekday() == 5)
+        ref_time = in_dt if in_dt else out_dt
         detected_shift = determine_shift(ref_time, is_saturday)
 
-        # -- FILTER SHIFT --
         if shift_filter and shift_filter != 'all_data':
             if detected_shift != shift_filter:
                 continue
 
         seen_records.add(unique_key)
-
         report_data.append({
             "emp_id": row['emp_id'], 
             "display_name": row['display_name'] or '-',
@@ -413,21 +521,18 @@ def _get_access_data(start_date, end_date, sub_company_id, department_id, search
             "tipe_karyawan": row['tipe_karyawan'] or '-',
             "cc_name": row['cc_name'] or '-', 
             "card_number": row['card_number'] or '-',
-            "shift": detected_shift, # Menambahkan field Shift
-            "tanggal_in": row['tanggal_in'],
-            "waktu_in": row['waktu_in'],
-            "node_in": get_access_area(row['node_in']),
-            "tanggal_out": row['tanggal_out'],
-            "waktu_out": row['waktu_out'],
-            "node_out": get_access_area(row['node_out'])
+            "shift": detected_shift,
+            "tanggal_in": fmt_date(in_dt),
+            "waktu_in": fmt_time(in_dt),
+            "node_in": get_access_area(row['access_node_in']),
+            "tanggal_out": fmt_date(out_dt),
+            "waktu_out": fmt_time(out_dt),
+            "node_out": get_access_area(row['access_node_out'])
         })
 
     return report_data
 
 def _get_summary_break_data(start_date, end_date):
-    """
-    Menghitung Summary Review Break Time >= 65 minutes.
-    """
     all_breaks = _get_break_data(start_date, end_date, '', '', '', 'all_data', '')
     over_breaks = [b for b in all_breaks if b['total'] >= 65]
     
@@ -481,7 +586,7 @@ def reportBreak():
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
             request.args.get('status_filter', 'all_data').strip(),
-            request.args.get('shift_filter', '').strip()
+            request.args.get('shift', '').strip().upper()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -496,7 +601,7 @@ def reportAccess():
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
-            request.args.get('shift', '').strip()
+            request.args.get('shift', '').strip().upper()
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -511,17 +616,14 @@ def exportBreak():
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
         status_filter = request.args.get('status_filter', 'all_data').strip()
-        shift_filter = request.args.get('shift', '').strip()
+        shift_filter = request.args.get('shift', '').strip().upper()
 
-        report_data = _get_break_data(
-            start, end, sub_comp, dept, search, status_filter, shift_filter
-        )
+        report_data = _get_break_data(start, end, sub_comp, dept, search, status_filter, shift_filter)
 
         if not report_data: 
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
-        
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
@@ -574,8 +676,7 @@ def exportBreak():
                 col_letter = get_column_letter(col[0].column)
                 for cell in col[3:]:
                     val_str = str(cell.value or '')
-                    if len(val_str) > max_len:
-                        max_len = len(val_str)
+                    if len(val_str) > max_len: max_len = len(val_str)
                 ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
 
         output.seek(0)
@@ -592,14 +693,14 @@ def exportAccess():
         sub_comp = request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip()
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
-        shift_filter = request.args.get('shift', '').strip()
+        shift_filter = request.args.get('shift', '').strip().upper()
+        
         report_data = _get_access_data(start, end, sub_comp, dept, search, shift_filter)
 
         if not report_data: 
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
 
         df = pd.DataFrame(report_data)
-        
         df.rename(columns={
             'emp_id': 'Employee Id', 
             'display_name': 'Display Name', 
@@ -616,7 +717,6 @@ def exportAccess():
             'node_out': 'Node OUT'
         }, inplace=True)
         
-        # Penataan letak susunan kolom yang simetris (Shift disisipkan setelah Absence Card No)
         selected_cols = [
             'Employee Id', 'Display Name', 'Sub Company', 'Tipe', 'Cost Center', 
             'Absence Card No', 'Shift', 'TANGGAL IN', 'WAKTU IN', 'Node IN', 'TANGGAL OUT', 'WAKTU OUT', 'Node OUT'
@@ -647,8 +747,7 @@ def exportAccess():
                 col_letter = get_column_letter(col[0].column)
                 for cell in col[3:]:
                     val_str = str(cell.value or '')
-                    if len(val_str) > max_len:
-                        max_len = len(val_str)
+                    if len(val_str) > max_len: max_len = len(val_str)
                 ws.column_dimensions[col_letter].width = max(max_len + 4, 13)
 
         output.seek(0)
@@ -657,17 +756,12 @@ def exportAccess():
     except Exception as e: 
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# =============================================================================
-# NEW ENDPOINTS: SUMMARY BREAK REPORT (API & EXCEL EXPORT)
-# =============================================================================
 @AbsenBreak_bp.route('/reportSumBreak')
 def reportSumBreak():
     try:
         start = request.args.get('start_date', '').strip()
         end = request.args.get('end_date', '').strip()
-        
         subcos, d_emp, f_emp, d_days, f_days = _get_summary_break_data(start, end)
-        
         return jsonify({
             "status": "success",
             "sub_companies": subcos,
@@ -684,15 +778,12 @@ def exportSumBreak():
     try:
         start = request.args.get('start_date', '').strip()
         end = request.args.get('end_date', '').strip()
-        
         subcos, d_emp, f_emp, d_days, f_days = _get_summary_break_data(start, end)
         
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             
-            # =======================================================
-            # DATA TABLE 1: REVIEW BY TOTAL EMPLOYEES
-            # =======================================================
+            # TABLE 1: REVIEW BY TOTAL EMPLOYEES
             df_emp_rows = []
             for row in d_emp:
                 r = {'Cost Center': row['cc']}
@@ -722,10 +813,8 @@ def exportSumBreak():
                 cell.fill = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")
                 cell.font = Font(color="FFFFFF", bold=True)
             
-            # =======================================================
-            # DATA TABLE 2: REVIEW BY TOTAL DAYS
-            # =======================================================
-            current_row = 5 + len(df_emp_rows) + 3 # Jeda 3 Baris antar tabel
+            # TABLE 2: REVIEW BY TOTAL DAYS
+            current_row = 5 + len(df_emp_rows) + 3
             
             ws[f'A{current_row}'] = "Review by Total Days"
             ws[f'A{current_row}'].font = Font(color="0000FF", bold=True)
@@ -751,7 +840,6 @@ def exportSumBreak():
                 cell.fill = PatternFill(start_color="8EA9DB", end_color="8EA9DB", fill_type="solid")
                 cell.font = Font(color="FFFFFF", bold=True)
                 
-            # Resize Kolom agar Rapi
             for col in ws.columns:
                 ws.column_dimensions[col[0].column_letter].width = 18
                 

@@ -354,13 +354,14 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             # Agregasi akhir berdasar emp_code (NRP) untuk menggabungkan log beda kartu di satu tanggal
             df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
                 'card_id': 'first',
-                'ta_in': 'min',    
-                'ta_out': 'max',   
-                'ta_flag': 'max',
+                'ta_in': 'max',    
+                'ta_out': 'min',   
+                'ta_flag': 'min',
                 'terminal_cc_name': 'first',
                 'terminal_cc_code': 'first',
                 'terminal_cc_id': 'first'
             })
+            df_att.loc[df_att['ta_in'] == df_att['ta_out'], 'ta_out'] = None
 
     # =========================================================================
     # TAHAP 3: FETCH DATA BAC

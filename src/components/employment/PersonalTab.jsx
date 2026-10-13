@@ -117,18 +117,21 @@ function PersonelTab({ onPersonSelect, initialData }) {
 
     // Handler mengetik nama baru
     const handleSearchChange = (e) => {
-        if (isEditMode) return;
         const val = e.target.value;
-        setSearchTerm(val);
+        setSearchTerm(val); // Update text di input
         
-        // Kirim perubahan nama secara live ke parent jika belum mengunci pilihan
-        if (!selectedPerson) {
-            onPersonSelect?.({
-                person_id: null,
-                name: val,
-                is_new: true
-            });
+        const currentPersonId = selectedPerson?.person_id || initialData?.person_id || null;
+
+        if (selectedPerson) {
+            setSelectedPerson(prev => ({ ...prev, name: val }));
         }
+
+        onPersonSelect?.({
+            person_id: currentPersonId,
+            name: val,
+            is_new: !currentPersonId,
+            is_blacklist: selectedPerson?.is_blacklist || initialData?.is_blacklist
+        });
     };
 
     const handleReset = () => {
@@ -171,9 +174,8 @@ function PersonelTab({ onPersonSelect, initialData }) {
                                     setShowDropdown(true);
                                 }
                             }}
-                            readOnly={isEditMode || !!selectedPerson}
                             autoComplete="off"
-                            style={isEditMode ? { backgroundColor: '#f1f3f5', cursor: 'not-allowed', fontSize: '0.85rem' } : { fontSize: '0.85rem' }}
+                            style={{ fontSize: '0.85rem' }}
                         />
                         {selectedPerson && !isEditMode && (
                             <button className="btn btn-outline-danger py-0 px-2" type="button" onClick={handleReset} style={{ fontSize: '0.75rem' }}>
