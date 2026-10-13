@@ -322,13 +322,27 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     df_att_raw = pd.DataFrame([dict(r) for r in raw_rows])
 
     if not df_att_rekapan.empty:
+        df_att_rekapan['source'] = 1
         df_att_rekapan['terminal_cc_name'] = None
         df_att_rekapan['terminal_cc_code'] = None
         df_att_rekapan['terminal_cc_id'] = None
 
     if not df_att_raw.empty:
+        df_att_raw['source'] = 2
         df_att_raw['ta_flag'] = None
         df_att_raw['is_excluded'] = None
+
+        if not df_att_rekapan.empty:
+            claimed_taps = pd.concat([df_att_rekapan['ta_in'], df_att_rekapan['ta_out']]).dropna().unique()
+            
+            df_att_raw.loc[df_att_raw['ta_in'].isin(claimed_taps), 'ta_in'] = pd.NaT
+            df_att_raw.loc[df_att_raw['ta_out'].isin(claimed_taps), 'ta_out'] = pd.NaT
+
+            df_att_raw = df_att_raw.dropna(subset=['ta_in', 'ta_out'], how='all')
+
+            if not df_att_raw.empty:
+                mask_only_out = df_att_raw['ta_in'].isna() & df_att_raw['ta_out'].notna()
+                df_att_raw.loc[mask_only_out, 'ta_in'] = df_att_raw.loc[mask_only_out, 'ta_out']
 
     df_att = pd.concat([df_att_rekapan, df_att_raw], ignore_index=True)
 
@@ -343,20 +357,19 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['valid_to'])
         
         df_att_merged = df_att_merged.sort_values(
-            by=['emp_code', 'clocking_date', 'terminal_cc_name', 'is_exact'], 
-            ascending=[True, True, False, False], 
+            by=['emp_code', 'clocking_date', 'source', 'terminal_cc_name', 'is_exact'], 
+            ascending=[True, True, True, False, False], 
             na_position='last'
         )
         
-        df_att = df_att_merged.dropna(subset=['emp_code']).drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact'])
+        df_att = df_att_merged.dropna(subset=['emp_code']).drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact', 'source'])
         
         if not df_att.empty:
-            # Agregasi akhir berdasar emp_code (NRP) untuk menggabungkan log beda kartu di satu tanggal
             df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
                 'card_id': 'first',
-                'ta_in': 'max',    
-                'ta_out': 'min',   
-                'ta_flag': 'min',
+                'ta_in': 'first',    
+                'ta_out': 'first',   
+                'ta_flag': 'first',
                 'terminal_cc_name': 'first',
                 'terminal_cc_code': 'first',
                 'terminal_cc_id': 'first'

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, startDate, endDate, search }) => { 
+const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, startDate, endDate, search, workerType, isFilterApplied }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -15,13 +15,20 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, sta
     const [totalPage, setTotalPage] = useState(0);
 
     const fetchData = async () => {
-        if (!startDate || !endDate) return;
+        // CEGAH LOAD DATA JIKA FILTER BELUM DITERAPKAN ATAU TANGGAL KOSONG
+        if (!isFilterApplied || !startDate || !endDate) {
+            setEmployees([]);
+            setTotalItem(0);
+            setTotalPage(0);
+            return;
+        }
 
         try {
             setLoading(true);
             setError(null);
             
             const params = new URLSearchParams({
+                worker_type: workerType || 'all',
                 sub_company: subCompany || '',
                 department: department || '',
                 shift: shift || '',
@@ -52,13 +59,15 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, sta
         }
     };
 
+    // Reset ke page 1 jika filter berubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, shift, startDate, endDate, search]);
+    }, [subCompany, department, shift, startDate, endDate, search, workerType]);
 
+    // Fetch data ketika trigger, filter, page berubah, ATAU isFilterApplied berubah
     useEffect(() => {
         fetchData();
-    }, [refreshTrigger, subCompany, department, shift, startDate, endDate, search, currentPage]);
+    }, [refreshTrigger, subCompany, department, shift, startDate, endDate, search, currentPage, workerType, isFilterApplied]);
 
     const formatDisplayDate = (dateStr) => {
         if (!dateStr) return '-';
@@ -124,7 +133,7 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, sta
                 <div className="d-flex align-items-center">
                     {renderDateRange()}
                 </div>
-                {totalItem > 0 && (
+                {totalItem > 0 && isFilterApplied && (
                     <div className="d-flex align-items-center">
                         <span className="badge rounded-pill bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-1.5 fw-semibold">
                             <i className="bi bi-people-fill me-1.5"></i>
@@ -152,7 +161,14 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, sta
                         </tr>
                     </thead>
                     <tbody>
-                        { loading ? (
+                        {!isFilterApplied ? (
+                            <tr>
+                                <td colSpan="11" className="text-center py-5 text-muted bg-light">
+                                    <i className="bi bi-funnel d-block mb-2 fs-2 text-secondary"></i>
+                                    <span className="fw-medium">Silakan klik tombol <b>Terapkan Filter</b> untuk memuat data.</span>
+                                </td>
+                            </tr>
+                        ) : loading ? (
                             <tr>
                                 <td colSpan="11" className="text-center py-4 text-muted">
                                     <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
@@ -187,7 +203,7 @@ const AccessReport_Table = ({ refreshTrigger, subCompany, department, shift, sta
                 </table>
             </div>        
 
-            {!loading && totalPage > 1 && (
+            {!loading && totalPage > 1 && isFilterApplied && (
                 <PageNav 
                     currentPage={currentPage} 
                     totalPages={totalPage} 

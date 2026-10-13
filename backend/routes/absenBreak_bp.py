@@ -40,27 +40,28 @@ def _format_period_string(start_str, end_str):
         return formatted_start
     return f"{formatted_start} s/d {formatted_end}"
 
-def determine_shift(clock_in_val, is_saturday):
-    if not clock_in_val: 
+def determine_shift(time_val, is_saturday):
+    if pd.isna(time_val): 
         return 'SHIFT 1'
+        
     try:
-        if isinstance(clock_in_val, datetime): 
-            jam = clock_in_val.hour * 100 + clock_in_val.minute
+        if hasattr(time_val, 'hour'):
+            jam = time_val.hour * 100 + time_val.minute
         else:
-            val_str = str(clock_in_val).strip()
+            val_str = str(time_val).strip()
             time_str = val_str.split(' ')[1] if ' ' in val_str else val_str
             time_parts = time_str.split(':')
             jam = int(time_parts[0]) * 100 + int(time_parts[1])
-    except Exception: 
+    except Exception:
         return 'SHIFT 1'
 
     if is_saturday:
-        if 400 <= jam <= 1059: return 'SHIFT 1'
-        elif 1100 <= jam <= 1459: return 'SHIFT 2'
+        if 600 <= jam <= 1430: return 'SHIFT 1'
+        elif 1431 <= jam <= 1959: return 'SHIFT 2'
         else: return 'SHIFT 3'
-    else: 
-        if 400 <= jam <= 1259: return 'SHIFT 1'
-        elif 1300 <= jam <= 1959: return 'SHIFT 2'
+    else:
+        if 600 <= jam <= 1430: return 'SHIFT 1'
+        elif 1431 <= jam <= 2059: return 'SHIFT 2'
         else: return 'SHIFT 3'
 
 def fmt_date(dt):
@@ -81,7 +82,7 @@ def fmt_time(dt):
     except Exception:
         return '-'
 
-def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None):
+def _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text=None, worker_type='all'):
     if not start_date or not end_date:
         raise ValueError("Parameter start_date dan end_date wajib diisi")
 
@@ -109,6 +110,12 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
     if search_text:
         filters.append("(k.emp_id LIKE :search OR k.display_name LIKE :search OR k.card_number LIKE :search)")
         params['search'] = f"%{search_text}%"
+
+    worker_type_clean = (worker_type or 'all').strip().lower()
+    if worker_type_clean == 'tetap':
+        filters.append("(k.emp_id IS NOT NULL AND CHAR_LENGTH(TRIM(k.emp_id)) > 5)")
+    elif worker_type_clean == 'os':
+        filters.append("(k.emp_id IS NOT NULL AND TRIM(k.emp_id) != '' AND CHAR_LENGTH(TRIM(k.emp_id)) <= 5)")
         
     filter_clause = " AND " + " AND ".join(filters) if filters else ""
     return filter_clause, params
@@ -128,8 +135,8 @@ def _paginate_data(report_data, page, page_size):
 # =============================================================================
 # SINGLE-PASS DATABASE QUERY (UNIFIED AGGREGATION)
 # =============================================================================
-def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text=None):
-    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text)
+def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text=None, worker_type='all'):
+    filter_clause, params = _build_filters_and_params(start_date, end_date, sub_company_id, department_id, search_text, worker_type)
     
     # 1. PERPANJANGAN WAKTU UNTUK SHIFT 3
     end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
@@ -365,8 +372,8 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
 def get_break_area(node_id):
     if not node_id: return "-"
     node_str = str(node_id).split('-')[-1]
-    if node_str in ('161', '162'): return 'Access Dekat Loker 94'
-    if node_str in ('166', '167'): return 'Access Dekat Loker Garuda'
+    if node_str in ('161', '162'): return 'Access Loker 94'
+    if node_str in ('166', '167'): return 'Access Loker Garuda'
     if node_str in ('191', '192'): return 'Access Gerbang Biru'
     if node_str in ('188', '189'): return 'Access 86'
     if node_str in ('175', '173'): return 'Access Gerbang 92'
@@ -381,8 +388,8 @@ def get_access_area(node_id):
     if node_str in ('111', '112', '113', '114', '115', '215', '219', '116', '117', '118'): return 'Access 94'
     return f"Node {node_str}"
 
-def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data', shift_filter=''):
-    raw_rows = _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text)
+def _get_break_data(start_date, end_date, sub_company_id, department_id, search_text=None, status_filter='all_data', shift_filter='', worker_type='all'):
+    raw_rows = _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text, worker_type)
     report_data = []
     seen_records = set()
 
@@ -398,12 +405,9 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         in_dt = row.get('break_in_dt')
         makan_dt = row.get('raw_makan_dt')
 
+        start_break_dt = out_dt if pd.notna(out_dt) else makan_dt
+        ref_shift_dt = start_break_dt if pd.notna(start_break_dt) else row.get('access_in_dt')
         is_saturday = (datetime.strptime(str(row['ref_date']), "%Y-%m-%d").weekday() == 5)
-        
-        ref_shift_dt = row.get('access_in_dt') if pd.notna(row.get('access_in_dt')) else row.get('access_out_dt')
-        if pd.isna(ref_shift_dt):
-            ref_shift_dt = out_dt if pd.notna(out_dt) else makan_dt
-            
         detected_shift = determine_shift(ref_shift_dt, is_saturday)
 
         if shift_filter and shift_filter not in ('ALL_DATA', 'ALL', 'SEMUA'):
@@ -488,8 +492,8 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
 
     return report_data
 
-def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None, shift_filter=''):
-    raw_rows = _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text)
+def _get_access_data(start_date, end_date, sub_company_id, department_id, search_text=None, shift_filter='', worker_type='all'):
+    raw_rows = _get_unified_clock_data(start_date, end_date, sub_company_id, department_id, search_text, worker_type)
     report_data = []
     seen_records = set()
     
@@ -579,6 +583,7 @@ def _get_summary_break_data(start_date, end_date):
 @AbsenBreak_bp.route('/reportBreak')
 def reportBreak():
     try:
+        worker_type = request.args.get('worker_type', '').strip() or request.args.get('workerType', '').strip() or 'all'
         report_data = _get_break_data(
             request.args.get('start_date', '').strip(), 
             request.args.get('end_date', '').strip(),
@@ -586,7 +591,8 @@ def reportBreak():
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
             request.args.get('status_filter', 'all_data').strip(),
-            request.args.get('shift', '').strip().upper()
+            request.args.get('shift', '').strip().upper(),
+            worker_type
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -595,13 +601,15 @@ def reportBreak():
 @AbsenBreak_bp.route('/reportAccess')
 def reportAccess():
     try:
+        worker_type = request.args.get('worker_type', '').strip() or request.args.get('workerType', '').strip() or 'all'
         report_data = _get_access_data(
             request.args.get('start_date', '').strip(), 
             request.args.get('end_date', '').strip(),
             request.args.get('sub_company_id', '').strip() or request.args.get('sub_company', '').strip(),
             request.args.get('department_id', '').strip() or request.args.get('department', '').strip(),
             request.args.get('search', '').strip(),
-            request.args.get('shift', '').strip().upper()
+            request.args.get('shift', '').strip().upper(),
+            worker_type
         )
         return jsonify(_paginate_data(report_data, int(request.args.get('page', 1)), int(request.args.get('pageSize', 10)))), 200
     except Exception as e:
@@ -617,8 +625,9 @@ def exportBreak():
         search = request.args.get('search', '').strip()
         status_filter = request.args.get('status_filter', 'all_data').strip()
         shift_filter = request.args.get('shift', '').strip().upper()
+        worker_type = request.args.get('worker_type', '').strip() or request.args.get('workerType', '').strip() or 'all'
 
-        report_data = _get_break_data(start, end, sub_comp, dept, search, status_filter, shift_filter)
+        report_data = _get_break_data(start, end, sub_comp, dept, search, status_filter, shift_filter, worker_type)
 
         if not report_data: 
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400
@@ -694,8 +703,9 @@ def exportAccess():
         dept = request.args.get('department_id', '').strip() or request.args.get('department', '').strip()
         search = request.args.get('search', '').strip()
         shift_filter = request.args.get('shift', '').strip().upper()
+        worker_type = request.args.get('worker_type', '').strip() or request.args.get('workerType', '').strip() or 'all'
         
-        report_data = _get_access_data(start, end, sub_comp, dept, search, shift_filter)
+        report_data = _get_access_data(start, end, sub_comp, dept, search, shift_filter, worker_type)
 
         if not report_data: 
             return jsonify({"status": "error", "message": "Data tidak ditemukan"}), 400

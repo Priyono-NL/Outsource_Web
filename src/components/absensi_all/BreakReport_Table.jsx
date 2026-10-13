@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 import PageNav from '../PageNav'; 
 
-const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, shift, search, isFilterApplied }) => { 
+const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, endDate, statusFilter, shift, search, workerType, isFilterApplied }) => { 
     
     const [employees, setEmployees] = useState([]); 
     const [error, setError] = useState(null); 
@@ -13,6 +13,8 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
     const [pageSize, setPageSize] = useState(10);
     const [totalItem, setTotalItem] = useState(0);
     const [totalPage, setTotalPage] = useState(0);
+
+    const isSingleDay = startDate === endDate && startDate !== '';
 
     const fetchData = async () => {
         if (!startDate || !endDate) return;
@@ -29,6 +31,7 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                 status_filter: statusFilter || 'all_data',
                 shift: shift || '',
                 search: search || '',
+                worker_type: workerType || 'all',
                 page: currentPage,
                 pageSize: pageSize
             }).toString();
@@ -55,12 +58,12 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [subCompany, department, startDate, endDate, statusFilter, shift, search]);
+    }, [subCompany, department, startDate, endDate, statusFilter, shift, search, workerType]);
 
     useEffect(() => {
         if (!startDate || !endDate || !isFilterApplied) return;
         fetchData();
-    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, shift, search, currentPage, isFilterApplied]);
+    }, [refreshTrigger, subCompany, department, startDate, endDate, statusFilter, shift, search, workerType, currentPage, isFilterApplied]);
 
     // Format tampilan tanggal ke format lokal Indonesia (contoh: 25 Sep 2026)
     const formatDisplayDate = (dateStr) => {
@@ -163,12 +166,12 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                             <th className="text-center">Absence Card No</th>
                             <th>Tipe</th>
                             <th>Shift</th>
-                            <th className="text-center">Tanggal OUT</th>
+                            {!isSingleDay && <th className="text-center">Tanggal OUT</th>}
                             <th className="text-center">Waktu OUT</th>
                             <th className="text-center">Node OUT</th>
-                            <th className="text-center">Tanggal Makan</th>
+                            {!isSingleDay && <th className="text-center">Tanggal Makan</th>}
                             <th className="text-center">Waktu Makan</th>
-                            <th className="text-center">Tanggal IN</th>
+                            {!isSingleDay && <th className="text-center">Tanggal IN</th>}
                             <th className="text-center">Waktu IN</th>
                             <th className="text-center">Node IN</th>
                             <th className="text-center">Total (Menit)</th>
@@ -201,12 +204,12 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                                     <td className="text-center">{emp.card_number || '-'}</td>                                    
                                     <td>{emp.tipe_karyawan || '-'}</td>
                                     <td>{emp.shift || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_out) || '-'}</td>
+                                    {!isSingleDay && <td className="text-center">{formatDisplayDate(emp.tanggal_out) || '-'}</td>}                                    
                                     <td className="text-center">{emp.waktu_out || '-'}</td>
                                     <td className="text-center">{emp.node_out || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_makan) || '-'}</td>
+                                    {!isSingleDay && <td className="text-center">{formatDisplayDate(emp.tanggal_makan) || '-'}</td>}
                                     <td className="text-center">{emp.waktu_makan || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_in) || '-'}</td>
+                                    {!isSingleDay && <td className="text-center">{formatDisplayDate(emp.tanggal_in) || '-'}</td>}
                                     <td className="text-center">{emp.waktu_in || '-'}</td>
                                     <td className="text-center">{emp.node_in || '-'}</td>
                                     <td className="text-center fw-bold text-primary">{emp.total !== undefined ? emp.total : '-'}</td>
