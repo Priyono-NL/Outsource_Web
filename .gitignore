@@ -7,6 +7,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+venv
+
 node_modules
 *.local
 __pycache__
