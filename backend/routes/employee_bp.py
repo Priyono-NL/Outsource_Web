@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename
 from io import BytesIO
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, send_file
-from sqlalchemy import or_, func, and_
+from sqlalchemy import or_, func, and_, distinct
 from PIL import Image, ImageOps
 from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -1357,23 +1357,26 @@ def get_employee_stats():
             OsEmployment.valid_to < now
         )
         
-        # Kalkulasi Total
         total_active = base_emp.filter(active_condition).count()
         total_inactive = base_emp.filter(inactive_condition).count()
         
-        # Kalkulasi Cost Center
+        cc_active_condition = and_(
+            OsCostCenter.valid_from.is_not(None),
+            OsCostCenter.valid_from <= now,
+            or_(OsCostCenter.valid_to >= now, OsCostCenter.valid_to == None)
+        )
+
         cc_query = db.session.query(
             OsCostCenter.org_cc_id, 
-            func.count(OsCostCenter.id).label('total')
+            func.count(distinct(OsCostCenter.employee_id)).label('total') 
         ).join(OsEmployment, OsCostCenter.employee_id == OsEmployment.id)\
-         .filter(active_condition)
+         .filter(and_(active_condition, cc_active_condition)) # 3. Gabungkan kedua filter aktif
          
         if allowed_subcos:
             cc_query = cc_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
             
         stats_cc = {row.org_cc_id: row.total for row in cc_query.group_by(OsCostCenter.org_cc_id).all()}
         
-        # Kalkulasi Sub Company
         sub_query = db.session.query(
             OsEmployment.sub_company_id,
             func.count(OsEmployment.id).label('total')

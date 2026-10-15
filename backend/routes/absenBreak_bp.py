@@ -249,7 +249,7 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     # PANDAS: LOGICAL DATE & TIME EXTRACTOR (Menggeser Waktu Shift 3 ke Hari Sebelumnya)
     if not df_a.empty:
         df_a['clocking_date'] = pd.to_datetime(df_a['clocking_date'])
-        df_a['logical_date'] = (df_a['clocking_date'] - pd.Timedelta(hours=4)).dt.strftime('%Y-%m-%d')
+        df_a['logical_date'] = (df_a['clocking_date'] - pd.Timedelta(hours=5)).dt.strftime('%Y-%m-%d')
         df_a['time_str'] = df_a['clocking_date'].dt.strftime('%H:%M:%S')
         df_a['is_sat'] = df_a['clocking_date'].dt.dayofweek == 5
 
@@ -302,7 +302,7 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         df_m['raw_makan_dt'] = pd.to_datetime(tanggal_str + ' ' + jam_str, errors='coerce')
         
         df_m = df_m.dropna(subset=['raw_makan_dt']).copy()
-        df_m['logical_date'] = (df_m['raw_makan_dt'] - pd.Timedelta(hours=4)).dt.strftime('%Y-%m-%d')
+        df_m['logical_date'] = (df_m['raw_makan_dt'] - pd.Timedelta(hours=5)).dt.strftime('%Y-%m-%d')
         
         df_m_agg = df_m.groupby(['employee_id', 'logical_date']).agg(
             raw_makan_dt=('raw_makan_dt', 'min')
