@@ -180,7 +180,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     active_fallback_config = {str(row['f_date']): str(row['target_worker']).strip().upper() for row in fallback_rows}
 
     # =========================================================================
-    # [ATURAN 4b] PUSHDOWN PREDICATE: PERSIAPAN ALIAS DEPARTMENT
+    # PUSHDOWN PREDICATE: PERSIAPAN ALIAS DEPARTMENT
     # =========================================================================
     target_dept_aliases = []
     if department_id:
@@ -193,7 +193,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             target_dept_aliases = [str(department_id)]
 
     # =========================================================================
-    # TAHAP 1: PRE-SELECTION (MASTER DATA KARYAWAN & HISTORY CC)
+    # TAHAP 1: PRE-SELECTION (MASTER DATA KARYAWAN)
     # =========================================================================
     master_params = {'start_date': start_date, 'end_date': end_date}
     where_os = [
@@ -210,9 +210,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         where_tetap.append("(employee_id LIKE :search OR employee_name LIKE :search OR card_no LIKE :search)")
         where_os.append("(e.employee_code LIKE :search OR p.name LIKE :search OR c.card_number LIKE :search)")
         
-    # =========================================================================
-    # FIX: LOGIKA OS VS TETAP BERDASARKAN PANJANG NIK (5 DIGIT = OS)
-    # =========================================================================
     worker_type_clean = (worker_type or 'all').strip().lower()
     if worker_type_clean == 'os':
         where_tetap.append("CHAR_LENGTH(TRIM(employee_id)) = 5") 
@@ -303,9 +300,8 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     df_master['master_card_id'] = df_master['master_card_id'].astype(str).str.strip()
     df_master['emp_code'] = df_master['emp_code'].astype(str).str.strip()
     
-    card_list = [c for c in df_master['master_card_id'].unique() if c not in ('None', 'nan', '', '-', 'null')]
-    card_ids = tuple(card_list) if card_list else ('-1',)
-    emp_ids = tuple(df_master['emp_code'].unique()) if not df_master.empty else ('-1',)
+    card_set = set(c for c in df_master['master_card_id'].unique() if c not in ('None', 'nan', '', '-', 'null'))
+    emp_set = set(e for e in df_master['emp_code'].unique() if e not in ('None', 'nan', '', '-', 'null'))
     
     df_history = pd.DataFrame([dict(r) for r in hist_rows])
     if not df_history.empty:
@@ -316,125 +312,168 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     else:
         df_history = pd.DataFrame(columns=['emp_pk_id', 'history_cc_code', 'history_cc_name', 'history_cc_id', 'valid_from_hist', 'valid_to_hist'])
 
+    if not card_set and not emp_set:
+        return []
+
     # =========================================================================
-    # TAHAP 2: FETCH TRANSAKSI ABSEN
+    # TAHAP 2 & 3: IN-MEMORY TEMPORARY TABLES DENGAN EXPLICIT COLLATION
+    # Mengatasi Error 1267 (Illegal mix of collations) secara mutlak.
     # =========================================================================
     start_dt_obj = datetime.strptime(start_date, '%Y-%m-%d')
     prev_day_str = (start_dt_obj - timedelta(days=1)).strftime('%Y-%m-%d')
     
-    att_sql = text("""
-        SELECT 
-            ta.card_id, DATE(ta.clocking_date) AS clocking_date, 
-            ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag
-        FROM `db-webapps`.TBL_ATTENDANCE ta
-        WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
-        AND ta.card_id IN :card_ids
-    """)
+    att_rows, raw_rows, ex_rows, bac_rows, acc_rows = [], [], [], [], []
 
-    raw_sql = text("""
-        SELECT 
-            tt.CARD_ID AS card_id, 
-            tt.CLOCKING_DATE AS tap_time,
-            occ.org_name AS terminal_cc_name,
-            occ.cost_center AS terminal_cc_code,
-            occ.id AS terminal_cc_id
-        FROM `db-webapps`.TBL_TACTIVITIES tt
-        LEFT JOIN terminal_master tm ON tm.node_id = tt.TERMINAL_ID AND tm.company_id = '1111'
-        LEFT JOIN org_cost_center occ ON occ.id = tm.org_cc_id
-        WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date_2359
-        AND tt.CARD_ID IN :card_ids
-    """)
-    
-    ex_sql = text("""
-        SELECT CAST(employee_id AS CHAR) AS emp_code, DATE(clocking_date) AS clocking_date, 
-               clock_in AS ex_in, clock_out AS ex_out, reason AS ex_reason
-        FROM attendance_exclusions 
-        WHERE status = 1 
-        AND clocking_date >= :start_date AND clocking_date <= :end_date 
-        AND employee_id IN :emp_ids
-    """)
-
+    # Aturan 3b: Zero-Zombie Connection Manager
     with db.engine.connect() as conn:
-        att_rows = conn.execute(att_sql, {'start_date': prev_day_str, 'end_date': end_date, 'card_ids': card_ids}).mappings().fetchall()
-        raw_rows = conn.execute(raw_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59", 'card_ids': card_ids}).mappings().fetchall()
-        ex_rows = conn.execute(ex_sql, {'start_date': prev_day_str, 'end_date': end_date, 'emp_ids': emp_ids}).mappings().fetchall()
+        
+        # 1. Tabel Kartu diselaraskan dengan legacy TBL_ATTENDANCE (utf8mb4_general_ci)
+        conn.execute(text("""
+            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_cards_filter (
+                card_id VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci PRIMARY KEY
+            ) ENGINE=MEMORY
+        """))
+        
+        # 2. Tabel Pegawai diselaraskan dengan fungsi CAST() MySQL 8 (utf8mb4_0900_ai_ci)
+        conn.execute(text("""
+            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_emps_filter (
+                emp_code VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci PRIMARY KEY
+            ) ENGINE=MEMORY
+        """))
+        
+        conn.execute(text("TRUNCATE TABLE tmp_cards_filter"))
+        conn.execute(text("TRUNCATE TABLE tmp_emps_filter"))
 
+        # Bulk Insert O(1)
+        if card_set:
+            conn.execute(text("INSERT IGNORE INTO tmp_cards_filter (card_id) VALUES (:cid)"), [{'cid': c} for c in card_set])
+        if emp_set:
+            conn.execute(text("INSERT IGNORE INTO tmp_emps_filter (emp_code) VALUES (:eid)"), [{'eid': e} for e in emp_set])
+
+        att_sql = text("""
+            SELECT ta.card_id, DATE(ta.clocking_date) AS clocking_date, ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag
+            FROM `db-webapps`.TBL_ATTENDANCE ta
+            INNER JOIN tmp_cards_filter tmp ON ta.card_id = tmp.card_id
+            WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
+        """)
+        att_rows = conn.execute(att_sql, {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
+
+        raw_sql = text("""
+            SELECT tt.CARD_ID AS card_id, tt.CLOCKING_DATE AS tap_time, occ.org_name AS terminal_cc_name, occ.cost_center AS terminal_cc_code, occ.id AS terminal_cc_id
+            FROM `db-webapps`.TBL_TACTIVITIES tt
+            INNER JOIN tmp_cards_filter tmp ON tt.CARD_ID = tmp.card_id
+            LEFT JOIN terminal_master tm ON tm.node_id = tt.TERMINAL_ID AND tm.company_id = '1111'
+            LEFT JOIN org_cost_center occ ON occ.id = tm.org_cc_id
+            WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date_2359
+        """)
+        raw_rows = conn.execute(raw_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
+
+        ex_sql = text("""
+            SELECT CAST(e.employee_id AS CHAR) AS emp_code, DATE(e.clocking_date) AS clocking_date, e.clock_in AS ex_in, e.clock_out AS ex_out, e.reason AS ex_reason
+            FROM attendance_exclusions e
+            INNER JOIN tmp_emps_filter tmp ON CAST(e.employee_id AS CHAR) = tmp.emp_code
+            WHERE e.status = 1 AND e.clocking_date >= :start_date AND e.clocking_date <= :end_date 
+        """)
+        ex_rows = conn.execute(ex_sql, {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
+        
+        # Kueri 1: Dari tabel bac_os
+        bac_os_sql = text("""
+            SELECT 
+                CAST(b.employee_id AS CHAR) AS emp_code, DATE(b.clock_date) AS clocking_date, b.id AS bac_id, 
+                b.bac_no, b.bac_ket, b.clock_in AS bac_in, b.clock_out AS bac_out, 
+                b.evidence_photo, b.created_by AS bac_updated_by, b.created_date AS bac_updated_date
+            FROM bac_os b
+            INNER JOIN tmp_emps_filter tmp ON CAST(b.employee_id AS CHAR) = tmp.emp_code
+            WHERE b.status = 1 AND b.clock_date >= :start_date AND b.clock_date <= :end_date
+        """)
+        bac_rows_os = conn.execute(bac_os_sql, {
+            'start_date': prev_day_str, 'end_date': end_date
+        }).mappings().fetchall()
+
+        # Kueri 2: Dari tabel transaksi_absen
+        bac_ta_sql = text("""
+            SELECT 
+                CAST(t.nrp AS CHAR) AS emp_code, DATE(t.submit_at) AS clocking_date, t.id AS bac_id, 
+                'BAC' AS bac_no, 'BAC (kiosk/backdate)' AS bac_ket, 
+                CASE WHEN t.direction = 0 THEN t.submit_at ELSE NULL END AS bac_in, 
+                CASE WHEN t.direction = 1 THEN t.submit_at ELSE NULL END AS bac_out, 
+                NULL AS evidence_photo, 'system' AS bac_updated_by, t.submit_at AS bac_updated_date
+            FROM `db-webapps`.transaksi_absen t
+            INNER JOIN tmp_emps_filter tmp ON CAST(t.nrp AS CHAR) = tmp.emp_code
+            WHERE t.status IN (2, 7) AND t.submit_at >= :start_date AND t.submit_at <= :end_date_2359
+        """)
+        bac_rows_ta = conn.execute(bac_ta_sql, {
+            'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"
+        }).mappings().fetchall()
+
+        # Gabungkan hasil (Setara dengan UNION ALL) di memori Python secara instan
+        bac_rows = list(bac_rows_os) + list(bac_rows_ta)
+
+        if active_fallback_config:
+            fallback_dates_tuple = tuple(active_fallback_config.keys())
+            acc_sql = text("""
+                SELECT CAST(v.card_id AS CHAR) as card_id, v.clocking_date AS tap_time
+                FROM vw_tactitives_non_attendance v
+                INNER JOIN tmp_cards_filter tmp ON v.card_id = tmp.card_id
+                WHERE v.clocking_date >= :start_date AND v.clocking_date <= :end_date_2359
+                AND DATE(v.clocking_date) IN :fallback_dates AND v.tags LIKE '%Access%'
+            """)
+            acc_rows = conn.execute(acc_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59", 'fallback_dates': fallback_dates_tuple}).mappings().fetchall()
+            
+        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_cards_filter"))
+        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_emps_filter"))
+
+    # =========================================================================
+    # PROCESSING DENGAN PANDAS
+    # =========================================================================
     exclusion_dict = {}
     for ex in ex_rows:
-        emp = str(ex['emp_code']).strip()
-        cdate = str(ex['clocking_date']) 
+        emp, cdate = str(ex['emp_code']).strip(), str(ex['clocking_date']) 
         key = f"{emp}_{cdate}"
-        if key not in exclusion_dict:
-            exclusion_dict[key] = []
-            
-        val_in = pd.to_datetime(ex['ex_in']).strftime('%Y-%m-%d %H:%M:%S') if pd.notna(ex['ex_in']) else None
-        val_out = pd.to_datetime(ex['ex_out']).strftime('%Y-%m-%d %H:%M:%S') if pd.notna(ex['ex_out']) else None
-        
-        reason_str = str(ex['ex_reason']).lower() if pd.notnull(ex['ex_reason']) else ""
-        is_bac_only = 'bac' in reason_str
-        
+        if key not in exclusion_dict: exclusion_dict[key] = []
         exclusion_dict[key].append({
-            'in': val_in, 
-            'out': val_out,
-            'is_bac_only': is_bac_only
+            'in': pd.to_datetime(ex['ex_in']).strftime('%Y-%m-%d %H:%M:%S') if pd.notna(ex['ex_in']) else None,
+            'out': pd.to_datetime(ex['ex_out']).strftime('%Y-%m-%d %H:%M:%S') if pd.notna(ex['ex_out']) else None,
+            'is_bac_only': 'bac' in str(ex['ex_reason']).lower() if pd.notnull(ex['ex_reason']) else False
         })
 
     df_att_rekapan = pd.DataFrame([dict(r) for r in att_rows])
     df_raw_full = pd.DataFrame([dict(r) for r in raw_rows])
 
     if not df_att_rekapan.empty:
-        df_att_rekapan['source'] = 1
-        
+        df_att_rekapan['card_id'], df_att_rekapan['source'] = df_att_rekapan['card_id'].astype(str).str.strip(), 1
         if not df_raw_full.empty:
+            df_raw_full['card_id'] = df_raw_full['card_id'].astype(str).str.strip()
             term_map = df_raw_full.copy()
             term_map['ta_in_str'] = pd.to_datetime(term_map['tap_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
-            term_map['card_id'] = term_map['card_id'].astype(str).str.strip()
             term_map = term_map.drop_duplicates(subset=['card_id', 'ta_in_str'])
-            
             df_att_rekapan['ta_in_str'] = pd.to_datetime(df_att_rekapan['ta_in']).dt.strftime('%Y-%m-%d %H:%M:%S')
-            df_att_rekapan['card_id'] = df_att_rekapan['card_id'].astype(str).str.strip()
-            
-            df_att_rekapan = pd.merge(
-                df_att_rekapan, 
-                term_map[['card_id', 'ta_in_str', 'terminal_cc_name', 'terminal_cc_code', 'terminal_cc_id']], 
-                on=['card_id', 'ta_in_str'], 
-                how='left'
-            )
-            df_att_rekapan = df_att_rekapan.drop(columns=['ta_in_str'])
+            df_att_rekapan = pd.merge(df_att_rekapan, term_map[['card_id', 'ta_in_str', 'terminal_cc_name', 'terminal_cc_code', 'terminal_cc_id']], on=['card_id', 'ta_in_str'], how='left').drop(columns=['ta_in_str'])
         else:
-            df_att_rekapan['terminal_cc_name'] = None
-            df_att_rekapan['terminal_cc_code'] = None
-            df_att_rekapan['terminal_cc_id'] = None
+            df_att_rekapan['terminal_cc_name'] = df_att_rekapan['terminal_cc_code'] = df_att_rekapan['terminal_cc_id'] = None
 
     if not df_raw_full.empty:
-        df_raw_full['clocking_date'] = pd.to_datetime(df_raw_full['tap_time']).dt.strftime('%Y-%m-%d')
-        df_raw_full = df_raw_full.sort_values(by=['card_id', 'tap_time'])
+        df_raw_full['card_id'], df_raw_full['tap_time'] = df_raw_full['card_id'].astype(str).str.strip(), pd.to_datetime(df_raw_full['tap_time'])
+        df_raw_full = df_raw_full.sort_values(by=['card_id', 'tap_time']).reset_index(drop=True)
+        df_raw_full['prev_tap'] = df_raw_full.groupby('card_id')['tap_time'].shift(1)
+        time_gap = (df_raw_full['tap_time'] - df_raw_full['prev_tap']).dt.total_seconds()
         
-        df_att_raw = df_raw_full.groupby(['card_id', 'clocking_date'], as_index=False).agg(
-            ta_in=('tap_time', 'min'),
-            ta_out=('tap_time', 'max'),
-            terminal_cc_name=('terminal_cc_name', 'first'),
-            terminal_cc_code=('terminal_cc_code', 'first'),
-            terminal_cc_id=('terminal_cc_id', 'first')
-        )
+        mask_cross_midnight = (df_raw_full['tap_time'].dt.hour.between(0, 11) & (df_raw_full['prev_tap'].dt.hour >= 15) & (time_gap <= 16 * 3600) & (time_gap >= 0))
+        df_raw_full['clocking_date'] = np.where(mask_cross_midnight, df_raw_full['prev_tap'].dt.strftime('%Y-%m-%d'), df_raw_full['tap_time'].dt.strftime('%Y-%m-%d'))
         
+        df_att_raw = df_raw_full.groupby(['card_id', 'clocking_date'], as_index=False).agg(ta_in=('tap_time', 'min'), ta_out=('tap_time', 'max'), terminal_cc_name=('terminal_cc_name', 'first'), terminal_cc_code=('terminal_cc_code', 'first'), terminal_cc_id=('terminal_cc_id', 'first'))
         df_att_raw.loc[df_att_raw['ta_in'] == df_att_raw['ta_out'], 'ta_out'] = pd.NaT
-        df_att_raw['source'] = 2
-        df_att_raw['ta_flag'] = None
+        df_att_raw['source'], df_att_raw['ta_flag'] = 2, None
         
         if not df_att_rekapan.empty:
-            claimed_in = pd.to_datetime(df_att_rekapan['ta_in']).dt.strftime('%Y-%m-%d %H:%M:%S')
-            claimed_out = pd.to_datetime(df_att_rekapan['ta_out']).dt.strftime('%Y-%m-%d %H:%M:%S')
+            claimed_in = df_att_rekapan['card_id'].astype(str) + "_" + pd.to_datetime(df_att_rekapan['ta_in']).dt.strftime('%Y-%m-%d %H:%M:%S')
+            claimed_out = df_att_rekapan['card_id'].astype(str) + "_" + pd.to_datetime(df_att_rekapan['ta_out']).dt.strftime('%Y-%m-%d %H:%M:%S')
             claimed_taps = pd.concat([claimed_in, claimed_out]).dropna().unique()
-            
-            raw_in_str = pd.to_datetime(df_att_raw['ta_in']).dt.strftime('%Y-%m-%d %H:%M:%S')
-            raw_out_str = pd.to_datetime(df_att_raw['ta_out']).dt.strftime('%Y-%m-%d %H:%M:%S')
-            
+            raw_in_str = df_att_raw['card_id'].astype(str) + "_" + pd.to_datetime(df_att_raw['ta_in']).dt.strftime('%Y-%m-%d %H:%M:%S')
+            raw_out_str = df_att_raw['card_id'].astype(str) + "_" + pd.to_datetime(df_att_raw['ta_out']).dt.strftime('%Y-%m-%d %H:%M:%S')
             df_att_raw.loc[raw_in_str.isin(claimed_taps), 'ta_in'] = pd.NaT
             df_att_raw.loc[raw_out_str.isin(claimed_taps), 'ta_out'] = pd.NaT
-
             df_att_raw = df_att_raw.dropna(subset=['ta_in', 'ta_out'], how='all')
-
             if not df_att_raw.empty:
                 mask_only_out = df_att_raw['ta_in'].isna() & df_att_raw['ta_out'].notna()
                 df_att_raw.loc[mask_only_out, 'ta_in'] = df_att_raw.loc[mask_only_out, 'ta_out']
@@ -445,258 +484,114 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     df_att = pd.concat([df_att_rekapan, df_att_raw], ignore_index=True)
 
     if not df_att.empty:
-        df_att['clocking_date'] = pd.to_datetime(df_att['clocking_date']).dt.strftime('%Y-%m-%d')
-        df_att['card_id'] = df_att['card_id'].astype(str).str.strip()
-        
+        df_att['clocking_date'], df_att['card_id'] = pd.to_datetime(df_att['clocking_date']).dt.strftime('%Y-%m-%d'), df_att['card_id'].astype(str).str.strip()
         master_map = df_master[['master_card_id', 'emp_code', 'valid_from', 'valid_to']].dropna(subset=['master_card_id'])
-        df_att_merged = pd.merge(df_att, master_map, left_on='card_id', right_on='master_card_id', how='left')
-        
+        df_att_merged = pd.merge(df_att, master_map, left_on='card_id', right_on='master_card_id', how='inner')
         df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['valid_to'])
-        
-        df_att_merged = df_att_merged.sort_values(
-            by=['emp_code', 'clocking_date', 'source', 'terminal_cc_name', 'is_exact'], 
-            ascending=[True, True, True, False, False], 
-            na_position='last'
-        )
-        
-        df_att = df_att_merged.dropna(subset=['emp_code']).drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact', 'source'])
-        
+        df_att_merged = df_att_merged.sort_values(by=['emp_code', 'clocking_date', 'source', 'terminal_cc_name', 'is_exact'], ascending=[True, True, True, False, False], na_position='last')
+        df_att = df_att_merged.drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact', 'source'])
         if not df_att.empty:
-            df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
-                'card_id': 'first',
-                'ta_in': 'first',    
-                'ta_out': 'first',   
-                'ta_flag': 'first',
-                'terminal_cc_name': 'first',
-                'terminal_cc_code': 'first',
-                'terminal_cc_id': 'first'
-            })
+            df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({'card_id': 'first', 'ta_in': 'first', 'ta_out': 'first', 'ta_flag': 'first', 'terminal_cc_name': 'first', 'terminal_cc_code': 'first', 'terminal_cc_id': 'first'})
             df_att.loc[df_att['ta_in'] == df_att['ta_out'], 'ta_out'] = None
 
-    # =========================================================================
-    # TAHAP 3: FETCH DATA BAC
-    # =========================================================================
-    bac_sql = text("""
-        SELECT 
-            employee_id AS emp_code, DATE(clock_date) AS clocking_date, id AS bac_id,
-            bac_no, bac_ket, clock_in AS bac_in, clock_out AS bac_out, 
-            evidence_photo, created_by AS bac_updated_by, created_date AS bac_updated_date
-        FROM bac_os
-        WHERE status = 1 AND clock_date >= :start_date AND clock_date <= :end_date AND employee_id IN :emp_ids
-        
-        UNION ALL
-        
-        SELECT 
-            nrp AS emp_code, DATE(submit_at) AS clocking_date, id AS bac_id,
-            'BAC' AS bac_no, 'BAC (kiosk/backdate)' AS bac_ket,
-            CASE WHEN direction = 0 THEN submit_at ELSE NULL END AS bac_in,
-            CASE WHEN direction = 1 THEN submit_at ELSE NULL END AS bac_out,
-            NULL AS evidence_photo, 'system' AS bac_updated_by, submit_at AS bac_updated_date
-        FROM `db-webapps`.transaksi_absen
-        WHERE status IN (2, 7) AND submit_at >= :start_date AND submit_at <= :end_date_2359 AND nrp IN :emp_ids
-    """)
-    
-    with db.engine.connect() as conn:
-        bac_rows = conn.execute(bac_sql, {
-            'start_date': prev_day_str, 'end_date': end_date, 
-            'end_date_2359': f"{end_date} 23:59:59", 'emp_ids': emp_ids
-        }).mappings().fetchall()
-        
     df_bac = pd.DataFrame([dict(r) for r in bac_rows])
     if not df_bac.empty:
-        df_bac['clocking_date'] = pd.to_datetime(df_bac['clocking_date']).dt.strftime('%Y-%m-%d')
-        df_bac = df_bac.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
-            'bac_id': 'max', 'bac_no': 'max', 'bac_ket': 'max',
-            'bac_in': 'max', 'bac_out': 'max', 'evidence_photo': 'max',
-            'bac_updated_by': 'max', 'bac_updated_date': 'max'
-        })
+        df_bac['emp_code'], df_bac['clocking_date'] = df_bac['emp_code'].astype(str).str.strip(), pd.to_datetime(df_bac['clocking_date']).dt.strftime('%Y-%m-%d')
+        df_bac = df_bac.groupby(['emp_code', 'clocking_date'], as_index=False).agg({'bac_id': 'max', 'bac_no': 'max', 'bac_ket': 'max', 'bac_in': 'max', 'bac_out': 'max', 'evidence_photo': 'max', 'bac_updated_by': 'max', 'bac_updated_date': 'max'})
 
-    # =========================================================================
-    # TAHAP 3.5: CONFIG-DRIVEN ACCESS DOOR FALLBACK (VIRTUAL STAGING)
-    # =========================================================================
-    df_access = pd.DataFrame()
-    if active_fallback_config and card_ids != ('-1',):
-        fallback_dates_tuple = tuple(active_fallback_config.keys())
+    df_access = pd.DataFrame([dict(r) for r in acc_rows])
+    if not df_access.empty:
+        df_access['card_id'], df_access['tap_time'] = df_access['card_id'].astype(str).str.strip(), pd.to_datetime(df_access['tap_time'])
+        df_access = df_access.sort_values(by=['card_id', 'tap_time']).reset_index(drop=True)
+        df_access['prev_tap'] = df_access.groupby('card_id')['tap_time'].shift(1)
+        time_gap_acc = (df_access['tap_time'] - df_access['prev_tap']).dt.total_seconds()
         
-        acc_sql = text("""
-            SELECT 
-                card_id, 
-                DATE(clocking_date) AS clocking_date,
-                MIN(clocking_date) AS access_in,
-                MAX(clocking_date) AS access_out
-            FROM vw_tactitives_non_attendance 
-            WHERE DATE(clocking_date) IN :fallback_dates
-            AND card_id IN :card_ids
-            AND tags LIKE '%Access%'
-            GROUP BY card_id, DATE(clocking_date)
-        """)
-        
-        with db.engine.connect() as conn:
-            acc_rows = conn.execute(acc_sql, {
-                'fallback_dates': fallback_dates_tuple, 
-                'card_ids': card_ids
-            }).mappings().fetchall()
-            
-        df_access = pd.DataFrame([dict(r) for r in acc_rows])
+        mask_acc = (df_access['tap_time'].dt.hour.between(0, 11) & (df_access['prev_tap'].dt.hour >= 15) & (time_gap_acc <= 16 * 3600) & (time_gap_acc >= 0))
+        df_access['clocking_date'] = np.where(mask_acc, df_access['prev_tap'].dt.strftime('%Y-%m-%d'), df_access['tap_time'].dt.strftime('%Y-%m-%d'))
+        df_access = df_access[df_access['clocking_date'].isin(tuple(active_fallback_config.keys()))]
+
         if not df_access.empty:
             card_to_emp = dict(zip(df_master['master_card_id'], df_master['emp_code']))
-            df_access['emp_code'] = df_access['card_id'].astype(str).str.strip().map(card_to_emp)
+            df_access['emp_code'] = df_access['card_id'].map(card_to_emp)
             df_access = df_access.dropna(subset=['emp_code'])
-            
             if not df_access.empty:
-                df_access['clocking_date'] = pd.to_datetime(df_access['clocking_date']).dt.strftime('%Y-%m-%d')
+                df_access = df_access.groupby(['emp_code', 'clocking_date'], as_index=False).agg({'tap_time': ['min', 'max']})
+                df_access.columns = ['emp_code', 'clocking_date', 'access_in', 'access_out']
                 df_access.loc[df_access['access_in'] == df_access['access_out'], 'access_out'] = pd.NaT
-                df_access = df_access.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
-                    'access_in': 'min',
-                    'access_out': 'max'
-                })
 
     if df_att.empty and df_bac.empty and df_access.empty:
         return []
 
-    # =========================================================================
-    # TAHAP 4: PANDAS SPINE MERGE & HISTORY ALIGNMENT
-    # =========================================================================
-    if not df_att.empty and not df_bac.empty:
-        df_trans = pd.merge(df_att, df_bac, on=['emp_code', 'clocking_date'], how='outer')
+    if not df_att.empty and not df_bac.empty: df_trans = pd.merge(df_att, df_bac, on=['emp_code', 'clocking_date'], how='outer')
     elif not df_att.empty:
         df_trans = df_att.copy()
-        for col in ['bac_id', 'bac_no', 'bac_ket', 'bac_in', 'bac_out', 'evidence_photo', 'bac_updated_by', 'bac_updated_date']: 
-            df_trans[col] = None
+        for col in ['bac_id', 'bac_no', 'bac_ket', 'bac_in', 'bac_out', 'evidence_photo', 'bac_updated_by', 'bac_updated_date']: df_trans[col] = None
     elif not df_bac.empty:
         df_trans = df_bac.copy()
-        for col in ['card_id', 'ta_in', 'ta_out', 'ta_flag', 'terminal_cc_name', 'terminal_cc_code', 'terminal_cc_id']: 
-            df_trans[col] = None
-    else:
-        df_trans = pd.DataFrame(columns=['emp_code', 'clocking_date'])
+        for col in ['card_id', 'ta_in', 'ta_out', 'ta_flag', 'terminal_cc_name', 'terminal_cc_code', 'terminal_cc_id']: df_trans[col] = None
+    else: df_trans = pd.DataFrame(columns=['emp_code', 'clocking_date'])
 
-    if not df_access.empty:
-        df_trans = pd.merge(df_trans, df_access, on=['emp_code', 'clocking_date'], how='outer')
-    else:
-        df_trans['access_in'] = None
-        df_trans['access_out'] = None
+    if not df_access.empty: df_trans = pd.merge(df_trans, df_access, on=['emp_code', 'clocking_date'], how='outer')
+    else: df_trans['access_in'] = df_trans['access_out'] = None
 
-    if df_trans.empty:
-        return []
+    if df_trans.empty: return []
 
     df_final = pd.merge(df_master, df_trans, on='emp_code', how='inner')
-    
-    df_final = df_final[
-        (df_final['valid_from'] <= df_final['clocking_date']) & 
-        (df_final['valid_to'] >= df_final['clocking_date']) &
-        (df_final['clocking_date'] >= start_date) & 
-        (df_final['clocking_date'] <= end_date)
-    ]
+    df_final = df_final[(df_final['valid_from'] <= df_final['clocking_date']) & (df_final['valid_to'] >= df_final['clocking_date']) & (df_final['clocking_date'] >= start_date) & (df_final['clocking_date'] <= end_date)]
     df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
 
     has_os_data = df_final['emp_pk_id'].notnull().any() if not df_final.empty else False
-
     if not df_history.empty and not df_final.empty and has_os_data:
         df_final['emp_pk_id_merge'] = df_final['emp_pk_id'].astype(str).str.strip().replace({'None': '', 'nan': '', '<NA>': ''})
         df_history_clean = df_history.copy()
         df_history_clean['emp_pk_id_merge'] = df_history_clean['emp_pk_id'].astype(str).str.strip()
-
         df_final = pd.merge(df_final, df_history_clean, on='emp_pk_id_merge', how='left')
-        
         df_final['hist_valid'] = (df_final['clocking_date'] >= df_final['valid_from_hist']) & (df_final['clocking_date'] <= df_final['valid_to_hist'])
-        
         df_final = df_final.sort_values(['emp_code', 'clocking_date', 'hist_valid'], ascending=[True, True, False])
         df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
-        
         df_final.loc[~df_final['hist_valid'], ['history_cc_name', 'history_cc_code', 'history_cc_id']] = None
         df_final = df_final.drop(columns=['emp_pk_id_merge', 'valid_from_hist', 'valid_to_hist', 'hist_valid'], errors='ignore')
     else:
-        df_final['history_cc_name'] = None
-        df_final['history_cc_code'] = None
-        df_final['history_cc_id'] = None
+        df_final['history_cc_name'] = df_final['history_cc_code'] = df_final['history_cc_id'] = None
 
     df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
     raw_records = df_final.to_dict('records')
     formatted_data = []
 
     for r in raw_records:
-        b_in, b_out = r.get('bac_in'), r.get('bac_out')
-        t_in, t_out = r.get('ta_in'), r.get('ta_out')
-        a_in, a_out = r.get('access_in'), r.get('access_out')
-        bac_id_val = r.get('bac_id')
+        b_in, b_out, a_in, a_out = r.get('bac_in'), r.get('bac_out'), r.get('access_in'), r.get('access_out')
+        t_in, t_out, bac_id_val = r.get('ta_in'), r.get('ta_out'), r.get('bac_id')
         
-        # =====================================================================
-        # LATE-EXCLUSION PURGE & BLIND BAC WIPE-OUT
-        # =====================================================================
-        ex_key = f"{r['emp_code']}_{r['clocking_date']}"
-        raw_purged = False 
-        
+        ex_key, raw_purged = f"{r['emp_code']}_{r['clocking_date']}", False
         if ex_key in exclusion_dict:
             for ex in exclusion_dict[ex_key]:
-                ex_in_val = ex['in']
-                ex_out_val = ex['out']
-                is_bac_only = ex['is_bac_only']
-                
-                if is_bac_only:
-                    b_in = None
-                    b_out = None
-                
-                if ex_in_val is None and ex_out_val is None:
-                    if not is_bac_only:
-                        t_in = None; t_out = None
-                        raw_purged = True
-                    
-                if ex_in_val is not None and not is_bac_only:
-                    if pd.notnull(t_in) and pd.to_datetime(t_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
-                        t_in = None
-                        raw_purged = True
-                        
-                if ex_out_val is not None and not is_bac_only:
-                    if pd.notnull(t_out) and pd.to_datetime(t_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
-                        t_out = None
-                        raw_purged = True
+                ex_in_val, ex_out_val, is_bac_only = ex['in'], ex['out'], ex['is_bac_only']
+                if is_bac_only: b_in = b_out = None
+                if ex_in_val is None and ex_out_val is None and not is_bac_only:
+                    t_in = t_out = None
+                    raw_purged = True
+                if ex_in_val is not None and not is_bac_only and pd.notnull(t_in) and pd.to_datetime(t_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
+                    t_in = None
+                    raw_purged = True
+                if ex_out_val is not None and not is_bac_only and pd.notnull(t_out) and pd.to_datetime(t_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
+                    t_out = None
+                    raw_purged = True
 
-        if raw_purged and pd.isnull(t_in) and pd.isnull(t_out):
-            b_in = None
-            b_out = None
-
+        if raw_purged and pd.isnull(t_in) and pd.isnull(t_out): b_in = b_out = None
         if pd.isnull(b_in) and pd.isnull(b_out):
-            bac_id_val = None
-            r['bac_no'] = None
-            r['bac_ket'] = None
-            r['evidence_photo'] = None
-            r['bac_updated_by'] = None
-            r['bac_updated_date'] = None
-        else:
-            bac_id_val = r.get('bac_id')
+            bac_id_val = r['bac_no'] = r['bac_ket'] = r['evidence_photo'] = r['bac_updated_by'] = r['bac_updated_date'] = None
+        else: bac_id_val = r.get('bac_id')
 
-        # =====================================================================
-        # FIX: TARGET-DRIVEN ACCESS DOOR PATCHING DENGAN VALIDASI NIK
-        # Mengandalkan Panjang String (5 Karakter) untuk menentukan Pekerja OS
-        # =====================================================================
         eff_in = b_in if pd.notnull(b_in) else (t_in if pd.notnull(t_in) else None)
         eff_out = b_out if pd.notnull(b_out) else (t_out if pd.notnull(t_out) else None)
         
         is_patched_by_access = False
-        
         if r['clocking_date'] in active_fallback_config:
-            target_worker_rule = active_fallback_config[r['clocking_date']]
-            
-            emp_code_str = str(r['emp_code']).strip()
-            emp_is_os = len(emp_code_str) == 5 
-            
-            use_access_for_this_employee = False
-            
-            if target_worker_rule == 'ALL':
-                use_access_for_this_employee = True
-            elif target_worker_rule == 'OS' and emp_is_os:
-                use_access_for_this_employee = True
-                
-            if use_access_for_this_employee:
-                if pd.isnull(eff_in) and pd.notnull(a_in):
-                    eff_in = a_in
-                    is_patched_by_access = True
-                if pd.isnull(eff_out) and pd.notnull(a_out):
-                    eff_out = a_out
-                    is_patched_by_access = True
+            if active_fallback_config[r['clocking_date']] == 'ALL' or (active_fallback_config[r['clocking_date']] == 'OS' and len(str(r['emp_code']).strip()) == 5):
+                if pd.isnull(eff_in) and pd.notnull(a_in): eff_in, is_patched_by_access = a_in, True
+                if pd.isnull(eff_out) and pd.notnull(a_out): eff_out, is_patched_by_access = a_out, True
         
-        if pd.isnull(eff_in) and pd.isnull(eff_out):
-            continue
+        if pd.isnull(eff_in) and pd.isnull(eff_out): continue
 
         if pd.notnull(b_in) or pd.notnull(b_out): status = 'BAC Found'
         elif is_patched_by_access and pd.isnull(t_in) and pd.isnull(t_out): status = 'Data Akses' 
@@ -710,71 +605,37 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         if status_filter == 'no_out' and pd.notnull(eff_out): continue
         if status_filter == 'no_both' and (pd.isnull(eff_in) or pd.isnull(eff_out)): continue
 
-        # =====================================================================
-        # STRICT TERMINAL FALLBACK VALIDATOR
-        # =====================================================================
-        master_cc_name = r.get('history_cc_name') or r.get('cc_name')
-        master_cc_code = r.get('history_cc_code') or r.get('dept_code')
-        master_cc_id = r.get('history_cc_id')
-        use_cc = r.get('use_cc', 0)
-        
-        term_cc_name = r.get('terminal_cc_name')
-        term_cc_code = r.get('terminal_cc_code')
-        term_cc_id = r.get('terminal_cc_id')
-        
-        term_is_valid = pd.notnull(term_cc_name) and str(term_cc_name).strip().lower() not in ('', '-', 'none', 'null', 'nan')
+        m_cc_name, m_cc_code, m_cc_id, use_cc = r.get('history_cc_name') or r.get('cc_name'), r.get('history_cc_code') or r.get('dept_code'), r.get('history_cc_id'), r.get('use_cc', 0)
+        t_cc_name, t_cc_code, t_cc_id = r.get('terminal_cc_name'), r.get('terminal_cc_code'), r.get('terminal_cc_id')
+        term_is_valid = pd.notnull(t_cc_name) and str(t_cc_name).strip().lower() not in ('', '-', 'none', 'null', 'nan')
 
-        if use_cc == 1:
-            final_cc_name = master_cc_name
-            match_vals = [str(master_cc_id), str(master_cc_code), str(master_cc_name)]
+        if use_cc == 1 or not term_is_valid:
+            final_cc_name, match_vals = m_cc_name, [str(m_cc_id), str(m_cc_code), str(m_cc_name)]
         else:
-            if term_is_valid:
-                final_cc_name = term_cc_name
-                match_vals = [str(term_cc_id), str(term_cc_code), str(term_cc_name)]
-            else:
-                final_cc_name = master_cc_name
-                match_vals = [str(master_cc_id), str(master_cc_code), str(master_cc_name)]
+            final_cc_name, match_vals = t_cc_name, [str(t_cc_id), str(t_cc_code), str(t_cc_name)]
 
-        if department_id:
-            if not any(val in target_dept_aliases for val in match_vals if pd.notnull(val)):
-                continue
+        if department_id and not any(val in target_dept_aliases for val in match_vals if pd.notnull(val)): continue
 
         c_date_obj = datetime.strptime(r['clocking_date'], '%Y-%m-%d')
         fmt = {
-            'employee_id': r['emp_code'],
-            'employee_code': r['emp_code'],
-            'employee_name': r['emp_name'],
-            'gender': r['gender'],
-            'subCom': r['sub_company_name'] if pd.notnull(r['sub_company_name']) else '-',
-            'card': r.get('card_id') or r['master_card_id'] or '-',
+            'employee_id': r['emp_code'], 'employee_code': r['emp_code'], 'employee_name': r['emp_name'], 'gender': r['gender'],
+            'subCom': r['sub_company_name'] if pd.notnull(r['sub_company_name']) else '-', 'card': r.get('card_id') or r['master_card_id'] or '-',
             'cc': final_cc_name if pd.notnull(final_cc_name) and str(final_cc_name).strip().lower() not in ('', '-', 'none', 'null', 'nan') else '-',
-            
-            # Text emp_type dikembalikan UTUH ke frontend secara kosmetik sesuai request Anda
-            'type': r['emp_type'],
-            
-            'raw_ta_in': t_in.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_in) else None,
+            'type': r['emp_type'], 'raw_ta_in': t_in.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_in) else None,
             'raw_ta_out': t_out.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_out) else None,
-            'v_clocking_date': c_date_obj.strftime('%d %b %Y'),
-            'clocking_date': r['clocking_date'],
-            'clock_in': eff_in.strftime('%H:%M') if eff_in else 'KOSONG',
-            'clock_out': eff_out.strftime('%H:%M') if eff_out else 'KOSONG',
-            'full_clock_in': eff_in.strftime('%Y-%m-%d %H:%M:%S') if eff_in else 'null',
-            'full_clock_out': eff_out.strftime('%Y-%m-%d %H:%M:%S') if eff_out else 'null',
-            'bac_id': None if pd.isna(bac_id_val) else bac_id_val,
-            'bac_no': r.get('bac_no') if pd.notnull(r.get('bac_no')) else '-',
-            'bac_ket': r.get('bac_ket') if pd.notnull(r.get('bac_ket')) else '-',
-            'bac_clock_in': b_in.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_in) else None,
-            'bac_clock_out': b_out.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_out) else None,
-            'evidence_photo': r.get('evidence_photo') if pd.notnull(r.get('evidence_photo')) else '',
+            'v_clocking_date': c_date_obj.strftime('%d %b %Y'), 'clocking_date': r['clocking_date'],
+            'clock_in': eff_in.strftime('%H:%M') if eff_in else 'KOSONG', 'clock_out': eff_out.strftime('%H:%M') if eff_out else 'KOSONG',
+            'full_clock_in': eff_in.strftime('%Y-%m-%d %H:%M:%S') if eff_in else 'null', 'full_clock_out': eff_out.strftime('%Y-%m-%d %H:%M:%S') if eff_out else 'null',
+            'bac_id': None if pd.isna(bac_id_val) else bac_id_val, 'bac_no': r.get('bac_no') if pd.notnull(r.get('bac_no')) else '-',
+            'bac_ket': r.get('bac_ket') if pd.notnull(r.get('bac_ket')) else '-', 'bac_clock_in': b_in.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_in) else None,
+            'bac_clock_out': b_out.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_out) else None, 'evidence_photo': r.get('evidence_photo') if pd.notnull(r.get('evidence_photo')) else '',
             'bac_updated_by': r.get('bac_updated_by') if pd.notnull(r.get('bac_updated_by')) else '-',
             'bac_updated_date': r['bac_updated_date'].strftime('%d %b %Y') if pd.notnull(r.get('bac_updated_date')) else '-',
             'status': status
         }
         
-        is_saturday_val = c_date_obj.weekday() == 5 
-        fmt['shift'] = determine_shift(eff_in, is_saturday_val, eff_out)
+        fmt['shift'] = determine_shift(eff_in, c_date_obj.weekday() == 5, eff_out)
         if shift_filter and shift_filter != fmt['shift']: continue
-            
         formatted_data.append(fmt)
 
     formatted_data.sort(key=lambda x: (x['clocking_date'], x['employee_code']), reverse=True)
