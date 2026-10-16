@@ -65,15 +65,15 @@ def determine_shift(clock_in_val, is_saturday, clock_out_val=None):
     # Flag penanda apakah kita menggunakan jam pulang sebagai patokan
     is_out_only = False
     
-    # 1. Tentukan sumber waktu (Prioritas: Clock IN -> Clock OUT)
+    # 1. Tentukan sumber waktu (Prioritas 1: Clock IN -> Prioritas 2: Clock OUT)
     time_source = clock_in_val
-    if not time_source:
-        if not clock_out_val:
-            return 'SHIFT 1' # Default mutlak jika kedua jam kosong
+    if pd.isnull(time_source) or not time_source:
+        if pd.isnull(clock_out_val) or not clock_out_val:
+            return 'SHIFT 1' # Fallback absolut jika kedua jam kosong
         time_source = clock_out_val
         is_out_only = True
 
-    # 2. Ekstraksi Angka Jam (Format integer HHMM)
+    # 2. Ekstraksi Angka Jam ke format integer HHMM (Contoh: 07:30 jadi 730)
     try:
         if isinstance(time_source, datetime): 
             jam = time_source.hour * 100 + time_source.minute
@@ -86,43 +86,42 @@ def determine_shift(clock_in_val, is_saturday, clock_out_val=None):
         return 'SHIFT 1'
 
     # =========================================================================
-    # LOGIKA JIKA HANYA ADA CLOCK OUT (REVERSE BOUNDARY)
+    # REVERSE BOUNDARY LOGIC (Jika Karyawan Lupa Tap Masuk, Hanya Ada Tap Pulang)
     # =========================================================================
     if is_out_only:
-        # Pulang pagi (00:00 s/d 10:59) -> Pasti sisa dari Shift 3 malam sebelumnya
-        if 0 <= jam <= 1059:
-            return 'SHIFT 3'
-        # Pulang siang/sore (11:00 s/d 17:59) -> Pasti dari Shift 1
-        elif 1100 <= jam <= 1759:
-            return 'SHIFT 1'
-        # Pulang malam (18:00 s/d 23:59) -> Pasti dari Shift 2
+        if is_saturday:
+            # Pulang siang (00:00 s/d 13:59) -> Pasti dari Shift 1 (Jadwal pulang 12:00)
+            if 0 <= jam <= 1359: return 'SHIFT 1'
+            # Pulang sore/malam (14:00 s/d 18:59) -> Pasti dari Shift 2 (Jadwal pulang 17:00)
+            elif 1400 <= jam <= 1859: return 'SHIFT 2'
+            # Pulang larut malam -> Pasti dari Shift 3 (Jadwal pulang 22:00)
+            else: return 'SHIFT 3'
         else:
-            return 'SHIFT 2'
+            # Pulang pagi (00:00 s/d 10:59) -> Pasti dari Shift 3 malam sebelumnya (Jadwal pulang 07:00)
+            if 0 <= jam <= 1059: return 'SHIFT 3'
+            # Pulang sore (11:00 s/d 18:59) -> Pasti dari Shift 1 / Non-Shift (Jadwal pulang 15:00)
+            elif 1100 <= jam <= 1859: return 'SHIFT 1'
+            # Pulang malam (19:00 s/d 23:59) -> Pasti dari Shift 2 (Jadwal pulang 23:00)
+            else: return 'SHIFT 2'
 
     # =========================================================================
-    # LOGIKA NORMAL (BERDASARKAN CLOCK IN)
+    # NORMAL BOUNDARY LOGIC (Berdasarkan Jam Kedatangan / Tap IN)
     # =========================================================================
-    if is_saturday:
-        # Shift 1: 04:00 s/d 10:59
-        if 400 <= jam <= 1059: 
-            return 'SHIFT 1'
-        # Shift 2: 11:00 s/d 17:59 (Diperlebar agar 16:57 masuk ke sini)
-        elif 1100 <= jam <= 1759: 
-            return 'SHIFT 2'
-        # Shift 3: 18:00 s/d 03:59
-        else: 
-            return 'SHIFT 3'
-            
-    else: # HARI NORMAL (Senin - Jumat)
-        # Shift 1: 04:00 s/d 12:59
-        if 400 <= jam <= 1259: 
-            return 'SHIFT 1'
-        # Shift 2: 13:00 s/d 19:59 
-        elif 1300 <= jam <= 1959: 
-            return 'SHIFT 2'
-        # Shift 3: 20:00 s/d 03:59 
-        else: 
-            return 'SHIFT 3'
+    else:
+        if is_saturday:
+            # Shift 1 (07:00 - 12:00): Batas kedatangan 04:00 s/d 10:59
+            if 400 <= jam <= 1059: return 'SHIFT 1'
+            # Shift 2 (12:00 - 17:00): Batas kedatangan 11:00 s/d 15:59
+            elif 1100 <= jam <= 1559: return 'SHIFT 2'
+            # Shift 3 (17:00 - 22:00): Batas kedatangan 16:00 s/d 03:59
+            else: return 'SHIFT 3'
+        else:
+            # Shift 1 & Non-Shift (07:00/08:00 - 15:00): Batas kedatangan 04:00 s/d 13:59
+            if 400 <= jam <= 1359: return 'SHIFT 1'
+            # Shift 2 (15:00 - 23:00): Batas kedatangan 14:00 s/d 21:59
+            elif 1400 <= jam <= 2159: return 'SHIFT 2'
+            # Shift 3 (23:00 - 07:00): Batas kedatangan 22:00 s/d 03:59 (Cross Midnight)
+            else: return 'SHIFT 3'
 
 def process_and_save_bac_evidence(file_storage, target_folder, filename_without_ext, max_width=1000, quality=80):
     try:
