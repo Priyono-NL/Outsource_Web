@@ -94,7 +94,6 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
             target_type = 'OS' if sub_company_id == 'TYPE_OS' else 'Vendor'
             sql_sc = text("SELECT sub_company_id FROM sub_company WHERE type_company = :target_type")
             
-            # Hit-and-Run Connection
             with db.engine.connect() as conn:
                 sc_rows = conn.execute(sql_sc, {'target_type': target_type}).fetchall()
                 
@@ -108,16 +107,23 @@ def _build_filters_and_params(start_date, end_date, sub_company_id, department_i
             filters.append("k.sub_company_id = :sub_company_id")
             params['sub_company_id'] = sub_company_id
             
-    # FILTER DEPARTMENT TERNORMALISASI
+    # =====================================================================
+    # FIX: FILTER DEPARTMENT STRICT MATCH
+    # Hapus pencarian berdasarkan d_code. Hanya filter by Exact ID atau Name
+    # =====================================================================
     if department_id:
-        sql_cc = text("SELECT id, cost_center, org_name FROM org_cost_center WHERE id = :dept_id OR cost_center = :dept_id OR org_name = :dept_id LIMIT 1")
+        sql_cc = text("""
+            SELECT id, cost_center, org_name 
+            FROM org_cost_center 
+            WHERE id = :dept_id OR org_name = :dept_id 
+            LIMIT 1
+        """)
         with db.engine.connect() as conn:
             cc_res = conn.execute(sql_cc, {'dept_id': department_id}).fetchone()
         
         if cc_res:
-            filters.append("(k.cost_center_id IN (:d_id, :d_code, :d_name) OR k.cc_name IN (:d_id, :d_code, :d_name))")
+            filters.append("(k.cost_center_id = :d_id OR k.cc_name = :d_name)")
             params['d_id'] = str(cc_res[0])
-            params['d_code'] = str(cc_res[1])
             params['d_name'] = str(cc_res[2])
         else:
             filters.append("(k.cost_center_id = :dept_id OR k.cc_name = :dept_id)")
@@ -163,34 +169,38 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     params['start_date_str'] = start_date
     params['end_date_extended_str'] = end_date_extended
     
-    # 2. SQL QUERY 1: HANYA MASTER KARYAWAN
+    # 2. SQL QUERY 1: HANYA MASTER KARYAWAN (Untuk Atribut UI & Kartu Aktif)
     sql_karyawan = f"""
         WITH Karyawan AS (
             SELECT 
-                CONVERT(k.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                MAX(CONVERT(k.employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS display_name, 
-                CONVERT(k.card_no USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                MAX(CONVERT(CAST(COALESCE(occ.id, k.cost_center) AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS cost_center_id, 
-                MAX(CONVERT(COALESCE(occ.org_name, k.dept_name) USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name, 
-                'sub00003' COLLATE utf8mb4_general_ci AS sub_company_id,
-                'CRS' COLLATE utf8mb4_general_ci AS sub_company_name,
-                'TETAP/KONTRAK' COLLATE utf8mb4_general_ci AS tipe_karyawan
+                CONVERT(k.employee_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS emp_id, 
+                MAX(CONVERT(k.employee_name USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS display_name, 
+                CONVERT(k.card_no USING utf8mb4) COLLATE utf8mb4_unicode_ci AS card_number, 
+                MAX(CONVERT(CAST(COALESCE(occ.id, k.cost_center) AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS cost_center_id, 
+                MAX(CONVERT(COALESCE(occ.org_name, k.dept_name) USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS cc_name, 
+                'sub00003' COLLATE utf8mb4_unicode_ci AS sub_company_id,
+                'CRS' COLLATE utf8mb4_unicode_ci AS sub_company_name,
+                'TETAP/KONTRAK' COLLATE utf8mb4_unicode_ci AS tipe_karyawan
             FROM vw_master_karyawan k
-            LEFT JOIN org_cost_center occ ON occ.cost_center = k.cost_center
+            LEFT JOIN (
+                SELECT id, cost_center, org_name 
+                FROM org_cost_center 
+                WHERE id IN (SELECT MIN(id) FROM org_cost_center GROUP BY cost_center)
+            ) occ ON occ.cost_center = k.cost_center
             WHERE k.card_no IS NOT NULL AND TRIM(k.card_no) != '' AND k.card_no != '00000.00000'
             GROUP BY k.employee_id, k.card_no
             
             UNION ALL
             
             SELECT 
-                CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_general_ci AS emp_id, 
-                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS display_name, 
-                CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_general_ci AS card_number, 
-                MAX(CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_general_ci) AS cost_center_id, 
-                MAX(CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS cc_name, 
-                MAX(CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_id,
-                MAX(CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_general_ci) AS sub_company_name,
-                MAX(CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_general_ci) AS tipe_karyawan
+                CONVERT(employee_code USING utf8mb4) COLLATE utf8mb4_unicode_ci AS emp_id, 
+                MAX(CONVERT(employee_name USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS display_name, 
+                CONVERT(card_number USING utf8mb4) COLLATE utf8mb4_unicode_ci AS card_number, 
+                MAX(CONVERT(CAST(cost_center_id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS cost_center_id, 
+                MAX(CONVERT(cc_name USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS cc_name, 
+                MAX(CONVERT(sub_company_id USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS sub_company_id,
+                MAX(CONVERT(sub_company_name USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS sub_company_name,
+                MAX(CONVERT(COALESCE(type_worker, 'OS') USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS tipe_karyawan
             FROM vw_master_os_active
             WHERE card_number IS NOT NULL AND TRIM(card_number) != '' AND card_number != '00000.00000'
             GROUP BY employee_code, card_number
@@ -198,50 +208,79 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         SELECT * FROM Karyawan k WHERE 1=1 {filter_clause}
     """
 
-    # 3. SQL QUERY 2: DATA RAW TRANSAKSI (Bypass View, Langsung Tembak Index Range)
-    sql_absen = """
-        SELECT CARD_ID, CLOCKING_DATE, DIRECTION, TAGS, TERMINAL_ID 
-        FROM vw_tactitives_non_attendance
-        WHERE CLOCKING_DATE BETWEEN :start_dt AND :end_dt
-          AND (FIND_IN_SET('access', LOWER(TAGS)) > 0 OR FIND_IN_SET('break', LOWER(TAGS)) > 0)
-    """
-
-    # 4. SQL QUERY 3: DATA RAW KANTIN
-    sql_makan = """
-        SELECT EMPLOYEE_ID, TANGGAL_MAKAN, JAM_MAKAN 
-        FROM `db-webapps`.`KANTIN_KARYAWAN_MAKAN_TBL`
-        WHERE TANGGAL_MAKAN BETWEEN :start_date_str AND :end_date_extended_str
-    """
-
     # ZERO-ZOMBIE POLICY: Tarik Cepat, Tutup Seketika
     with db.engine.connect() as conn:
         df_k = pd.read_sql(text(sql_karyawan), conn, params=params)
         
         # Stop komputasi jika filter UI tidak menemukan karyawan satupun
-        if df_k.empty:
-            return []
+        if df_k.empty: return []
+        
+        df_k.columns = df_k.columns.str.lower()
+        valid_emps = set(df_k['emp_id'].dropna())
+        emp_ids_tuple = tuple(valid_emps) if valid_emps else ('-1',)
 
-        # Tembak Raw Data Absen & Kantin
-        df_a = pd.read_sql(text(sql_absen), conn, params=params)
-        df_m = pd.read_sql(text(sql_makan), conn, params=params)
+        # =====================================================================
+        # TAHAP 1.5: THE CARD HISTORY BRIDGE (1-to-N Mapping)
+        # Menyatukan Kartu Lama & Baru agar transaksi historis tidak hilang.
+        # =====================================================================
+        sql_card_bridge = text("""
+            -- 1. Master Kartu Tetap (Aktif Saat Ini)
+            SELECT CONVERT(employee_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS emp_id, 
+                   CONVERT(card_no USING utf8mb4) COLLATE utf8mb4_unicode_ci AS card_id 
+            FROM vw_master_karyawan 
+            WHERE employee_id IN :emp_ids AND card_no IS NOT NULL AND card_no != ''
+            
+            UNION
+            
+            -- 2. Master Kartu OS (Menarik Seluruh Riwayat Lama & Baru)
+            SELECT CONVERT(e.employee_code USING utf8mb4) COLLATE utf8mb4_unicode_ci AS emp_id, 
+                   CONVERT(c.card_number USING utf8mb4) COLLATE utf8mb4_unicode_ci AS card_id 
+            FROM os_card c 
+            JOIN os_employment e ON e.id = c.employee_id
+            WHERE e.employee_code IN :emp_ids AND c.card_number IS NOT NULL AND c.card_number != ''
+            
+            -- [!] PENTING UNTUK KARYAWAN TETAP: 
+            -- Jika ada tabel khusus riwayat kartu tetap, uncomment baris di bawah:
+            -- UNION 
+            -- SELECT employee_id AS emp_id, old_card_no AS card_id FROM history_kartu_tetap WHERE employee_id IN :emp_ids
+        """)
+        
+        # Bentuk Jembatan Mapping (emp_id <-> card_id)
+        df_bridge = pd.read_sql(sql_card_bridge, conn, params={'emp_ids': emp_ids_tuple})
+        df_bridge['card_id'] = df_bridge['card_id'].astype(str).str.strip()
+        df_bridge['emp_id'] = df_bridge['emp_id'].astype(str).str.strip()
+        df_bridge = df_bridge.drop_duplicates()
+        
+        valid_cards = set(df_bridge['card_id'].unique())
+        card_ids_tuple = tuple(valid_cards) if valid_cards else ('-1',)
+
+        # =====================================================================
+        # TAHAP 2 & 3: RAW TRANSACTION FETCH (SLA Pushdown Index)
+        # Menambahkan IN :card_ids mencegah MySQL Full Table Scan!
+        # =====================================================================
+        sql_absen = text("""
+            SELECT CARD_ID, CLOCKING_DATE, DIRECTION, TAGS, TERMINAL_ID 
+            FROM vw_tactitives_non_attendance
+            WHERE CLOCKING_DATE BETWEEN :start_dt AND :end_dt
+              AND CARD_ID IN :card_ids
+              AND (FIND_IN_SET('access', LOWER(TAGS)) > 0 OR FIND_IN_SET('break', LOWER(TAGS)) > 0)
+        """)
+
+        sql_makan = text("""
+            SELECT EMPLOYEE_ID, TANGGAL_MAKAN, JAM_MAKAN 
+            FROM `db-webapps`.`KANTIN_KARYAWAN_MAKAN_TBL`
+            WHERE TANGGAL_MAKAN BETWEEN :start_date_str AND :end_date_extended_str
+              AND EMPLOYEE_ID IN :emp_ids
+        """)
+
+        df_a = pd.read_sql(sql_absen, conn, params={**params, 'card_ids': card_ids_tuple})
+        df_m = pd.read_sql(sql_makan, conn, params={**params, 'emp_ids': emp_ids_tuple})
 
     # =========================================================================
     # IN-MEMORY DATA PROCESSING PANDAS (SLA < 1 Detik)
     # =========================================================================
-    
-    # Normalisasi Kolom ke Lowercase
-    df_k.columns = df_k.columns.str.lower()
-    if not df_a.empty:
-        df_a.columns = df_a.columns.str.lower()
-    if not df_m.empty:
-        df_m.columns = df_m.columns.str.lower()
-
-    # Hybrid Pushdown Filter: Buang data transaksi milik karyawan luar filter
-    valid_cards = set(df_k['card_number'].dropna())
-    valid_emps = set(df_k['emp_id'].dropna())
-    
-    df_a = df_a[df_a['card_id'].isin(valid_cards)].copy()
-    df_m = df_m[df_m['employee_id'].isin(valid_emps)].copy()
+    if not df_a.empty: df_a.columns = df_a.columns.str.lower()
+    if not df_m.empty: df_m.columns = df_m.columns.str.lower()
 
     if df_a.empty and df_m.empty:
         return []
@@ -272,7 +311,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         is_in = df_a['direction'].isin(['IN', '0'])
         is_out = df_a['direction'].isin(['OUT', '1'])
 
-        # Pengurutan WAJIB agar fungsi 'first' dan 'last' sesuai dengan alur waktu (Bypass MAX/MIN Error)
         df_a = df_a.sort_values(['card_id', 'clocking_date'])
 
         # PANDAS: AGGREGATE EXACT TIMEFRAME & NODE
@@ -293,7 +331,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     # PANDAS: KANTIN PROCESSING
     if not df_m.empty:
         df_m = df_m.dropna(subset=['tanggal_makan']).copy()
-        
         dt_tanggal = pd.to_datetime(df_m['tanggal_makan'], errors='coerce')
         df_m = df_m[dt_tanggal.notna()].copy()
         tanggal_str = dt_tanggal.dropna().dt.strftime('%Y-%m-%d')
@@ -304,17 +341,14 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         df_m = df_m.dropna(subset=['raw_makan_dt']).copy()
         df_m['logical_date'] = (df_m['raw_makan_dt'] - pd.Timedelta(hours=5)).dt.strftime('%Y-%m-%d')
         
-        df_m_agg = df_m.groupby(['employee_id', 'logical_date']).agg(
-            raw_makan_dt=('raw_makan_dt', 'min')
-        ).reset_index()
+        df_m_agg = df_m.groupby(['employee_id', 'logical_date']).agg(raw_makan_dt=('raw_makan_dt', 'min')).reset_index()
     else:
         df_m_agg = pd.DataFrame()
 
     # =========================================================================
-    # PANDAS SPINE MERGE (Penyatuan Tulang Punggung Tabel)
+    # PANDAS SPINE MERGE (Penyatuan Tulang Punggung Tabel Murni via Bridge)
     # =========================================================================
     
-    # 1. Kumpulkan semua pasangan unik Karyawan <-> Tanggal Logis yang memiliki aktivitas
     spines = []
     if not df_acc_in.empty: spines.append(df_acc_in[['card_id', 'logical_date']])
     if not df_acc_out.empty: spines.append(df_acc_out[['card_id', 'logical_date']])
@@ -323,30 +357,28 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     
     df_spine_a = pd.concat(spines).drop_duplicates() if spines else pd.DataFrame(columns=['card_id', 'logical_date'])
     
-    # Hubungkan Card_id milik Absen ke Emp_id Karyawan
+    # [FIX] Hubungkan Card_id milik Absen ke Emp_id menggunakan Jembatan History
     if not df_spine_a.empty:
-        df_spine_a = pd.merge(df_spine_a, df_k[['card_number', 'emp_id']], left_on='card_id', right_on='card_number', how='inner')
+        df_spine_a = pd.merge(df_spine_a, df_bridge, on='card_id', how='inner')
         df_spine_a = df_spine_a[['emp_id', 'card_id', 'logical_date']]
     
-    # Hubungkan Emp_id milik Kantin ke Card_id Karyawan
+    # Hubungkan Emp_id milik Kantin ke Card_id Karyawan menggunakan Jembatan
     if not df_m_agg.empty:
         df_spine_m = df_m_agg[['employee_id', 'logical_date']].rename(columns={'employee_id': 'emp_id'})
-        df_spine_m = pd.merge(df_spine_m, df_k[['emp_id', 'card_number']], on='emp_id', how='inner')
-        df_spine_m = df_spine_m.rename(columns={'card_number': 'card_id'})[['emp_id', 'card_id', 'logical_date']]
+        df_spine_m = pd.merge(df_spine_m, df_bridge, on='emp_id', how='inner')
+        df_spine_m = df_spine_m[['emp_id', 'card_id', 'logical_date']]
     else:
         df_spine_m = pd.DataFrame(columns=['emp_id', 'card_id', 'logical_date'])
 
     # Gabungkan Tulang Punggung
     df_spine = pd.concat([df_spine_a, df_spine_m]).drop_duplicates()
-    
-    # Filter Mutlak: Pastikan kita hanya menampilkan rentang tanggal Logical yang diminta User
     df_spine = df_spine[(df_spine['logical_date'] >= start_date) & (df_spine['logical_date'] <= end_date)]
 
     if df_spine.empty:
         return []
 
     # 2. RENDER MASTER TABLE
-    # Base spine di-join (VLOOKUP) dengan Karyawan, Access, Break, dan Kantin
+    # Base spine di-join dengan Karyawan, Access, Break, dan Kantin
     df_final = pd.merge(df_spine, df_k, on=['emp_id'], how='left')
     
     if not df_acc_in.empty: df_final = pd.merge(df_final, df_acc_in, on=['card_id', 'logical_date'], how='left')
@@ -358,7 +390,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     # =========================================================================
     # PANDAS: HYBRID NODE CLASH PROTECTOR
     # =========================================================================
-    
     if 'break_in_dt' in df_final.columns and 'access_in_dt' in df_final.columns:
         mask_in_clash = df_final['break_in_dt'] == df_final['access_in_dt']
         df_final.loc[mask_in_clash, ['break_in_dt', 'break_node_in']] = [pd.NaT, None]
@@ -367,19 +398,18 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         mask_out_clash = df_final['break_out_dt'] == df_final['access_out_dt']
         df_final.loc[mask_out_clash, ['break_out_dt', 'break_node_out']] = [pd.NaT, None]
 
-    # Pastikan struktur Dictionary lengkap sekalipun pandas belum sempat membentuk kolom
     expected_cols = [
         'access_in_dt', 'access_out_dt', 'access_node_in', 'access_node_out',
         'break_out_dt', 'break_in_dt', 'break_node_out', 'break_node_in', 'raw_makan_dt'
     ]
     for col in expected_cols:
-        if col not in df_final.columns:
-            df_final[col] = None
+        if col not in df_final.columns: df_final[col] = None
 
-    # Cleaning Akhir (Ubah DataFrame NaT menjadi Standard Null/None Python)
     df_final = df_final.astype(object).where(pd.notnull(df_final), None)
     df_final.rename(columns={'logical_date': 'ref_date'}, inplace=True)
     
+    # UI akan menampilkan data menggunakan 'card_number' dari Master yang merupakan kartu aktif terbaru,
+    # Namun data transaksi yang ditarik adalah kompilasi dari seluruh riwayat kartu historis milik emp_id.
     return df_final.to_dict(orient='records')
 
 # =============================================================================

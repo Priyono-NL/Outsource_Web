@@ -320,7 +320,9 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     # Mengatasi Error 1267 (Illegal mix of collations) secara mutlak.
     # =========================================================================
     start_dt_obj = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt_obj = datetime.strptime(end_date, '%Y-%m-%d')
     prev_day_str = (start_dt_obj - timedelta(days=1)).strftime('%Y-%m-%d')
+    end_date_tac = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d 09:00:00')
     
     att_rows, raw_rows, ex_rows, bac_rows, acc_rows = [], [], [], [], []
 
@@ -364,9 +366,9 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             INNER JOIN tmp_cards_filter tmp ON tt.CARD_ID = tmp.card_id
             LEFT JOIN terminal_master tm ON tm.node_id = tt.TERMINAL_ID AND tm.company_id = '1111'
             LEFT JOIN org_cost_center occ ON occ.id = tm.org_cc_id
-            WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date_2359
+            WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date
         """)
-        raw_rows = conn.execute(raw_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
+        raw_rows = conn.execute(raw_sql, {'start_date': prev_day_str, 'end_date': end_date_tac}).mappings().fetchall()
 
         ex_sql = text("""
             SELECT CAST(e.employee_id AS CHAR) AS emp_code, DATE(e.clocking_date) AS clocking_date, e.clock_in AS ex_in, e.clock_out AS ex_out, e.reason AS ex_reason
