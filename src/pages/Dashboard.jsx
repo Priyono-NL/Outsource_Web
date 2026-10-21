@@ -1,23 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import StatCard from '../components/StatCard';
 import api from '../api/api';
+import { useAuth } from '../utils/useAuth';
 
 const Dashboard = () => {
+  const { user } = useAuth();
   const [stats, setStats] = useState({ 
     all_total_active: 0, 
     all_total_inactive: 0,
+    active_per_subCom: {},
     active_per_cost_center: {} 
   });
 
   useEffect(() => {
-    api.get('/employee/stats')
+    if (!user) return;
+    const allowedSubcos = user?.allowed_subcompanies?.join(',') || '';
+
+    api.get(`/employee/stats?allowed_subcos=${allowedSubcos}`)
       .then(res => { 
         if (res.data.status === 'success') {
           setStats(res.data.data); 
         }
       })
       .catch(err => console.error('Gagal mengambil statistik:', err));
-  }, []);
+      
+  }, [user]);
 
   return (
     <div>
@@ -95,4 +102,5 @@ const Dashboard = () => {
     </div>
   );
 };
+
 export default Dashboard;

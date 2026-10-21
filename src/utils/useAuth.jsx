@@ -52,6 +52,20 @@ export const AuthProvider = ({ children }) => {
 
     const verifyAndSyncSSO = async () => {
       try {
+        const adminBackup = localStorage.getItem('sso_admin_backup');
+        if (adminBackup) {
+          console.log("🛡️ Impersonation Mode Active. Bypassing SSO Sync...");
+          const impersonatedCache = JSON.parse(localStorage.getItem('sso_user_cache'));
+          const impersonatedRole = localStorage.getItem('sso_role_cache');
+          
+          if (impersonatedCache && impersonatedCache.user) {
+             setIsAuthenticated(true);
+             setUser(impersonatedCache.user);
+             setRole(impersonatedRole || impersonatedCache.user.role_app || impersonatedCache.user.role || 'viewer');
+             return;
+          }
+        }
+
         const urlParams = new URLSearchParams(window.location.search);
         const tokenFromUrl = urlParams.get('token');
 

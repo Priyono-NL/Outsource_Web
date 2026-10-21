@@ -1328,8 +1328,9 @@ def deactivate_employee(pk_id):
 def get_employee_stats():
     try:
         now = datetime.now().date() 
-        
-        allowed_subcos = get_allowed_subcompanies()
+        client_subcos_str = request.args.get('allowed_subcos', '')
+        allowed_subcos = [s.strip() for s in client_subcos_str.split(',') if s.strip()]
+            
         TARGET_SUBCO_NAMES = ['PRO', 'GLB', 'ISS', '911', 'RENTOKIL']
         
         master_sub_rows = SubCompany.query.filter(SubCompany.sub_company_name.in_(TARGET_SUBCO_NAMES)).all()
@@ -1337,14 +1338,20 @@ def get_employee_stats():
         target_sub_ids = list(sub_id_to_name.keys())
         
         if allowed_subcos:
-            allowed_subcos_str = [str(x) for x in allowed_subcos]
-            valid_subcos = list(set(target_sub_ids) & set(allowed_subcos_str))
+            valid_subcos = list(set(target_sub_ids) & set(allowed_subcos))
         else:
-            valid_subcos = target_sub_ids
+            valid_subcos = target_sub_ids 
             
-        base_emp = OsEmployment.query
-        if allowed_subcos:
-            base_emp = base_emp.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
+        if not valid_subcos:
+            return jsonify({
+                "status": "success",
+                "data": {
+                    "all_total_active": 0, "all_total_inactive": 0,
+                    "active_per_cost_center": {}, "active_per_subCom": {}
+                }
+            }), 200
+
+        base_emp = OsEmployment.query.filter(OsEmployment.sub_company_id.in_(valid_subcos))
             
         active_condition = and_(
             OsEmployment.valid_from.is_not(None),
@@ -1370,27 +1377,22 @@ def get_employee_stats():
             OsCostCenter.org_cc_id, 
             func.count(distinct(OsCostCenter.employee_id)).label('total') 
         ).join(OsEmployment, OsCostCenter.employee_id == OsEmployment.id)\
-         .filter(and_(active_condition, cc_active_condition)) # 3. Gabungkan kedua filter aktif
+         .filter(and_(active_condition, cc_active_condition))\
+         .filter(OsEmployment.sub_company_id.in_(valid_subcos)) 
          
-        if allowed_subcos:
-            cc_query = cc_query.filter(OsEmployment.sub_company_id.in_(allowed_subcos))
-            
         stats_cc = {row.org_cc_id: row.total for row in cc_query.group_by(OsCostCenter.org_cc_id).all()}
         
         sub_query = db.session.query(
             OsEmployment.sub_company_id,
             func.count(OsEmployment.id).label('total')
-        ).filter(active_condition)
-        
-        if not valid_subcos:
-            sub_query = sub_query.filter(db.false())
-        else:
-            sub_query = sub_query.filter(OsEmployment.sub_company_id.in_(valid_subcos))
+        ).filter(active_condition)\
+         .filter(OsEmployment.sub_company_id.in_(valid_subcos))
             
         stats_sub = {str(row.sub_company_id): row.total for row in sub_query.group_by(OsEmployment.sub_company_id).all()}
         
         all_cc = costCenter.query.all()
         cc_aktif = {cc.org_name: stats_cc.get(cc.id, 0) for cc in all_cc if stats_cc.get(cc.id, 0) > 0}        
+        
         sub_aktif = {
             sub_name: stats_sub.get(sub_id, 0)
             for sub_id, sub_name in sub_id_to_name.items()

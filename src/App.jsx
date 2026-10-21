@@ -1,4 +1,4 @@
-import React, { useState, Suspense } from 'react';
+import React, { useState, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import { componentRegistry } from './utils/menuConfig';
@@ -26,6 +26,61 @@ const EnvBanner = () => {
       }}
     >
       <span><i className="bi bi-cpu me-1"></i> You are running Development Server (Local Environment)</span>
+    </div>
+  );
+};
+
+const ImpersonateBanner = () => {
+  const [isAdminBackedUp, setIsAdminBackedUp] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const adminBackup = localStorage.getItem('sso_admin_backup');
+    if (adminBackup) {
+      setIsAdminBackedUp(true);
+      const activeSession = JSON.parse(localStorage.getItem('sso_user_cache'));
+      setCurrentUser(activeSession?.user?.email || activeSession?.user?.nama || 'User');
+    }
+  }, []);
+
+  const handleDeImpersonate = () => {
+    const adminBackup = localStorage.getItem('sso_admin_backup');
+    if (adminBackup) {
+      localStorage.setItem('sso_user_cache', adminBackup);
+      
+      const parsedBackup = JSON.parse(adminBackup);
+      const roleApp = parsedBackup?.user?.role_app || parsedBackup?.user?.role || 'superadmin';
+      localStorage.setItem('sso_role_cache', roleApp);      
+      localStorage.removeItem('sso_admin_backup');
+      
+      window.location.href = '/'; 
+    }
+  };
+
+  if (!isAdminBackedUp) return null;
+
+  return (
+    <div style={{
+      backgroundColor: '#dc3545',
+      color: 'white',
+      padding: '6px 16px',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      fontSize: '0.85rem',
+      fontWeight: 'bold',
+      zIndex: 9999,
+      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+    }}>
+      <i className="bi bi-incognito me-2 fs-5"></i>
+      MODE IMPERSONATE: Anda sedang mengontrol akun [ {currentUser} ]
+      <button 
+        onClick={handleDeImpersonate}
+        className="btn btn-sm btn-light ms-4 fw-bold shadow-sm"
+        style={{ borderRadius: '20px', padding: '2px 14px', fontSize: '0.75rem' }}
+      >
+        <i className="bi bi-arrow-return-left me-1"></i> Kembali ke Akun Admin
+      </button>
     </div>
   );
 };
@@ -58,10 +113,6 @@ const MainLayout = () => {
     window.location.href = ssoPortalUrl;
   };
 
-  // =============================================================================
-  // DETEKSI PENDING ACCESS KETAT:
-  // User dianggap Pending jika BUKAN Superadmin/Vendor DAN (Role Kosong ATAU Menus Kosong)
-  // =============================================================================
   const isSuperAdmin = role === 'superadmin' || user?.role_app === 'superadmin';
   const isVendorApp  = role === 'vendor_app';
   const hasNoMenus   = !user?.menus || user.menus.length === 0;
@@ -73,6 +124,9 @@ const MainLayout = () => {
 
   return (
     <div id="app-shell">
+
+      {/* RENDER BANNER IMPERSONATE DI PALING ATAS */}
+      <ImpersonateBanner />
 
       {role !== 'vendor_app' && (
         <header id="app-topbar">

@@ -207,8 +207,8 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if search:
         search_param = f"%{search}%"
         master_params['search'] = search_param
-        where_tetap.append("(employee_id LIKE :search OR employee_name LIKE :search OR card_no LIKE :search)")
-        where_os.append("(e.employee_code LIKE :search OR p.name LIKE :search OR c.card_number LIKE :search)")
+        where_tetap.append("(employee_id LIKE :search OR employee_name LIKE :search)")
+        where_os.append("(e.employee_code LIKE :search OR p.name LIKE :search)")
         
     worker_type_clean = (worker_type or 'all').strip().lower()
     if worker_type_clean == 'os':

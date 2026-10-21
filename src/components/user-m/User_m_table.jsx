@@ -16,11 +16,9 @@ const User_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
             const result = response.data;
             
             if (result.success || result.status === 'success') { 
-                // 1. Set data user
                 const userData = result.data?.users || (Array.isArray(result.data) ? result.data : []);
                 setUsers(userData);
 
-                // 2. PERBAIKAN: Tangkap total_page dari result.data.pagination
                 const totalPg = result.data?.pagination?.total_page 
                              || result.total_page 
                              || result.data?.total_page 
@@ -54,6 +52,36 @@ const User_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
                 } catch (error) {
                     const msg = error.response?.data?.message || error.message;
                     Toast.fire({ icon: 'error', title: 'Gagal menghapus user', text: msg });
+                }
+            }
+        });
+    };
+
+    const handleImpersonate = async (user) => {
+        Confirm.fire({
+            title: 'Impersonate User?',
+            text: `Anda akan login ke dalam sistem sebagai ${user.email}. Lanjutkan?`,
+            icon: 'info',
+            confirmButtonText: 'Ya, Login sbg User',
+            cancelButtonText: 'Batal'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await api.post(`/api/users/impersonate`, { email: user.email });
+                    
+                    if (response.data.success || response.data.status === 'success') {
+                        const currentSession = localStorage.getItem('sso_user_cache');
+                        localStorage.setItem('sso_admin_backup', currentSession);
+                        localStorage.setItem('sso_user_cache', JSON.stringify(response.data.data.session_payload));
+                        Toast.fire({ icon: 'success', title: `Berhasil masuk sebagai ${user.email}` });
+                        
+                        setTimeout(() => {
+                            window.location.href = '/'; 
+                        }, 1000);
+                    }
+                } catch (error) {
+                    const msg = error.response?.data?.message || error.message;
+                    Toast.fire({ icon: 'error', title: 'Gagal melakukan impersonate', text: msg });
                 }
             }
         });
@@ -94,6 +122,16 @@ const User_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
                                         </span>
                                     </td>
                                     <td>
+                                        {/* TOMBOL IMPERSONATE */}
+                                        <button 
+                                            className="btn-app btn-outline-primary btn-sm-app me-1" 
+                                            onClick={() => handleImpersonate(user)}
+                                            title={`Login sebagai ${user.email}`}
+                                        >
+                                            <i className="bi bi-box-arrow-in-right"></i>
+                                        </button>
+
+                                        {/* TOMBOL EDIT */}
                                         <button 
                                             className="btn-app btn-ghost-app btn-sm-app me-1" 
                                             onClick={() => onEditClick(user)}
@@ -101,6 +139,8 @@ const User_m_table = ({ refreshTrigger, onEditClick, searchTerm }) => {
                                         >
                                             <i className="bi bi-pencil-square"></i>
                                         </button>
+                                        
+                                        {/* TOMBOL DELETE */}
                                         <button 
                                             className="btn-app btn-danger-app btn-sm-app"
                                             onClick={() => handleDelete(user.id, user.email)}
