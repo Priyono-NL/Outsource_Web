@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
-function GuestForm({ onClose, onSuccess, initialData }) {
+// [FIX] Tambahkan props periodePuasaList dengan default array kosong
+function GuestForm({ onClose, onSuccess, initialData, periodePuasaList = [] }) {
   const [canteens, setCanteens] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState([]);
@@ -12,6 +13,10 @@ function GuestForm({ onClose, onSuccess, initialData }) {
   const [fullName, setFullName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEmployeeFound, setIsEmployeeFound] = useState(false);
+  
+  // [FIX] State baru untuk mode Hibrida
+  const [kategori, setKategori] = useState(''); 
+
   const formRef = useRef(null);
   const isEditMode = !!initialData;
   
@@ -41,16 +46,27 @@ function GuestForm({ onClose, onSuccess, initialData }) {
       setFullName(initialData.employee_name || '');
       setIsEmployeeFound(true);
 
-      // Sinkronisasi data field original bagian bawah Anda
+      // Sinkronisasi data field original
       formRef.current.canteen_id.value = initialData.canteen_id;
       formRef.current.valid_from.value = initialData.valid_from;
       formRef.current.valid_to.value = initialData.valid_to || '';
+      
       const isNoLimitActive = !initialData.valid_to;
       setIsNoLimit(isNoLimitActive);
+
+      // [FIX] Sinkronisasi Mode Hibrida (Allowlist Puasa) saat Edit
+      if (initialData.is_puasa_allowlist) {
+        setKategori(initialData.periode_puasa_id?.toString() || '');
+        // Tunggu render input reason selesai, lalu isi datanya
+        setTimeout(() => {
+          if (formRef.current.reason) {
+            formRef.current.reason.value = initialData.reason !== '-' ? initialData.reason : '';
+          }
+        }, 50);
+      }
     }
   }, [initialData, canteens]);
 
-  // Mekanisme Debounce untuk Pencarian Karyawan Autocomplete
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (searchTerm.length >= 3 && !selectedEmployee && !isEditMode) {
@@ -102,19 +118,40 @@ function GuestForm({ onClose, onSuccess, initialData }) {
     }
   };
 
+  // [FIX] UX Auto-Fill Tanggal berdasarkan Master Puasa
+  const handleKategoriChange = (e) => {
+    const selectedVal = e.target.value;
+    setKategori(selectedVal);
+    
+    if (selectedVal && formRef.current) {
+      const selectedPeriod = periodePuasaList.find(p => p.periode_id.toString() === selectedVal);
+      if (selectedPeriod) {
+        formRef.current.valid_from.value = selectedPeriod.start_date;
+        formRef.current.valid_to.value = selectedPeriod.end_date;
+        setIsNoLimit(false); // Pastikan No-Limit dimatikan
+      }
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
+    
+    // [FIX] Suntikkan kategori ke payload
     const payload = {
       ...data,
       employee_id: empPk,
-      valid_to: isNoLimit ? null : (data.valid_to || null) 
+      valid_to: isNoLimit ? null : (data.valid_to || null),
+      periode_puasa_id: kategori || null,
+      reason: kategori ? data.reason : null
     };
+
     try {
       const response = initialData 
             ? await api.put(`/guest/${initialData.guest_id}`, payload) 
             : await api.post('/guest/submit', payload);
+            
       if (response.data.status === 'success') {
         formRef.current.reset();
         Toast.fire({ icon: 'success', title: response.data.message });
@@ -141,7 +178,7 @@ function GuestForm({ onClose, onSuccess, initialData }) {
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className={`bi ${initialData ? 'bi-pencil-square' : 'bi-plus-circle'} me-2`}></i>
-                {initialData ? 'Edit guest' : 'Tambah guest'}
+                {initialData ? 'Edit Guest' : 'Tambah Guest / Allowlist'}
               </h6>
               <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
@@ -175,13 +212,11 @@ function GuestForm({ onClose, onSuccess, initialData }) {
                       )}
                     </div>
 
-                    {/* Dropdown Hasil Pencarian - Dilengkapi Batas Tinggi & Scrollbar */}
                     {results.length > 0 && (
                       <div className="list-group position-absolute w-100 shadow-lg border mt-1" style={{ zIndex: 1100, borderRadius: '6px', maxHeight: '200px', overflowY: 'auto' }}>
                         {results.map((emp) => (
                           <button
-                            key={emp.emp_pk_id}
-                            type="button"
+                            key={emp.emp_pk_id} type="button"
                             className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1 px-3"
                             onClick={() => handleSelect(emp)}
                             style={{ fontSize: '0.8rem' }}
@@ -207,10 +242,29 @@ function GuestForm({ onClose, onSuccess, initialData }) {
                 </div>
 
                 {/* ======================================================== */}
-                {/* BAGIAN INPUT ISIAN ASLI guest KANTIN (100% ORIGINAL)     */}
+                {/* BAGIAN INPUT ISIAN HIBRIDA (GUEST & ALLOWLIST)           */}
                 {/* ======================================================== */}
                 <div className="row g-2">
-                  <div className="col-12 mb-1">
+                  
+                  {/* [FIX] Kategori Guest */}
+                  <div className="col-md-6 mb-1">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Kategori Guest</label>
+                    <select 
+                      className="form-select form-select-sm" 
+                      value={kategori}
+                      onChange={handleKategoriChange}
+                      disabled={!isEmployeeFound || isSearching}
+                    >
+                      <option value="">Guest Reguler</option>
+                      {periodePuasaList.map(p => (
+                        <option key={p.periode_id} value={p.periode_id}>
+                          Puasa: {p.tahun} {p.keterangan ? `- ${p.keterangan}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-md-6 mb-1">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Kantin</label>
                     <select 
                       name="canteen_id" 
@@ -227,6 +281,21 @@ function GuestForm({ onClose, onSuccess, initialData }) {
                     </select>
                   </div>
 
+                  {/* [FIX] Dinamis: Tampilkan Alasan jika memilih Kategori Puasa */}
+                  {kategori && (
+                    <div className="col-12 mb-1">
+                      <label className="form-label mb-1 text-danger" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Alasan Pengecualian (Wajib)</label>
+                      <input 
+                        type="text" 
+                        name="reason" 
+                        className="form-control form-control-sm border-danger" 
+                        placeholder="Contoh: Non-Muslim, Sakit, Pekerja Berat..." 
+                        required={!!kategori}
+                        disabled={!isEmployeeFound || isSearching} 
+                      />
+                    </div>
+                  )}
+
                   <div className="col-md-6">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Mulai Berlaku</label>
                     <input 
@@ -241,25 +310,25 @@ function GuestForm({ onClose, onSuccess, initialData }) {
                   <div className="col-md-6">
                     <div className="d-flex justify-content-between align-items-center">
                       <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Selesai Berlaku</label>
-                      <div className="form-check p-0 m-0">
-                        <input 
-                          type="checkbox" 
-                          id="no_limit" 
-                          className="form-check-input"
-                          style={{ marginLeft: '-1.2em', marginTop: '0.2em', scale: '0.8' }}
-                          checked={isNoLimit}
-                          onChange={handleNoLimitToggle}
-                          disabled={!isEmployeeFound || isSearching}
-                        />
-                        <label className="form-check-label text-primary fw-bold" htmlFor="no_limit" style={{ cursor: 'pointer', fontSize: '0.65rem' }}>
-                          NO LIMIT
-                        </label>
-                      </div>
+                      
+                      {/* Sembunyikan No-Limit jika ini adalah periode Puasa (Karena Puasa harus ada ujungnya) */}
+                      {!kategori && (
+                        <div className="form-check p-0 m-0">
+                          <input 
+                            type="checkbox" id="no_limit" className="form-check-input"
+                            style={{ marginLeft: '-1.2em', marginTop: '0.2em', scale: '0.8' }}
+                            checked={isNoLimit} onChange={handleNoLimitToggle}
+                            disabled={!isEmployeeFound || isSearching}
+                          />
+                          <label className="form-check-label text-primary fw-bold" htmlFor="no_limit" style={{ cursor: 'pointer', fontSize: '0.65rem' }}>
+                            NO LIMIT
+                          </label>
+                        </div>
+                      )}
                     </div>
+                    
                     <input 
-                      type="date" 
-                      name="valid_to" 
-                      id="valid_to" 
+                      type="date" name="valid_to" id="valid_to" 
                       className="form-control form-control-sm" 
                       required={!isNoLimit}
                       disabled={isNoLimit || !isEmployeeFound || isSearching}
@@ -268,7 +337,6 @@ function GuestForm({ onClose, onSuccess, initialData }) {
                     />
                   </div>
                 </div>
-                {/* ======================================================== */}
 
               </div>
 

@@ -2,13 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Toast } from '../../utils/sweetalert';
 import api from '../../api/api';
 
-function GuestBulkForm({ onClose, onSuccess }) {
+// [FIX] Tambahkan props periodePuasaList dengan default array kosong
+function GuestBulkForm({ onClose, onSuccess, periodePuasaList = [] }) {
   const [canteens, setCanteens] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [isNoLimit, setIsNoLimit] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  
+  // [FIX] State baru untuk mode Hibrida
+  const [kategori, setKategori] = useState(''); 
+
   const formRef = useRef(null);
 
   // LOGIKA DISABLED: True jika BELUM ADA karyawan yang dipilih
@@ -77,6 +82,21 @@ function GuestBulkForm({ onClose, onSuccess }) {
     }
   };
 
+  // [FIX] UX Auto-Fill Tanggal berdasarkan Master Puasa
+  const handleKategoriChange = (e) => {
+    const selectedVal = e.target.value;
+    setKategori(selectedVal);
+    
+    if (selectedVal && formRef.current) {
+      const selectedPeriod = periodePuasaList.find(p => p.periode_id.toString() === selectedVal);
+      if (selectedPeriod) {
+        formRef.current.valid_from.value = selectedPeriod.start_date;
+        formRef.current.valid_to.value = selectedPeriod.end_date;
+        setIsNoLimit(false); // Pastikan No-Limit dimatikan
+      }
+    }
+  };
+
   const handleSaveBulk = async (e) => {
     e.preventDefault();
 
@@ -88,11 +108,14 @@ function GuestBulkForm({ onClose, onSuccess }) {
     const formData = new FormData(formRef.current);
     const data = Object.fromEntries(formData.entries());
 
+    // [FIX] Suntikkan kategori & alasan ke payload Bulk
     const payload = {
       employee_ids: selectedEmployees.map(emp => emp.emp_pk_id),
       canteen_id: data.canteen_id,
       valid_from: data.valid_from,
-      valid_to: isNoLimit ? null : (data.valid_to || null)
+      valid_to: isNoLimit ? null : (data.valid_to || null),
+      periode_puasa_id: kategori || null,
+      reason: kategori ? data.reason : null
     };
 
     try {
@@ -118,7 +141,7 @@ function GuestBulkForm({ onClose, onSuccess }) {
             <div className="d-flex justify-content-between align-items-center p-2 px-3 border-bottom bg-white">
               <h6 className="fw-bold mb-0" style={{ color: 'var(--color-primary)' }}>
                 <i className="bi bi-people-fill me-2"></i>
-                Tambah guest Massal (Multiple Employees)
+                Tambah Guest Massal (Multiple Employees)
               </h6>
               <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={onClose}></button>
             </div>
@@ -212,13 +235,34 @@ function GuestBulkForm({ onClose, onSuccess }) {
 
                 <div className="d-flex align-items-center mb-3">
                   <hr className="flex-grow-1 my-0 opacity-25" />
-                  <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>2. guestkan Ke</span>
+                  <span className="mx-2 text-muted fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>2. Alokasikan Ke</span>
                   <hr className="flex-grow-1 my-0 opacity-25" />
                 </div>
 
-                {/* 2. SECTION CONFIGURATION (DI-DISABLED JIKA KARYAWAN KOSONG) */}
+                {/* ======================================================== */}
+                {/* 2. SECTION CONFIGURATION HIBRIDA (Guest & Puasa)         */}
+                {/* ======================================================== */}
                 <div className="row g-2">
-                  <div className="col-12 mb-1">
+                  
+                  {/* [FIX] Kategori Guest */}
+                  <div className="col-md-6 mb-1">
+                    <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Kategori Guest</label>
+                    <select 
+                      className="form-select form-select-sm" 
+                      value={kategori}
+                      onChange={handleKategoriChange}
+                      disabled={isFormDisabled}
+                    >
+                      <option value="">Guest Reguler</option>
+                      {periodePuasaList.map(p => (
+                        <option key={p.periode_id} value={p.periode_id}>
+                          Puasa: {p.tahun} {p.keterangan ? `- ${p.keterangan}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-md-6 mb-1">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Nama Kantin</label>
                     <select 
                       name="canteen_id" 
@@ -235,6 +279,21 @@ function GuestBulkForm({ onClose, onSuccess }) {
                     </select>
                   </div>
 
+                  {/* [FIX] Dinamis: Tampilkan Alasan jika memilih Kategori Puasa */}
+                  {kategori && (
+                    <div className="col-12 mb-1">
+                      <label className="form-label mb-1 text-danger" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Alasan Pengecualian Massal (Wajib)</label>
+                      <input 
+                        type="text" 
+                        name="reason" 
+                        className="form-control form-control-sm border-danger" 
+                        placeholder="Contoh: Non-Muslim, Shift Malam..." 
+                        required={!!kategori}
+                        disabled={isFormDisabled} 
+                      />
+                    </div>
+                  )}
+
                   <div className="col-md-6">
                     <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Mulai Berlaku</label>
                     <input 
@@ -249,25 +308,23 @@ function GuestBulkForm({ onClose, onSuccess }) {
                   <div className="col-md-6">
                     <div className="d-flex justify-content-between align-items-center">
                       <label className="form-label mb-1" style={{ fontSize: '0.75rem', fontWeight: '600' }}>Selesai Berlaku</label>
-                      <div className="form-check p-0 m-0">
-                        <input 
-                          type="checkbox" 
-                          id="no_limit_bulk" 
-                          className="form-check-input"
-                          style={{ marginLeft: '-1.2em', marginTop: '0.2em', scale: '0.8' }}
-                          checked={isNoLimit}
-                          onChange={handleNoLimitToggle}
-                          disabled={isFormDisabled}
-                        />
-                        <label className="form-check-label text-primary fw-bold" htmlFor="no_limit_bulk" style={{ cursor: 'pointer', fontSize: '0.65rem' }}>
-                          NO LIMIT
-                        </label>
-                      </div>
+                      
+                      {!kategori && (
+                        <div className="form-check p-0 m-0">
+                          <input 
+                            type="checkbox" id="no_limit_bulk" className="form-check-input"
+                            style={{ marginLeft: '-1.2em', marginTop: '0.2em', scale: '0.8' }}
+                            checked={isNoLimit} onChange={handleNoLimitToggle}
+                            disabled={isFormDisabled}
+                          />
+                          <label className="form-check-label text-primary fw-bold" htmlFor="no_limit_bulk" style={{ cursor: 'pointer', fontSize: '0.65rem' }}>
+                            NO LIMIT
+                          </label>
+                        </div>
+                      )}
                     </div>
                     <input 
-                      type="date" 
-                      name="valid_to" 
-                      id="valid_to" 
+                      type="date" name="valid_to" id="valid_to" 
                       className="form-control form-control-sm" 
                       required={!isNoLimit}
                       disabled={isNoLimit || isFormDisabled}
