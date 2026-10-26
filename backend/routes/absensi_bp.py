@@ -371,7 +371,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         raw_rows = conn.execute(raw_sql, {'start_date': prev_day_str, 'end_date': end_date_tac}).mappings().fetchall()
 
         ex_sql = text("""
-            SELECT CAST(e.employee_id AS CHAR) AS emp_code, DATE(e.clocking_date) AS clocking_date, e.clock_in AS ex_in, e.clock_out AS ex_out, e.reason AS ex_reason
+            SELECT CAST(e.employee_id AS CHAR) AS emp_code, DATE(e.clocking_date) AS clocking_date, e.clock_in AS ex_in, e.clock_out AS ex_out, e.reason AS ex_reason, e.deleted_at AS ex_created_at
             FROM attendance_exclusions e
             INNER JOIN tmp_emps_filter tmp ON CAST(e.employee_id AS CHAR) = tmp.emp_code
             WHERE e.status = 1 AND e.clocking_date >= :start_date AND e.clocking_date <= :end_date 
@@ -412,15 +412,14 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         bac_rows = list(bac_rows_os) + list(bac_rows_ta)
 
         if active_fallback_config:
-            fallback_dates_tuple = tuple(active_fallback_config.keys())
             acc_sql = text("""
                 SELECT CAST(v.card_id AS CHAR) as card_id, v.clocking_date AS tap_time
                 FROM vw_tactitives_non_attendance v
                 INNER JOIN tmp_cards_filter tmp ON v.card_id = tmp.card_id
                 WHERE v.clocking_date >= :start_date AND v.clocking_date <= :end_date_2359
-                AND DATE(v.clocking_date) IN :fallback_dates AND v.tags LIKE '%Access%'
+                AND v.tags LIKE '%Access%'
             """)
-            acc_rows = conn.execute(acc_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59", 'fallback_dates': fallback_dates_tuple}).mappings().fetchall()
+            acc_rows = conn.execute(acc_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
             
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_cards_filter"))
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_emps_filter"))
@@ -436,7 +435,8 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         exclusion_dict[key].append({
             'in': pd.to_datetime(ex['ex_in']).strftime('%Y-%m-%d %H:%M:%S') if pd.notna(ex['ex_in']) else None,
             'out': pd.to_datetime(ex['ex_out']).strftime('%Y-%m-%d %H:%M:%S') if pd.notna(ex['ex_out']) else None,
-            'is_bac_only': 'bac' in str(ex['ex_reason']).lower() if pd.notnull(ex['ex_reason']) else False
+            'is_bac_only': 'bac' in str(ex['ex_reason']).lower() if pd.notnull(ex['ex_reason']) else False,
+            'ex_time': pd.to_datetime(ex['ex_created_at']) if pd.notna(ex.get('ex_created_at')) else pd.NaT
         })
 
     df_att_rekapan = pd.DataFrame([dict(r) for r in att_rows])
@@ -460,8 +460,18 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_raw_full['prev_tap'] = df_raw_full.groupby('card_id')['tap_time'].shift(1)
         time_gap = (df_raw_full['tap_time'] - df_raw_full['prev_tap']).dt.total_seconds()
         
-        mask_cross_midnight = (df_raw_full['tap_time'].dt.hour.between(0, 11) & (df_raw_full['prev_tap'].dt.hour >= 15) & (time_gap <= 16 * 3600) & (time_gap >= 0))
-        df_raw_full['clocking_date'] = np.where(mask_cross_midnight, df_raw_full['prev_tap'].dt.strftime('%Y-%m-%d'), df_raw_full['tap_time'].dt.strftime('%Y-%m-%d'))
+        mask_cross_1 = (df_raw_full['tap_time'].dt.hour.between(0, 11) & (df_raw_full['prev_tap'].dt.hour >= 15) & (time_gap <= 16 * 3600) & (time_gap >= 0))
+        mask_cross_2 = (df_raw_full['tap_time'].dt.hour.between(0, 11)) & mask_cross_1.shift(1).fillna(False) & (df_raw_full['card_id'] == df_raw_full['card_id'].shift(1)) & (time_gap <= 8 * 3600)
+        mask_cross_3 = (df_raw_full['tap_time'].dt.hour.between(0, 11)) & mask_cross_2.shift(1).fillna(False) & (df_raw_full['card_id'] == df_raw_full['card_id'].shift(1)) & (time_gap <= 8 * 3600)
+        
+        final_mask = mask_cross_1 | mask_cross_2 | mask_cross_3
+        mask_isolated = (df_raw_full['tap_time'].dt.hour.between(0, 4)) & (~final_mask)
+        
+        df_raw_full['clocking_date'] = np.where(
+            final_mask | mask_isolated, 
+            (df_raw_full['tap_time'] - pd.Timedelta(days=1)).dt.strftime('%Y-%m-%d'), 
+            df_raw_full['tap_time'].dt.strftime('%Y-%m-%d')
+        )
         
         df_att_raw = df_raw_full.groupby(['card_id', 'clocking_date'], as_index=False).agg(ta_in=('tap_time', 'min'), ta_out=('tap_time', 'max'), terminal_cc_name=('terminal_cc_name', 'first'), terminal_cc_code=('terminal_cc_code', 'first'), terminal_cc_id=('terminal_cc_id', 'first'))
         df_att_raw.loc[df_att_raw['ta_in'] == df_att_raw['ta_out'], 'ta_out'] = pd.NaT
@@ -508,8 +518,17 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_access['prev_tap'] = df_access.groupby('card_id')['tap_time'].shift(1)
         time_gap_acc = (df_access['tap_time'] - df_access['prev_tap']).dt.total_seconds()
         
-        mask_acc = (df_access['tap_time'].dt.hour.between(0, 11) & (df_access['prev_tap'].dt.hour >= 15) & (time_gap_acc <= 16 * 3600) & (time_gap_acc >= 0))
-        df_access['clocking_date'] = np.where(mask_acc, df_access['prev_tap'].dt.strftime('%Y-%m-%d'), df_access['tap_time'].dt.strftime('%Y-%m-%d'))
+        mask_acc_1 = (df_access['tap_time'].dt.hour.between(0, 11) & (df_access['prev_tap'].dt.hour >= 15) & (time_gap_acc <= 16 * 3600) & (time_gap_acc >= 0))
+        mask_acc_2 = (df_access['tap_time'].dt.hour.between(0, 11)) & mask_acc_1.shift(1).fillna(False) & (df_access['card_id'] == df_access['card_id'].shift(1)) & (time_gap_acc <= 8 * 3600)
+        mask_acc_3 = (df_access['tap_time'].dt.hour.between(0, 11)) & mask_acc_2.shift(1).fillna(False) & (df_access['card_id'] == df_access['card_id'].shift(1)) & (time_gap_acc <= 8 * 3600)        
+        final_mask_acc = mask_acc_1 | mask_acc_2 | mask_acc_3
+        mask_acc_isolated = (df_access['tap_time'].dt.hour.between(0, 4)) & (~final_mask_acc)
+
+        df_access['clocking_date'] = np.where(
+            final_mask_acc | mask_acc_isolated, 
+            (df_access['tap_time'] - pd.Timedelta(days=1)).dt.strftime('%Y-%m-%d'), 
+            df_access['tap_time'].dt.strftime('%Y-%m-%d')
+        )        
         df_access = df_access[df_access['clocking_date'].isin(tuple(active_fallback_config.keys()))]
 
         if not df_access.empty:
@@ -568,21 +587,38 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         if ex_key in exclusion_dict:
             for ex in exclusion_dict[ex_key]:
                 ex_in_val, ex_out_val, is_bac_only = ex['in'], ex['out'], ex['is_bac_only']
-                if is_bac_only: b_in = b_out = None
-                if ex_in_val is None and ex_out_val is None and not is_bac_only:
-                    t_in = t_out = None
-                    raw_purged = True
-                if ex_in_val is not None and not is_bac_only and pd.notnull(t_in) and pd.to_datetime(t_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
-                    t_in = None
-                    raw_purged = True
-                if ex_out_val is not None and not is_bac_only and pd.notnull(t_out) and pd.to_datetime(t_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
-                    t_out = None
-                    raw_purged = True
+                ex_time = ex['ex_time']
+                bac_time = pd.to_datetime(r.get('bac_updated_date')) if pd.notna(r.get('bac_updated_date')) else pd.NaT
 
-        if raw_purged and pd.isnull(t_in) and pd.isnull(t_out): b_in = b_out = None
-        if pd.isnull(b_in) and pd.isnull(b_out):
-            bac_id_val = r['bac_no'] = r['bac_ket'] = r['evidence_photo'] = r['bac_updated_by'] = r['bac_updated_date'] = None
-        else: bac_id_val = r.get('bac_id')
+                if ex_in_val is None and ex_out_val is None and not is_bac_only:
+                    t_in = t_out = a_in = a_out = None
+                    raw_purged = True
+                
+                if ex_in_val is not None and not is_bac_only:
+                    if pd.notnull(t_in) and pd.to_datetime(t_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
+                        t_in = None
+                        raw_purged = True
+                    if pd.notnull(a_in) and pd.to_datetime(a_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
+                        a_in = None
+                        raw_purged = True
+
+                if ex_out_val is not None and not is_bac_only:
+                    if pd.notnull(t_out) and pd.to_datetime(t_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
+                        t_out = None
+                        raw_purged = True
+                    if pd.notnull(a_out) and pd.to_datetime(a_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
+                        a_out = None
+                        raw_purged = True
+
+                if is_bac_only or (ex_in_val is None and ex_out_val is None):
+                    if pd.notna(bac_time) and pd.notna(ex_time):
+                        if ex_time > bac_time:
+                            # HRD menghapus BAC SETELAH dibuat -> BAC Musnah
+                            b_in = b_out = None
+                        else:
+                            pass
+                    else:
+                        b_in = b_out = None
 
         eff_in = b_in if pd.notnull(b_in) else (t_in if pd.notnull(t_in) else None)
         eff_out = b_out if pd.notnull(b_out) else (t_out if pd.notnull(t_out) else None)
@@ -687,7 +723,7 @@ def get_absensi():
 # =============================================================================
 # 2. GET DETAIL BAC TUNGGAL (PERBAIKAN ROUTING)
 # =============================================================================
-@AbsenOs_bp.route('/absensi/bac//', methods=['GET'])
+@AbsenOs_bp.route('/absensi/bac/<string:employee_id>/<string:clock_date>', methods=['GET'])
 def get_bac(employee_id, clock_date):
     try:
         extra_info = BAC_os.query.filter_by(employee_id=employee_id, clock_date=clock_date).first()
@@ -978,66 +1014,83 @@ def upload():
             'No BAC': str,
             'Shift': str
         })
+        
+        df['Employee ID'] = df['Employee ID'].str.strip()
+        df = df.dropna(subset=['Employee ID'])
+        
+        excel_emp_ids = df['Employee ID'].unique().tolist()
+        excel_dates = df['Tanggal Absen'].str[:10].dropna().unique().tolist()
+        
+        existing_bacs = BAC_os.query.filter(
+            BAC_os.employee_id.in_(excel_emp_ids),
+            BAC_os.clock_date.in_(excel_dates)
+        ).all()
+        
+        bac_map = {f"{str(b.employee_id).strip()}_{str(b.clock_date)}": b for b in existing_bacs}
 
         errors = []
         success_count = 0
+        new_records = []
 
         for index, row in df.iterrows():
             line_number = index + 2
             emp_id_raw = clean_str(row.get('Employee ID'))
             
             try:
-                with db.session.begin_nested():
-                    clock_date_raw = clean_str(row.get('Tanggal Absen'))
+                clock_date_raw = clean_str(row.get('Tanggal Absen'))
+                if not emp_id_raw or not clock_date_raw:
+                    raise ValueError("Kolom 'Employee ID' dan 'Tanggal Absen' tidak boleh kosong.")
 
-                    if not emp_id_raw or not clock_date_raw:
-                        raise ValueError("Kolom 'Employee ID' dan 'Tanggal Absen' tidak boleh kosong.")
+                c_in_raw = clean_str(row.get('Clocking In'))
+                c_out_raw = clean_str(row.get('Clocking Out'))
+                ket_bac = clean_str(row.get('Keterangan BAC'))
+                shift_val = clean_str(row.get('Shift')) or ''
 
-                    c_in_raw = clean_str(row.get('Clocking In'))
-                    c_out_raw = clean_str(row.get('Clocking Out'))
-                    ket_bac = clean_str(row.get('Keterangan BAC'))
-                    shift_val = clean_str(row.get('Shift')) or ''
+                if not c_in_raw and not c_out_raw and not ket_bac:
+                    continue
 
-                    # 1. CEK BARIS KOSONG: Jika tidak ada jam in, jam out, dan ket_bac kosong, lewati baris ini.
-                    if not c_in_raw and not c_out_raw and not ket_bac:
-                        continue
+                if not ket_bac:
+                    raise ValueError("Kolom 'Keterangan BAC' wajib diisi.")
 
-                    # 2. KETERANGAN BAC WAJIB DARI DROPDOWN
-                    if not ket_bac:
-                        raise ValueError("Kolom 'Keterangan BAC' wajib diisi.")
+                final_c_in = None
+                if c_in_raw:
+                    combined_in = f"{clock_date_raw[:10]} {c_in_raw}"
+                    final_c_in = parse_dt(combined_in)
+                    if not final_c_in: raise ValueError(f"Format Clocking In ({c_in_raw}) tidak valid.")
 
-                    # 3. PARSING JAM IN (jika ada)
-                    final_c_in = None
-                    if c_in_raw:
-                        combined_in = f"{clock_date_raw[:10]} {c_in_raw}"
-                        final_c_in = parse_dt(combined_in)
-                        if not final_c_in:
-                            raise ValueError(f"Format Clocking In ({c_in_raw}) tidak valid. Gunakan format HH:MM.")
+                final_c_out = None
+                if c_out_raw:
+                    combined_out = f"{clock_date_raw[:10]} {c_out_raw}"
+                    final_c_out = parse_dt(combined_out)
+                    if not final_c_out: raise ValueError(f"Format Clocking Out ({c_out_raw}) tidak valid.")
 
-                    # 4. PARSING JAM OUT DENGAN LOGIKA SHIFT 3 (LINTAS HARI)
-                    final_c_out = None
-                    if c_out_raw:
-                        combined_out = f"{clock_date_raw[:10]} {c_out_raw}"
-                        final_c_out = parse_dt(combined_out)
-                        if not final_c_out:
-                            raise ValueError(f"Format Clocking Out ({c_out_raw}) tidak valid. Gunakan format HH:MM.")
-
-                        # --- LOGIKA LINTAS HARI SHIFT 3 ---
-                        if final_c_in and final_c_out < final_c_in:
+                    if final_c_in and final_c_out < final_c_in:
+                        final_c_out += timedelta(days=1)
+                    elif not final_c_in and 'SHIFT 3' in shift_val.upper():
+                        if final_c_out.hour <= 15:
                             final_c_out += timedelta(days=1)
-                        elif not final_c_in and 'SHIFT 3' in shift_val.upper():
-                            if final_c_out.hour <= 15:
-                                final_c_out += timedelta(days=1)
 
-                    # 5. SIMPAN/UPDATE KE TABEL BAC
-                    upsert_bac_record(
+                bac_key = f"{emp_id_raw}_{clock_date_raw[:10]}"
+                existing_record = bac_map.get(bac_key)
+                
+                if existing_record:
+                    existing_record.bac_no = clean_str(row.get('No BAC'))
+                    existing_record.bac_ket = ket_bac
+                    existing_record.clock_in = final_c_in
+                    existing_record.clock_out = final_c_out
+                else:
+                    new_bac = BAC_os(
                         employee_id=emp_id_raw,
-                        clock_date=clock_date_raw[:10],
                         bac_no=clean_str(row.get('No BAC')),
                         bac_ket=ket_bac,
+                        clock_date=clock_date_raw[:10],
                         clock_in=final_c_in,
-                        clock_out=final_c_out
+                        clock_out=final_c_out,
+                        evidence_photo=None,
+                        status=1
                     )
+                    new_records.append(new_bac)
+                    bac_map[bac_key] = new_bac 
 
                 success_count += 1
 
@@ -1046,6 +1099,9 @@ def upload():
             except Exception as e:
                 errors.append(f"Baris {line_number} (ID {emp_id_raw or '-'}): Gagal memproses - {str(e)}")
 
+        if new_records:
+            with db.session.begin_nested():
+                db.session.bulk_save_objects(new_records)
         db.session.commit()
 
         if success_count > 0:
