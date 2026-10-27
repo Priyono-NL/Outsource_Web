@@ -586,39 +586,21 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         ex_key, raw_purged = f"{r['emp_code']}_{r['clocking_date']}", False
         if ex_key in exclusion_dict:
             for ex in exclusion_dict[ex_key]:
-                ex_in_val, ex_out_val, is_bac_only = ex['in'], ex['out'], ex['is_bac_only']
+                is_bac_only = ex['is_bac_only']
                 ex_time = ex['ex_time']
                 bac_time = pd.to_datetime(r.get('bac_updated_date')) if pd.notna(r.get('bac_updated_date')) else pd.NaT
 
-                if ex_in_val is None and ex_out_val is None and not is_bac_only:
+                if not is_bac_only:
                     t_in = t_out = a_in = a_out = None
                     raw_purged = True
-                
-                if ex_in_val is not None and not is_bac_only:
-                    if pd.notnull(t_in) and pd.to_datetime(t_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
-                        t_in = None
-                        raw_purged = True
-                    if pd.notnull(a_in) and pd.to_datetime(a_in).strftime('%Y-%m-%d %H:%M:%S') == ex_in_val: 
-                        a_in = None
-                        raw_purged = True
 
-                if ex_out_val is not None and not is_bac_only:
-                    if pd.notnull(t_out) and pd.to_datetime(t_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
-                        t_out = None
-                        raw_purged = True
-                    if pd.notnull(a_out) and pd.to_datetime(a_out).strftime('%Y-%m-%d %H:%M:%S') == ex_out_val: 
-                        a_out = None
-                        raw_purged = True
-
-                if is_bac_only or (ex_in_val is None and ex_out_val is None):
+                if is_bac_only or raw_purged:
                     if pd.notna(bac_time) and pd.notna(ex_time):
                         if ex_time > bac_time:
-                            # HRD menghapus BAC SETELAH dibuat -> BAC Musnah
                             b_in = b_out = None
-                        else:
-                            pass
                     else:
-                        b_in = b_out = None
+                        if is_bac_only:
+                            b_in = b_out = None
 
         eff_in = b_in if pd.notnull(b_in) else (t_in if pd.notnull(t_in) else None)
         eff_out = b_out if pd.notnull(b_out) else (t_out if pd.notnull(t_out) else None)
