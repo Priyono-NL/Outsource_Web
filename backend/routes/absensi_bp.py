@@ -152,13 +152,12 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
 def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shift_filter='', 
                             search='', sub_company_id='', department_id='', worker_type='all',
                             page=None, pageSize=None, as_dataframe=False):
-    
-    # Helper untuk format return kosong yang aman dan konsisten
+
     def empty_return():
         if as_dataframe:
             return pd.DataFrame(), 0
         return ([], 0) if page is not None else []
-
+    
     # -------------------------------------------------------------------------
     # TAHAP 0: CONFIG & IN-MEMORY CACHE
     # -------------------------------------------------------------------------
@@ -169,6 +168,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE fallback_date >= :start_date AND fallback_date <= :end_date
         """), {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
         
+        # Cache master terminal in-memory (menghilangkan JOIN berulang di tabel raw)
         term_rows = conn.execute(text("""
             SELECT tm.node_id, occ.org_name AS terminal_cc_name, occ.cost_center AS terminal_cc_code, occ.id AS terminal_cc_id
             FROM terminal_master tm
@@ -267,24 +267,13 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if df_master.empty:
         return empty_return()
 
-    # 📌 REINDEX SCHEMA MASTER (Mencegah KeyError)
+    # 📌 REINDEX SCHEMA MASTER (Mencegah KeyError 'cc_name' dan 'dept_code')
     standard_columns = [
         'emp_pk_id', 'emp_code', 'emp_name', 'master_card_id', 'gender', 
         'sub_company_id', 'sub_company_name', 'dept_code', 'cc_name', 
         'emp_type', 'use_cc', 'valid_from', 'valid_to'
     ]
     df_master = df_master.reindex(columns=standard_columns)
-
-    # ⚡ EARLY SLICING
-    total_master_count = len(df_master)
-    is_ui_paging = (page is not None and pageSize is not None and not as_dataframe)
-    is_simple_filter = status_filter in ('all_data', '')
-
-    if is_ui_paging and is_simple_filter:
-        df_master = df_master.sort_values(by='emp_code', ascending=False)
-        start_idx = (page - 1) * pageSize
-        end_idx = start_idx + pageSize
-        df_master = df_master.iloc[start_idx:end_idx].copy()
 
     df_master['emp_pk_id'] = df_master['emp_pk_id'].astype(str).str.strip().replace({'None': None, 'nan': None, '<NA>': None})
     df_master['valid_from'] = pd.to_datetime(df_master['valid_from']).dt.strftime('%Y-%m-%d')
@@ -308,7 +297,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         return empty_return()
 
     # -------------------------------------------------------------------------
-    # TAHAP 2: FAST BULK TEMPORARY TABLE & TRANSACTIONS
+    # TAHAP 2: FAST BULK TEMPORARY TABLE & TRANSACTIONS (EXPLICIT COLLATION FIX)
     # -------------------------------------------------------------------------
     start_dt_obj = datetime.strptime(start_date, '%Y-%m-%d')
     end_dt_obj = datetime.strptime(end_date, '%Y-%m-%d')
@@ -316,6 +305,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     end_date_tac = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d 09:00:00')
 
     with db.engine.connect() as conn:
+        # Collation eksplisit mencegah Error 1267
         conn.execute(text("""
             CREATE TEMPORARY TABLE IF NOT EXISTS tmp_cards_filter (
                 card_id VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci PRIMARY KEY
@@ -341,6 +331,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
         """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
 
+        # Query lean tanpa JOIN lambat ke terminal_master
         raw_rows = conn.execute(text("""
             SELECT tt.CARD_ID AS card_id, tt.CLOCKING_DATE AS tap_time, tt.TERMINAL_ID AS terminal_id
             FROM `db-webapps`.TBL_TACTIVITIES tt
@@ -397,6 +388,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     df_att_rekapan = pd.DataFrame([dict(r) for r in att_rows])
     df_raw_full = pd.DataFrame([dict(r) for r in raw_rows])
 
+    # Mapping terminal cost center via memori
     if not df_raw_full.empty and not terminal_map_df.empty:
         df_raw_full = pd.merge(df_raw_full, terminal_map_df, left_on='terminal_id', right_on='node_id', how='left')
     elif not df_raw_full.empty:
@@ -440,7 +432,9 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
         df_att_raw = df_raw_full.groupby(['card_id', 'clocking_date'], as_index=False).agg(
             ta_in=('tap_time', 'min'), ta_out=('tap_time', 'max'),
-            terminal_cc_name=('terminal_cc_name', 'first'), terminal_cc_code=('terminal_cc_code', 'first'), terminal_cc_id=('terminal_cc_id', 'first')
+            terminal_cc_name=('terminal_cc_name', 'first'),
+            terminal_cc_code=('terminal_cc_code', 'first'),
+            terminal_cc_id=('terminal_cc_id', 'first')
         )
         df_att_raw.loc[df_att_raw['ta_in'] == df_att_raw['ta_out'], 'ta_out'] = pd.NaT
         df_att_raw['source'], df_att_raw['ta_flag'] = 2, None
@@ -454,7 +448,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
             df_att_raw.loc[[t in claimed_set for t in raw_in_tup], 'ta_in'] = pd.NaT
             df_att_raw.loc[[t in claimed_set for t in raw_out_tup], 'ta_out'] = pd.NaT
-
             df_att_raw = df_att_raw.dropna(subset=['ta_in', 'ta_out'], how='all')
             if not df_att_raw.empty:
                 mask_only_out = df_att_raw['ta_in'].isna() & df_att_raw['ta_out'].notna()
@@ -489,6 +482,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             'evidence_photo': 'max', 'bac_updated_by': 'max', 'bac_updated_date': 'max'
         })
 
+    # Vektorisasi penentuan Access Taps (Bypass lambda loop)
     df_access = pd.DataFrame([dict(r) for r in acc_rows])
     if not df_access.empty:
         df_access['card_id'] = df_access['card_id'].astype(str).str.strip()
@@ -630,7 +624,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
     df_final = df_final[df_final['eff_in'].notna() | df_final['eff_out'].notna()].copy()
     if df_final.empty:
-        return empty_return()
+        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
 
     # Vektorisasi Status
     has_bac = df_final['bac_in'].notna() | df_final['bac_out'].notna()
@@ -677,20 +671,17 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         )
         df_final = df_final[match_mask]
 
+    # Urutkan tanggal dan kode karyawan terbaru
     df_final = df_final.sort_values(by=['clocking_date', 'emp_code'], ascending=[False, False])
     total_item = len(df_final)
 
     if as_dataframe:
         return df_final, total_item
 
-    # =========================================================================
-    # ⚡ PENYELAMAT JSON: Ubah seluruh NaN/NaT menjadi None murni sebelum looping!
-    # =========================================================================
     df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
-    # =========================================================================
 
     # -------------------------------------------------------------------------
-    # TAHAP 6: LAZY FORMATTING
+    # TAHAP 6: LAZY FORMATTING (HANYA MEMFORMAT 20 BARIS UNTUK UI)
     # -------------------------------------------------------------------------
     if page is not None and pageSize is not None:
         start_idx = (page - 1) * pageSize
@@ -710,25 +701,25 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
         fmt = {
             'employee_id': r['emp_code'], 'employee_code': r['emp_code'], 'employee_name': r['emp_name'], 'gender': r['gender'],
-            'subCom': r['sub_company_name'] if r['sub_company_name'] else '-',
+            'subCom': r['sub_company_name'] if pd.notnull(r['sub_company_name']) else '-',
             'card': r.get('card_id') or r['master_card_id'] or '-',
-            'cc': cc_val if cc_val and str(cc_val).strip().lower() not in ('', '-', 'none', 'null', 'nan') else '-',
+            'cc': cc_val if pd.notnull(cc_val) and str(cc_val).strip().lower() not in ('', '-', 'none', 'null', 'nan') else '-',
             'type': r['emp_type'],
-            'raw_ta_in': t_in.strftime('%Y-%m-%d %H:%M:%S') if t_in else None,
-            'raw_ta_out': t_out.strftime('%Y-%m-%d %H:%M:%S') if t_out else None,
+            'raw_ta_in': t_in.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_in) else None,
+            'raw_ta_out': t_out.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t_out) else None,
             'v_clocking_date': c_date_obj.strftime('%d %b %Y'), 'clocking_date': r['clocking_date'],
-            'clock_in': eff_in.strftime('%H:%M') if eff_in else 'KOSONG',
-            'clock_out': eff_out.strftime('%H:%M') if eff_out else 'KOSONG',
-            'full_clock_in': eff_in.strftime('%Y-%m-%d %H:%M:%S') if eff_in else 'null',
-            'full_clock_out': eff_out.strftime('%Y-%m-%d %H:%M:%S') if eff_out else 'null',
-            'bac_id': None if pd.isna(bac_id_val) or bac_id_val is None else int(bac_id_val),
-            'bac_no': r.get('bac_no') if r.get('bac_no') else '-',
-            'bac_ket': r.get('bac_ket') if r.get('bac_ket') else '-',
-            'bac_clock_in': b_in.strftime('%Y-%m-%dT%H:%M') if b_in else None,
-            'bac_clock_out': b_out.strftime('%Y-%m-%dT%H:%M') if b_out else None,
-            'evidence_photo': r.get('evidence_photo') if r.get('evidence_photo') else '',
-            'bac_updated_by': r.get('bac_updated_by') if r.get('bac_updated_by') else '-',
-            'bac_updated_date': r['bac_updated_date'].strftime('%d %b %Y') if r.get('bac_updated_date') else '-',
+            'clock_in': eff_in.strftime('%H:%M') if pd.notnull(eff_in) else 'KOSONG',
+            'clock_out': eff_out.strftime('%H:%M') if pd.notnull(eff_out) else 'KOSONG',
+            'full_clock_in': eff_in.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(eff_in) else 'null',
+            'full_clock_out': eff_out.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(eff_out) else 'null',
+            'bac_id': None if pd.isna(bac_id_val) else int(bac_id_val),
+            'bac_no': r.get('bac_no') if pd.notnull(r.get('bac_no')) else '-',
+            'bac_ket': r.get('bac_ket') if pd.notnull(r.get('bac_ket')) else '-',
+            'bac_clock_in': b_in.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_in) else None,
+            'bac_clock_out': b_out.strftime('%Y-%m-%dT%H:%M') if pd.notnull(b_out) else None,
+            'evidence_photo': r.get('evidence_photo') if pd.notnull(r.get('evidence_photo')) else '',
+            'bac_updated_by': r.get('bac_updated_by') if pd.notnull(r.get('bac_updated_by')) else '-',
+            'bac_updated_date': r['bac_updated_date'].strftime('%d %b %Y') if pd.notnull(r.get('bac_updated_date')) else '-',
             'status': r['status'],
             'shift': r['shift']
         }
