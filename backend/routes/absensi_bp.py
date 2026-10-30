@@ -6,6 +6,7 @@ import numpy as np
 from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import text
 from PIL import Image, ImageOps
+from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from extensions import db
@@ -25,7 +26,7 @@ def teardown_request(exception=None):
         pass
 
 # =============================================================================
-# REUSABLE VECTORIZED HELPERS & SHIFT DETERMINER
+# REUSABLE HELPERS & VECTORIZED SHIFT DETERMINER
 # =============================================================================
 def clean_str(val):
     if val is None or pd.isna(val):
@@ -60,10 +61,8 @@ def format_dt(val, is_time=False, iso=False):
     val_str = str(val).strip().replace('T', ' ')
     return val_str[:16] if is_time else val_str[:10]
 
-def vectorize_determine_shift(df):
-    """
-    Kalkulasi shift secara simultan/vektor untuk puluhan ribu baris (O(1) runtime).
-    """
+def determine_shift_vectorized(df):
+    """Kalkulasi Shift secara simultan (O(1) runtime) tanpa iterasi baris"""
     if df.empty:
         return pd.Series(dtype=str)
 
@@ -73,8 +72,8 @@ def vectorize_determine_shift(df):
     
     is_out_only = in_time.isna() & out_time.notna()
     source_time = in_time.fillna(out_time)
-    
     both_null = in_time.isna() & out_time.isna()
+    
     jam = source_time.dt.hour * 100 + source_time.dt.minute
     
     cond_out_sat = is_out_only & is_sat
@@ -109,7 +108,6 @@ def vectorize_determine_shift(df):
         'SHIFT 1', 'SHIFT 2', 'SHIFT 3',
         'SHIFT 1', 'SHIFT 2', 'SHIFT 3'
     ]
-    
     return np.select(conditions, choices, default='SHIFT 1')
 
 def process_and_save_bac_evidence(file_storage, target_folder, filename_without_ext, max_width=1000, quality=80):
@@ -149,14 +147,14 @@ def upsert_bac_record(employee_id, clock_date, bac_no, bac_ket, clock_in, clock_
         return new_bac, True
 
 # =============================================================================
-# CORE FAST ENGINE (VECTORIZED & ZERO-ZOMBIE COMPLIANT)
+# CORE FAST HYBRID ENGINE
 # =============================================================================
 def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shift_filter='', 
                             search='', sub_company_id='', department_id='', worker_type='all',
                             page=None, pageSize=None, as_dataframe=False):
     
     # -------------------------------------------------------------------------
-    # 0. CONFIG & TERMINAL MASTER CACHE
+    # TAHAP 0: CONFIG & IN-MEMORY CACHE
     # -------------------------------------------------------------------------
     with db.engine.connect() as conn:
         fallback_rows = conn.execute(text("""
@@ -165,7 +163,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE fallback_date >= :start_date AND fallback_date <= :end_date
         """), {'start_date': start_date, 'end_date': end_date}).mappings().fetchall()
         
-        # Cache terminal master in-memory (menghilangkan JOIN jutaan baris di TBL_TACTIVITIES)
+        # Cache master terminal in-memory (menghilangkan JOIN berulang di tabel raw)
         term_rows = conn.execute(text("""
             SELECT tm.node_id, occ.org_name AS terminal_cc_name, occ.cost_center AS terminal_cc_code, occ.id AS terminal_cc_id
             FROM terminal_master tm
@@ -189,7 +187,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             target_dept_aliases = [str(department_id)]
 
     # -------------------------------------------------------------------------
-    # 1. MASTER EMPLOYEES PRE-SELECTION
+    # TAHAP 1: PRE-SELECTION (MASTER DATA KARYAWAN)
     # -------------------------------------------------------------------------
     master_params = {'start_date': start_date, 'end_date': end_date}
     where_os = [
@@ -262,11 +260,12 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
     df_master = pd.concat([pd.DataFrame([dict(r) for r in rows_tetap]), pd.DataFrame([dict(r) for r in rows_os])], ignore_index=True)
     if df_master.empty:
-        return (df_master, 0) if as_dataframe else ([] if page is None else ([], 0))
+        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
 
+    # 📌 REINDEX SCHEMA MASTER (Mencegah KeyError 'cc_name' dan 'dept_code')
     standard_columns = [
-        'emp_pk_id', 'emp_code', 'emp_name', 'master_card_id', 'gender',
-        'sub_company_id', 'sub_company_name', 'dept_code', 'cc_name',
+        'emp_pk_id', 'emp_code', 'emp_name', 'master_card_id', 'gender', 
+        'sub_company_id', 'sub_company_name', 'dept_code', 'cc_name', 
         'emp_type', 'use_cc', 'valid_from', 'valid_to'
     ]
     df_master = df_master.reindex(columns=standard_columns)
@@ -290,10 +289,10 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_history = pd.DataFrame(columns=['emp_pk_id', 'history_cc_code', 'history_cc_name', 'history_cc_id', 'valid_from_hist', 'valid_to_hist'])
 
     if not card_set and not emp_set:
-        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is None else ([], 0))
+        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
 
-        # -------------------------------------------------------------------------
-    # 2. FAST BULK TEMPORARY TABLE & TRANSACTIONS (EXPLICIT COLLATION FIX)
+    # -------------------------------------------------------------------------
+    # TAHAP 2: FAST BULK TEMPORARY TABLE & TRANSACTIONS (EXPLICIT COLLATION FIX)
     # -------------------------------------------------------------------------
     start_dt_obj = datetime.strptime(start_date, '%Y-%m-%d')
     end_dt_obj = datetime.strptime(end_date, '%Y-%m-%d')
@@ -301,39 +300,25 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     end_date_tac = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d 09:00:00')
 
     with db.engine.connect() as conn:
-        # 1. Tabel Kartu: Selaraskan mutlak dengan TBL_ATTENDANCE (utf8mb4_general_ci)
+        # Collation eksplisit mencegah Error 1267
         conn.execute(text("""
             CREATE TEMPORARY TABLE IF NOT EXISTS tmp_cards_filter (
                 card_id VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci PRIMARY KEY
             ) ENGINE=MEMORY
         """))
-
-        # 2. Tabel Pegawai: Selaraskan dengan CAST(... AS CHAR) MySQL 8 (utf8mb4_0900_ai_ci)
         conn.execute(text("""
             CREATE TEMPORARY TABLE IF NOT EXISTS tmp_emps_filter (
                 emp_code VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci PRIMARY KEY
             ) ENGINE=MEMORY
         """))
-
         conn.execute(text("TRUNCATE TABLE tmp_cards_filter"))
         conn.execute(text("TRUNCATE TABLE tmp_emps_filter"))
 
-        # Bulk multi-row insert O(1)
         if card_set:
-            cards_list = list(card_set)
-            for i in range(0, len(cards_list), 1000):
-                chunk = cards_list[i:i+1000]
-                vals = ", ".join([f"('{c}')" for c in chunk])
-                conn.execute(text(f"INSERT IGNORE INTO tmp_cards_filter (card_id) VALUES {vals}"))
-
+            conn.execute(text("INSERT IGNORE INTO tmp_cards_filter (card_id) VALUES (:cid)"), [{'cid': c} for c in card_set])
         if emp_set:
-            emps_list = list(emp_set)
-            for i in range(0, len(emps_list), 1000):
-                chunk = emps_list[i:i+1000]
-                vals = ", ".join([f"('{e}')" for e in chunk])
-                conn.execute(text(f"INSERT IGNORE INTO tmp_emps_filter (emp_code) VALUES {vals}"))
+            conn.execute(text("INSERT IGNORE INTO tmp_emps_filter (emp_code) VALUES (:eid)"), [{'eid': e} for e in emp_set])
 
-        # Query Absensi Rekapan
         att_rows = conn.execute(text("""
             SELECT ta.card_id, DATE(ta.clocking_date) AS clocking_date, ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag
             FROM `db-webapps`.TBL_ATTENDANCE ta
@@ -341,7 +326,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
         """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
 
-        # Query Raw Tactivities
+        # Query lean tanpa JOIN lambat ke terminal_master
         raw_rows = conn.execute(text("""
             SELECT tt.CARD_ID AS card_id, tt.CLOCKING_DATE AS tap_time, tt.TERMINAL_ID AS terminal_id
             FROM `db-webapps`.TBL_TACTIVITIES tt
@@ -349,7 +334,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date
         """), {'start_date': prev_day_str, 'end_date': end_date_tac}).mappings().fetchall()
 
-        # Query Attendance Exclusions
         ex_rows = conn.execute(text("""
             SELECT CAST(e.employee_id AS CHAR) AS emp_code, DATE(e.clocking_date) AS clocking_date, 
                    e.clock_in AS ex_in, e.clock_out AS ex_out, e.reason AS ex_reason, e.deleted_at AS ex_created_at
@@ -358,7 +342,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE e.status = 1 AND e.clocking_date >= :start_date AND e.clocking_date <= :end_date 
         """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
 
-        # Query BAC OS
         bac_rows_os = conn.execute(text("""
             SELECT CAST(b.employee_id AS CHAR) AS emp_code, DATE(b.clock_date) AS clocking_date, b.id AS bac_id, 
                    b.bac_no, b.bac_ket, b.clock_in AS bac_in, b.clock_out AS bac_out, 
@@ -368,7 +351,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE b.status = 1 AND b.clock_date >= :start_date AND b.clock_date <= :end_date
         """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
 
-        # Query Transaksi Absen (Kiosk/Backdate)
         bac_rows_ta = conn.execute(text("""
             SELECT CAST(t.nrp AS CHAR) AS emp_code, DATE(t.submit_at) AS clocking_date, t.id AS bac_id, 
                    'BAC' AS bac_no, 'BAC (kiosk/backdate)' AS bac_ket, 
@@ -380,7 +362,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             WHERE t.status IN (2, 7) AND t.submit_at >= :start_date AND t.submit_at <= :end_date_2359
         """), {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
 
-        # Query Fallback Access
         acc_rows = []
         if active_fallback_config:
             acc_rows = conn.execute(text("""
@@ -394,16 +375,15 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_cards_filter"))
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_emps_filter"))
 
-
     bac_rows = list(bac_rows_os) + list(bac_rows_ta)
 
     # -------------------------------------------------------------------------
-    # 3. PANDAS HIGH SPEED VECTORIZED PIPELINE
+    # TAHAP 3: VECTORIZED PANDAS PROCESSING
     # -------------------------------------------------------------------------
     df_att_rekapan = pd.DataFrame([dict(r) for r in att_rows])
     df_raw_full = pd.DataFrame([dict(r) for r in raw_rows])
 
-    # Map terminal master ke raw swipes secara instan
+    # Mapping terminal cost center via memori
     if not df_raw_full.empty and not terminal_map_df.empty:
         df_raw_full = pd.merge(df_raw_full, terminal_map_df, left_on='terminal_id', right_on='node_id', how='left')
     elif not df_raw_full.empty:
@@ -455,7 +435,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_att_raw['source'], df_att_raw['ta_flag'] = 2, None
 
         if not df_att_rekapan.empty:
-            # Tuple hashing (50x lebih cepat dari string concatenation)
             claimed_set = set(zip(df_att_rekapan['card_id'], df_att_rekapan['ta_in'])).union(
                 set(zip(df_att_rekapan['card_id'], df_att_rekapan['ta_out']))
             )
@@ -498,7 +477,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             'evidence_photo': 'max', 'bac_updated_by': 'max', 'bac_updated_date': 'max'
         })
 
-    # Vectorized Access Resolution (Bypass fungsi slow groupby.apply)
+    # Vektorisasi penentuan Access Taps (Bypass lambda loop)
     df_access = pd.DataFrame([dict(r) for r in acc_rows])
     if not df_access.empty:
         df_access['card_id'] = df_access['card_id'].astype(str).str.strip()
@@ -547,7 +526,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
                 df_access = acc_summary[['emp_code', 'clocking_date', 'access_in', 'access_out']]
 
     if df_att.empty and df_bac.empty and df_access.empty:
-        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is None else ([], 0))
+        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
 
     if not df_att.empty and not df_bac.empty: 
         df_trans = pd.merge(df_att, df_bac, on=['emp_code', 'clocking_date'], how='outer')
@@ -566,7 +545,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_trans['access_in'] = df_trans['access_out'] = None
 
     if df_trans.empty: 
-        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is None else ([], 0))
+        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
 
     df_final = pd.merge(df_master, df_trans, on='emp_code', how='inner')
     df_final = df_final[(df_final['valid_from'] <= df_final['clocking_date']) & 
@@ -590,7 +569,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_final['history_cc_name'] = df_final['history_cc_code'] = df_final['history_cc_id'] = None
 
     # -------------------------------------------------------------------------
-    # 4. EXCLUSIONS & EFFECTIVE TIME RESOLUTION
+    # TAHAP 4: EXCLUSIONS & RESOLUSI WAKTU EFEKTIF
     # -------------------------------------------------------------------------
     exclusion_dict = {}
     for ex in ex_rows:
@@ -602,7 +581,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         })
 
     if exclusion_dict:
-        # Fast vector mask for exclusions
         emp_dates = df_final['emp_code'].astype(str) + "_" + df_final['clocking_date'].astype(str)
         matched_mask = emp_dates.isin(exclusion_dict)
         if matched_mask.any():
@@ -639,24 +617,19 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_final.loc[patch_out, 'eff_out'] = df_final.loc[patch_out, 'access_out']
         df_final.loc[patch_in | patch_out, 'is_patched_by_access'] = True
 
-    # Drop baris tanpa tap sama sekali
     df_final = df_final[df_final['eff_in'].notna() | df_final['eff_out'].notna()].copy()
     if df_final.empty:
-        return (df_final, 0) if as_dataframe else ([] if page is None else ([], 0))
+        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
 
-    # Vectorized Status Generation
+    # Vektorisasi Status
     has_bac = df_final['bac_in'].notna() | df_final['bac_out'].notna()
     pure_access = df_final['is_patched_by_access'] & df_final['ta_in'].isna() & df_final['ta_out'].isna()
     is_lengkap = df_final['eff_in'].notna() & df_final['eff_out'].notna()
 
-    status_conditions = [has_bac, pure_access, is_lengkap]
-    status_choices = ['BAC Found', 'Data Akses', 'Lengkap']
-    df_final['status'] = np.select(status_conditions, status_choices, default='Tidak Lengkap')
+    df_final['status'] = np.select([has_bac, pure_access, is_lengkap], ['BAC Found', 'Data Akses', 'Lengkap'], default='Tidak Lengkap')
+    df_final['shift'] = determine_shift_vectorized(df_final)
 
-    # Vectorized Shift Calculation
-    df_final['shift'] = vectorize_determine_shift(df_final)
-
-    # Cost Center Resolution
+    # Resolusi Cost Center
     m_cc = df_final['history_cc_name'].fillna(df_final['cc_name']).fillna('-')
     m_code = df_final['history_cc_code'].fillna(df_final['dept_code']).fillna('-')
     m_id = df_final['history_cc_id']
@@ -672,7 +645,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     df_final['final_cc_id'] = np.where(use_master, m_id, t_id)
 
     # -------------------------------------------------------------------------
-    # 5. EARLY FILTERING (SEBELUM STRING FORMATTING & SLICING)
+    # TAHAP 5: FILTERING & SORTING
     # -------------------------------------------------------------------------
     if status_filter == 'lengkap': df_final = df_final[df_final['status'] == 'Lengkap']
     elif status_filter == 'bac': df_final = df_final[df_final['status'] == 'BAC Found']
@@ -693,16 +666,15 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         )
         df_final = df_final[match_mask]
 
-    # Urutkan data secara terbalik (terbaru di atas)
+    # Urutkan tanggal dan kode karyawan terbaru
     df_final = df_final.sort_values(by=['clocking_date', 'emp_code'], ascending=[False, False])
     total_item = len(df_final)
 
-    # Jika pemanggil adalah export, langsung kembalikan DataFrame
     if as_dataframe:
         return df_final, total_item
 
     # -------------------------------------------------------------------------
-    # 6. LAZY FORMATTING (HANYA FORMAT BARIS YANG AKAN DITAMPILKAN KE UI)
+    # TAHAP 6: LAZY FORMATTING (HANYA MEMFORMAT 20 BARIS UNTUK UI)
     # -------------------------------------------------------------------------
     if page is not None and pageSize is not None:
         start_idx = (page - 1) * pageSize
@@ -766,7 +738,6 @@ def get_absensi():
         department_id = request.args.get('department', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
 
-        # Engine langsung memotong 20 data teratas di level DataFrame
         paged_rows, total_item = get_absensi_hybrid_data(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
             shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
@@ -787,7 +758,64 @@ def get_absensi():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # =============================================================================
-# 4. EXPORT EXCEL ULTRA-FAST (DENGAN ENGINE OPENPYXL)
+# 2. GET DETAIL BAC TUNGGAL
+# =============================================================================
+@AbsenOs_bp.route('/absensi/bac/<string:employee_id>/<string:clock_date>', methods=['GET'])
+def get_bac(employee_id, clock_date):
+    try:
+        extra_info = BAC_os.query.filter_by(employee_id=employee_id, clock_date=clock_date).first()
+
+        if not extra_info:
+            return jsonify({"clock_in": "", "clock_out": "", "bac_no": "", "bac_ket": "", "evidence_photo": ""}), 200
+        
+        return jsonify({
+            "clock_in": format_dt(extra_info.clock_in, iso=True),
+            "clock_out": format_dt(extra_info.clock_out, iso=True),
+            "bac_no": extra_info.bac_no or "",
+            "bac_ket": extra_info.bac_ket or "",
+            "evidence_photo": extra_info.evidence_photo or ""
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# 3. SAVE / UPDATE BAC TUNGGAL
+# =============================================================================
+@AbsenOs_bp.route('/absensi/bac', methods=['PUT', 'POST'])
+def update_bac():
+    try:
+        data = request.form if request.form else (request.json or {})
+        emp_id = str(data.get('employee_id') or '').strip()
+        clock_date = data.get('clock_date')  
+
+        if not emp_id or not clock_date:
+            return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
+        
+        evidence_path = None
+        if 'evidence_photo' in request.files:
+            file_storage = request.files['evidence_photo']
+            if file_storage and file_storage.filename != '':
+                upload_ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                base_name = f"BAC_{emp_id}_{clock_date}_{upload_ts}"
+                evidence_path = process_and_save_bac_evidence(
+                    file_storage=file_storage, target_folder=BAC_EVIDENCE_FOLDER,
+                    filename_without_ext=base_name, max_width=1000, quality=80
+                )
+        _, is_created = upsert_bac_record(
+            employee_id=emp_id, clock_date=clock_date,
+            bac_no=clean_str(data.get('bac_no')), bac_ket=clean_str(data.get('bac_ket')),
+            clock_in=parse_dt(data.get('clock_in')), clock_out=parse_dt(data.get('clock_out')),
+            evidence_photo=evidence_path
+        )
+        db.session.commit()
+        msg = "BAC Absensi berhasil ditambahkan!" if is_created else "BAC Absensi berhasil diupdate!"
+        return jsonify({"status": "success", "message": msg}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# 4. EXPORT EXCEL ULTRA-FAST (ENGINE OPENPYXL DENGAN LEBAR KOLOM STATIS)
 # =============================================================================
 @AbsenOs_bp.route('/absensi/export', methods=['GET'])
 def export_absensi():
@@ -801,7 +829,6 @@ def export_absensi():
         department_id = request.args.get('department', '', type=str).strip()
         worker_type = request.args.get('worker_type', 'all', type=str).strip()
 
-        # Ambil DataFrame matang langsung dari Fast Engine
         df_export, _ = get_absensi_hybrid_data(
             start_date=start_date, end_date=end_date, status_filter=status_filter,
             shift_filter=shift_filter, search=search, sub_company_id=sub_company_id,
@@ -812,7 +839,7 @@ def export_absensi():
         if df_export.empty:
             return jsonify({"status": "error", "message": "Tidak ada data absensi yang sesuai untuk diekspor."}), 404
 
-        # Bentuk struktur output Excel secara cepat berbasis vektor
+        # Vektorisasi kolom output (tanpa iterasi Python)
         df_out = pd.DataFrame()
         df_out['Employee ID'] = df_export['emp_code']
         df_out['Nama Karyawan'] = df_export['emp_name'].fillna('-')
@@ -844,23 +871,22 @@ def export_absensi():
         header_title = f"DATA ABSENSI KARYAWAN {worker_label} Periode Tanggal: {start_label} Sampai: {end_label}"
 
         output = BytesIO()
-        # Kembalikan engine ke 'openpyxl' sesuai preferensi server Anda
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_out.to_excel(writer, index=False, sheet_name='Absensi_Karyawan', startrow=1)
-            workbook = writer.book
             worksheet = writer.sheets['Absensi_Karyawan']
             
-            # Styling header utama baris pertama
-            from openpyxl.styles import Font
             header_font = Font(name='Calibri', size=11, bold=True)
             worksheet['A1'] = header_title
             worksheet['A1'].font = header_font
             
-            # Auto-fit lebar kolom secara proporsional agar rapi saat dibuka
-            for col in worksheet.columns:
-                max_len = max(len(str(cell.value or '')) for cell in col)
-                col_letter = col[0].column_letter
-                worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+            # Lebar kolom statis (Instant tanpa perulangan sel lambat)
+            col_widths = {
+                'A': 15, 'B': 26, 'C': 10, 'D': 18, 'E': 16,
+                'F': 22, 'G': 15, 'H': 12, 'I': 16, 'J': 14,
+                'K': 14, 'L': 15, 'M': 25, 'N': 15, 'O': 16
+            }
+            for col_letter, width in col_widths.items():
+                worksheet.column_dimensions[col_letter].width = width
 
         output.seek(0)
         filename = f"Export_Absensi_{worker_type.upper()}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"Export_Absensi_{worker_type.upper()}.xlsx"
@@ -876,3 +902,261 @@ def export_absensi():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# 5. SOFT DELETE / EXCLUDE ABSENSI
+# =============================================================================
+@AbsenOs_bp.route('/absensi/delete', methods=['POST', 'DELETE'])
+def delete_absensi():
+    try:
+        data = request.get_json() or request.form or {}
+        emp_id = str(data.get('employee_id') or '').strip()
+        clock_date = str(data.get('clock_date') or '').strip()
+        reason = clean_str(data.get('reason'))
+        deleted_by = clean_str(data.get('deleted_by') or request.headers.get('X-User-Email') or 'Admin')
+        raw_in = str(data.get('clock_in') or '').strip()
+        raw_out = str(data.get('clock_out') or '').strip()        
+        c_in = raw_in if raw_in not in ('', 'null', 'None', 'undefined') else None
+        c_out = raw_out if raw_out not in ('', 'null', 'None', 'undefined') else None
+
+        if not emp_id or not clock_date:
+            return jsonify({"status": "error", "message": "employee_id dan clock_date wajib diisi."}), 400
+            
+        sql_upsert = text("""
+            INSERT INTO attendance_exclusions 
+                (employee_id, clocking_date, clock_in, clock_out, reason, deleted_by, deleted_at, status)
+            VALUES 
+                (:employee_id, :clock_date, :clock_in, :clock_out, :reason, :deleted_by, NOW(), 1)
+            ON DUPLICATE KEY UPDATE 
+                reason = VALUES(reason),
+                deleted_by = VALUES(deleted_by),
+                deleted_at = NOW(),
+                status = 1
+        """)
+        
+        with db.engine.begin() as conn:
+            conn.execute(sql_upsert, {
+                'employee_id': emp_id,
+                'clock_date': clock_date,
+                'clock_in': c_in,
+                'clock_out': c_out,
+                'reason': reason,
+                'deleted_by': deleted_by
+            })
+            
+        return jsonify({
+            "status": "success",
+            "message": f"Data absensi karyawan {emp_id} berhasil dihapus dari laporan."
+        }), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# 6. GENERATE EXCEL TEMPLATE MASS UPDATE
+# =============================================================================
+@AbsenOs_bp.route('/absensi/template', methods=['GET'])
+def template():
+    try:
+        start_date_raw = request.args.get('start_date', '', type=str)
+        end_date_raw = request.args.get('end_date', '', type=str)
+        search = request.args.get('search', '', type=str).strip()
+        sub_company_id = request.args.get('sub_company', '', type=str).strip()
+        department_id = request.args.get('department', '', type=str).strip()
+        shift_filter = request.args.get('shift', '', type=str).strip().upper()
+
+        if not start_date_raw or not end_date_raw:
+            return jsonify({"status": "error", "message": "Parameter start_date dan end_date wajib diisi."}), 400
+
+        query_results = get_absensi_hybrid_data(
+            start_date=start_date_raw,
+            end_date=end_date_raw,
+            status_filter='template_revisi', 
+            shift_filter=shift_filter,
+            search=search,
+            sub_company_id=sub_company_id,
+            department_id=department_id,
+            worker_type='os'
+        )
+        
+        enriched_results = [r for r in query_results if not r.get('bac_id')]
+
+        if not enriched_results:
+            return jsonify({"status": "error", "message": "Tidak ditemukan data absensi tidak lengkap pada filter ini."}), 404
+
+        dynamic_data = []
+        for d in enriched_results:
+            emp_name = d.get('employee_name')
+            if not emp_name or str(emp_name).strip() in ('', '-', 'None', 'null'):
+                emp_name = '-'
+                
+            excel_in = "" if (d.get('clock_in') == 'KOSONG') else d.get('clock_in')
+            excel_out = "" if (d.get('clock_out') == 'KOSONG') else d.get('clock_out')
+
+            dynamic_data.append({
+                "Employee ID": str(d.get('employee_id')),
+                "Nama Karyawan": emp_name,
+                "Sub Company": d.get('subCom') or '-',
+                "Cost Center": d.get('cc') or '-',
+                "Shift": d.get('shift'),
+                "Tanggal Absen": d.get('clocking_date'),
+                "Clocking In": excel_in,
+                "Clocking Out": excel_out,
+                "No BAC": "",
+                "Keterangan BAC": ""
+            })
+
+        df = pd.DataFrame(dynamic_data)
+        num_rows = len(df) + 1
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Template_Import_Revisi')
+            worksheet = writer.sheets['Template_Import_Revisi']
+
+            list_pilihan = '"Kartu Ketinggalan,Kartu Belum Diterima,Kartu Error,Karyawan Lupa Clocking,Dipulangkan"'
+            dv = DataValidation(type="list", formula1=list_pilihan, allow_blank=True)
+            dv.error = 'Mohon pilih keterangan yang tersedia pada list dropdown.'
+            dv.errorTitle = 'Pilihan Tidak Valid'
+
+            worksheet.add_data_validation(dv)
+            dv.add(f"J2:J{num_rows + 100}") 
+
+        output.seek(0)
+        shift_tag = f"_{shift_filter}" if shift_filter else ""
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"Template_Mass_Update_Absen{shift_tag}_{start_date_raw}_to_{end_date_raw}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# =============================================================================
+# 7. UPLOAD EXCEL MASS UPDATE
+# =============================================================================
+@AbsenOs_bp.route('/absensi/upload', methods=['POST'])
+def upload():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'message': 'Mohon pilih file Excel terlebih dahulu.'}), 400
+
+    try:
+        df = pd.read_excel(file, dtype={
+            'Employee ID': str, 
+            'Tanggal Absen': str,
+            'Clocking In': str, 
+            'Clocking Out': str, 
+            'No BAC': str,
+            'Shift': str
+        })
+        
+        df['Employee ID'] = df['Employee ID'].str.strip()
+        df = df.dropna(subset=['Employee ID'])
+        
+        excel_emp_ids = df['Employee ID'].unique().tolist()
+        excel_dates = df['Tanggal Absen'].str[:10].dropna().unique().tolist()
+        
+        existing_bacs = BAC_os.query.filter(
+            BAC_os.employee_id.in_(excel_emp_ids),
+            BAC_os.clock_date.in_(excel_dates)
+        ).all()
+        
+        bac_map = {f"{str(b.employee_id).strip()}_{str(b.clock_date)}": b for b in existing_bacs}
+
+        errors = []
+        success_count = 0
+        new_records = []
+
+        for index, row in df.iterrows():
+            line_number = index + 2
+            emp_id_raw = clean_str(row.get('Employee ID'))
+            
+            try:
+                clock_date_raw = clean_str(row.get('Tanggal Absen'))
+                if not emp_id_raw or not clock_date_raw:
+                    raise ValueError("Kolom 'Employee ID' dan 'Tanggal Absen' tidak boleh kosong.")
+
+                c_in_raw = clean_str(row.get('Clocking In'))
+                c_out_raw = clean_str(row.get('Clocking Out'))
+                ket_bac = clean_str(row.get('Keterangan BAC'))
+                shift_val = clean_str(row.get('Shift')) or ''
+
+                if not c_in_raw and not c_out_raw and not ket_bac:
+                    continue
+
+                if not ket_bac:
+                    raise ValueError("Kolom 'Keterangan BAC' wajib diisi.")
+
+                final_c_in = None
+                if c_in_raw:
+                    combined_in = f"{clock_date_raw[:10]} {c_in_raw}"
+                    final_c_in = parse_dt(combined_in)
+                    if not final_c_in: raise ValueError(f"Format Clocking In ({c_in_raw}) tidak valid.")
+
+                final_c_out = None
+                if c_out_raw:
+                    combined_out = f"{clock_date_raw[:10]} {c_out_raw}"
+                    final_c_out = parse_dt(combined_out)
+                    if not final_c_out: raise ValueError(f"Format Clocking Out ({c_out_raw}) tidak valid.")
+
+                    if final_c_in and final_c_out < final_c_in:
+                        final_c_out += timedelta(days=1)
+                    elif not final_c_in and 'SHIFT 3' in shift_val.upper():
+                        if final_c_out.hour <= 15:
+                            final_c_out += timedelta(days=1)
+
+                bac_key = f"{emp_id_raw}_{clock_date_raw[:10]}"
+                existing_record = bac_map.get(bac_key)
+                
+                if existing_record:
+                    existing_record.bac_no = clean_str(row.get('No BAC'))
+                    existing_record.bac_ket = ket_bac
+                    existing_record.clock_in = final_c_in
+                    existing_record.clock_out = final_c_out
+                else:
+                    new_bac = BAC_os(
+                        employee_id=emp_id_raw,
+                        bac_no=clean_str(row.get('No BAC')),
+                        bac_ket=ket_bac,
+                        clock_date=clock_date_raw[:10],
+                        clock_in=final_c_in,
+                        clock_out=final_c_out,
+                        evidence_photo=None,
+                        status=1
+                    )
+                    new_records.append(new_bac)
+                    bac_map[bac_key] = new_bac 
+
+                success_count += 1
+
+            except ValueError as ve:
+                errors.append(f"Baris {line_number} (ID {emp_id_raw or '-'}): {str(ve)}")
+            except Exception as e:
+                errors.append(f"Baris {line_number} (ID {emp_id_raw or '-'}): Gagal memproses - {str(e)}")
+
+        if new_records:
+            with db.session.begin_nested():
+                db.session.bulk_save_objects(new_records)
+        db.session.commit()
+
+        if success_count > 0:
+            status = "success" if not errors else "partial_success"
+            msg = f"Berhasil memproses {success_count} baris data absensi."
+            return jsonify({"status": status, "message": msg, "errors": errors}), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Tidak ada data yang diproses. Periksa kembali file Excel Anda.",
+                "errors": errors
+            }), 400
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"Terjadi kesalahan sistem: {str(e)}"}), 500
