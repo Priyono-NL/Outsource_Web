@@ -413,13 +413,19 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
         if active_fallback_config:
             acc_sql = text("""
-                SELECT CAST(v.card_id AS CHAR) as card_id, v.clocking_date AS tap_time
+                SELECT
+                    CAST(v.card_id AS CHAR) AS card_id,
+                    v.clocking_date AS tap_time,
+                    UPPER(TRIM(COALESCE(v.direction, ''))) AS direction
                 FROM vw_tactitives_non_attendance v
                 INNER JOIN tmp_cards_filter tmp ON v.card_id = tmp.card_id
                 WHERE v.clocking_date >= :start_date AND v.clocking_date <= :end_date_2359
                 AND v.tags LIKE '%Access%'
             """)
-            acc_rows = conn.execute(acc_sql, {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
+            acc_rows = conn.execute(acc_sql, {
+                'start_date': prev_day_str,
+                'end_date_2359': f"{end_date} 23:59:59"
+            }).mappings().fetchall()
             
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_cards_filter"))
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_emps_filter"))
@@ -535,10 +541,34 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             card_to_emp = dict(zip(df_master['master_card_id'], df_master['emp_code']))
             df_access['emp_code'] = df_access['card_id'].map(card_to_emp)
             df_access = df_access.dropna(subset=['emp_code'])
+
             if not df_access.empty:
-                df_access = df_access.groupby(['emp_code', 'clocking_date'], as_index=False).agg({'tap_time': ['min', 'max']})
-                df_access.columns = ['emp_code', 'clocking_date', 'access_in', 'access_out']
-                df_access.loc[df_access['access_in'] == df_access['access_out'], 'access_out'] = pd.NaT
+                def resolve_access_in_out(group):
+                    in_taps = group.loc[group['direction'] == 'IN', 'tap_time']
+                    out_taps = group.loc[group['direction'] == 'OUT', 'tap_time']
+
+                    a_in = in_taps.min() if not in_taps.empty else None
+                    a_out = out_taps.max() if not out_taps.empty else None
+
+                    if pd.isna(a_in) and pd.isna(a_out):
+                        min_t = group['tap_time'].min()
+                        max_t = group['tap_time'].max()
+                        if min_t == max_t:
+                            if min_t.hour >= 11:
+                                a_out = min_t
+                            else:
+                                a_in = min_t
+                        else:
+                            a_in = min_t
+                            a_out = max_t
+
+                    return pd.Series({'access_in': a_in, 'access_out': a_out})
+
+                df_access = (
+                    df_access.groupby(['emp_code', 'clocking_date'], as_index=False)
+                    .apply(resolve_access_in_out)
+                    .reset_index(drop=True)
+                )
 
     if df_att.empty and df_bac.empty and df_access.empty:
         return []
@@ -607,9 +637,16 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         
         is_patched_by_access = False
         if r['clocking_date'] in active_fallback_config:
-            if active_fallback_config[r['clocking_date']] == 'ALL' or (active_fallback_config[r['clocking_date']] == 'OS' and len(str(r['emp_code']).strip()) == 5):
-                if pd.isnull(eff_in) and pd.notnull(a_in): eff_in, is_patched_by_access = a_in, True
-                if pd.isnull(eff_out) and pd.notnull(a_out): eff_out, is_patched_by_access = a_out, True
+            cfg_target = str(active_fallback_config[r['clocking_date']]).strip().upper()
+            is_os_worker = len(str(r['emp_code']).strip()) == 5
+            is_valid_target = (cfg_target in ('ALL', 'TRUE', '1')) or (cfg_target == 'OS' and is_os_worker) or is_os_worker
+            if is_valid_target:
+                if pd.isnull(eff_in) and pd.notnull(a_in):
+                    eff_in = a_in
+                    is_patched_by_access = True
+                if pd.isnull(eff_out) and pd.notnull(a_out):
+                    eff_out = a_out
+                    is_patched_by_access = True
         
         if pd.isnull(eff_in) and pd.isnull(eff_out): continue
 
