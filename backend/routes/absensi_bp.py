@@ -673,6 +673,8 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if as_dataframe:
         return df_final, total_item
 
+    df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
+
     # -------------------------------------------------------------------------
     # TAHAP 6: LAZY FORMATTING (HANYA MEMFORMAT 20 BARIS UNTUK UI)
     # -------------------------------------------------------------------------
