@@ -235,10 +235,12 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     """)
 
     sql_os = text(f"""
-        SELECT CAST(e.id AS CHAR) AS emp_pk_id, CAST(e.employee_code AS CHAR) AS emp_code, p.name AS emp_name, 
+        SELECT CAST(e.id AS CHAR) AS emp_pk_id, CAST(e.employee_code AS CHAR) AS emp_code, p.name AS emp_name,
                c.card_number AS master_card_id, COALESCE(p.gender, '-') AS gender, e.sub_company_id, sc.sub_company_name,
-               COALESCE(t.type_worker, 'OS') AS emp_type, COALESCE(e.use_cc, 0) AS use_cc, e.valid_from, 
-               COALESCE(CASE WHEN e.valid_to > '2099-12-31' THEN '2099-12-31' ELSE e.valid_to END, '2099-12-31') AS valid_to
+               COALESCE(t.type_worker, 'OS') AS emp_type, COALESCE(e.use_cc, 0) AS use_cc, e.valid_from  AS valid_from,
+               COALESCE(CASE WHEN e.valid_to > '2099-12-31' THEN '2099-12-31' ELSE e.valid_to END, '2099-12-31') AS valid_to,
+               COALESCE(c.valid_from, '2000-01-01') AS card_valid_from,
+               COALESCE(c.valid_to, '2099-12-31') AS card_valid_to
         FROM os_employment e
         JOIN os_person p ON p.person_id = e.person_id
         LEFT JOIN sub_company sc ON sc.sub_company_id = e.sub_company_id
@@ -269,9 +271,10 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
     # 📌 REINDEX SCHEMA MASTER (Mencegah KeyError 'cc_name' dan 'dept_code')
     standard_columns = [
-        'emp_pk_id', 'emp_code', 'emp_name', 'master_card_id', 'gender', 
-        'sub_company_id', 'sub_company_name', 'dept_code', 'cc_name', 
-        'emp_type', 'use_cc', 'valid_from', 'valid_to'
+        'emp_pk_id', 'emp_code', 'emp_name', 'master_card_id', 'gender',
+        'sub_company_id', 'sub_company_name', 'dept_code', 'cc_name',
+        'emp_type', 'use_cc', 'valid_from', 'valid_to',
+        'card_valid_from', 'card_valid_to'
     ]
     df_master = df_master.reindex(columns=standard_columns)
 
@@ -351,7 +354,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         bac_rows_os = conn.execute(text("""
             SELECT CAST(b.employee_id AS CHAR) AS emp_code, DATE(b.clock_date) AS clocking_date, b.id AS bac_id, 
                    b.bac_no, b.bac_ket, b.clock_in AS bac_in, b.clock_out AS bac_out, 
-                   b.evidence_photo, b.created_by AS bac_updated_by, b.created_date AS bac_updated_date
+                   b.evidence_photo, b.modified_by AS bac_updated_by, b.modified_date AS bac_updated_date
             FROM bac_os b
             INNER JOIN tmp_emps_filter tmp ON CAST(b.employee_id AS CHAR) = tmp.emp_code
             WHERE b.status = 1 AND b.clock_date >= :start_date AND b.clock_date <= :end_date
@@ -418,7 +421,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_raw_full['prev_tap'] = df_raw_full.groupby('card_id')['tap_time'].shift(1)
         time_gap = (df_raw_full['tap_time'] - df_raw_full['prev_tap']).dt.total_seconds()
 
-        mask_cross_1 = (df_raw_full['tap_time'].dt.hour.between(0, 11) & (df_raw_full['prev_tap'].dt.hour >= 15) & (time_gap <= 16 * 3600) & (time_gap >= 0))
+        mask_cross_1 = (df_raw_full['tap_time'].dt.hour.between(0, 11) & (df_raw_full['prev_tap'].dt.hour >= 15) & (time_gap <= 12 * 3600) & (time_gap >= 0))
         mask_cross_2 = (df_raw_full['tap_time'].dt.hour.between(0, 11)) & mask_cross_1.shift(1).fillna(False) & (df_raw_full['card_id'] == df_raw_full['card_id'].shift(1)) & (time_gap <= 8 * 3600)
         mask_cross_3 = (df_raw_full['tap_time'].dt.hour.between(0, 11)) & mask_cross_2.shift(1).fillna(False) & (df_raw_full['card_id'] == df_raw_full['card_id'].shift(1)) & (time_gap <= 8 * 3600)
 
@@ -462,11 +465,12 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if not df_att.empty:
         df_att['clocking_date'] = pd.to_datetime(df_att['clocking_date']).dt.strftime('%Y-%m-%d')
         df_att['card_id'] = df_att['card_id'].astype(str).str.strip()
-        master_map = df_master[['master_card_id', 'emp_code', 'valid_from', 'valid_to']].dropna(subset=['master_card_id'])
+        master_map = df_master[['master_card_id', 'emp_code', 'card_valid_from', 'card_valid_to']].dropna(subset=['master_card_id'])
         df_att_merged = pd.merge(df_att, master_map, left_on='card_id', right_on='master_card_id', how='inner')
-        df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['valid_to'])
+        df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['card_valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['card_valid_to'])
+        df_att_merged = df_att_merged[df_att_merged['is_exact'] == True]
         df_att_merged = df_att_merged.sort_values(by=['emp_code', 'clocking_date', 'source', 'terminal_cc_name', 'is_exact'], ascending=[True, True, True, False, False], na_position='last')
-        df_att = df_att_merged.drop(columns=['master_card_id', 'valid_from', 'valid_to', 'is_exact', 'source'])
+        df_att = df_att_merged.drop(columns=['master_card_id', 'card_valid_from', 'card_valid_to', 'is_exact', 'source'])
         if not df_att.empty:
             df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
                 'card_id': 'first', 'ta_in': 'first', 'ta_out': 'first', 'ta_flag': 'first',
@@ -553,11 +557,40 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if df_trans.empty: 
         return empty_return()
 
-    df_final = pd.merge(df_master, df_trans, on='emp_code', how='inner')
-    df_final = df_final[(df_final['valid_from'] <= df_final['clocking_date']) & 
-                        (df_final['valid_to'] >= df_final['clocking_date']) & 
-                        (df_final['clocking_date'] >= start_date) & 
-                        (df_final['clocking_date'] <= end_date)]
+    if not df_trans.empty and 'card_id' in df_trans.columns:
+        temp_merge = pd.merge(
+            df_trans,
+            df_master[['emp_code', 'master_card_id', 'valid_from', 'valid_to']],
+            on='emp_code',
+            how='left'
+        )
+        valid_card_mask = (temp_merge['clocking_date'] >= temp_merge['valid_from']) & (temp_merge['clocking_date'] <= temp_merge['valid_to'])
+
+        temp_merge['card_id'] = np.where(
+            temp_merge['card_id'].isna() & valid_card_mask,
+            temp_merge['master_card_id'],
+            temp_merge['card_id']
+        )
+
+        temp_merge['has_card'] = temp_merge['card_id'].notna()
+        temp_merge = temp_merge.sort_values(by=['emp_code', 'clocking_date', 'has_card'], ascending=[True, True, False])
+        temp_merge = temp_merge.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
+
+        df_trans = temp_merge.drop(columns=['master_card_id', 'valid_from', 'valid_to', 'has_card']).reset_index(drop=True)
+
+    df_final = pd.merge(
+        df_master,
+        df_trans,
+        left_on=['emp_code', 'master_card_id'],
+        right_on=['emp_code', 'card_id'],
+        how='inner'
+    )
+    df_final = df_final[
+        (df_final['clocking_date'] >= df_final['valid_from']) &
+        (df_final['clocking_date'] <= df_final['valid_to']) &
+        (df_final['clocking_date'] >= start_date) &
+        (df_final['clocking_date'] <= end_date)
+    ]
     df_final = df_final.drop_duplicates(subset=['emp_code', 'clocking_date'], keep='first')
 
     has_os_data = df_final['emp_pk_id'].notnull().any() if not df_final.empty else False
@@ -625,7 +658,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
 
     df_final = df_final[df_final['eff_in'].notna() | df_final['eff_out'].notna()].copy()
     if df_final.empty:
-        return (pd.DataFrame(), 0) if as_dataframe else ([] if page is not None else [])
+        return empty_return()
 
     # Vektorisasi Status
     has_bac = df_final['bac_in'].notna() | df_final['bac_out'].notna()
