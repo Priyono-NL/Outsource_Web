@@ -303,6 +303,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     end_dt_obj = datetime.strptime(end_date, '%Y-%m-%d')
     prev_day_str = (start_dt_obj - timedelta(days=1)).strftime('%Y-%m-%d')
     end_date_tac = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d 09:00:00')
+    end_date_att = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d')
 
     with db.engine.connect() as conn:
         # Collation eksplisit mencegah Error 1267
@@ -329,7 +330,7 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
             FROM `db-webapps`.TBL_ATTENDANCE ta
             INNER JOIN tmp_cards_filter tmp ON ta.card_id = tmp.card_id
             WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
-        """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
+        """), {'start_date': prev_day_str, 'end_date': end_date_att}).mappings().fetchall()
 
         # Query lean tanpa JOIN lambat ke terminal_master
         raw_rows = conn.execute(text("""
