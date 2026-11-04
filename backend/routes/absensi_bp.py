@@ -481,10 +481,35 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     df_bac = pd.DataFrame([dict(r) for r in bac_rows])
     if not df_bac.empty:
         df_bac['emp_code'] = df_bac['emp_code'].astype(str).str.strip()
-        df_bac['clocking_date'] = pd.to_datetime(df_bac['clocking_date']).dt.strftime('%Y-%m-%d')
-        df_bac = df_bac.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
-            'bac_id': 'max', 'bac_no': 'max', 'bac_ket': 'max', 'bac_in': 'max', 'bac_out': 'max',
-            'evidence_photo': 'max', 'bac_updated_by': 'max', 'bac_updated_date': 'max'
+        df_bac['clocking_date'] = (
+            pd.to_datetime(df_bac['clocking_date']).dt.strftime('%Y-%m-%d')
+        )
+
+        df_bac['bac_in'] = pd.to_datetime(df_bac['bac_in'])
+        df_bac['bac_out'] = pd.to_datetime(df_bac['bac_out'])
+        df_bac['bac_updated_date'] = pd.to_datetime(df_bac['bac_updated_date'])
+
+        df_bac['has_info'] = (
+            df_bac['bac_in'].notna()
+            | df_bac['bac_out'].notna()
+            | df_bac['bac_no'].notna()
+        )
+        df_bac = df_bac.sort_values(
+            by=['emp_code', 'clocking_date', 'bac_id', 'has_info'],
+            ascending=[True, True, False, False],
+        )
+
+        df_bac = df_bac.groupby(
+            ['emp_code', 'clocking_date'], as_index=False
+        ).agg({
+            'bac_id': 'max',
+            'bac_no': 'first',
+            'bac_ket': 'first',
+            'bac_in': 'max',
+            'bac_out': 'max',
+            'evidence_photo': 'first',
+            'bac_updated_by': 'first',
+            'bac_updated_date': 'max',
         })
 
     # Vektorisasi penentuan Access Taps (Bypass lambda loop)
