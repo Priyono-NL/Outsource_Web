@@ -1,4 +1,5 @@
 import os
+import gc
 from io import BytesIO
 from datetime import datetime, timedelta
 import pandas as pd
@@ -308,81 +309,61 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     end_date_tac = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d 09:00:00')
     end_date_att = (end_dt_obj + timedelta(days=1)).strftime('%Y-%m-%d')
 
+    card_in_clause = ", ".join(f"'{c}'" for c in card_set) if card_set else "''"
+    emp_in_clause = ", ".join(f"'{e}'" for e in emp_set) if emp_set else "''"
+
     with db.engine.connect() as conn:
-        # Collation eksplisit mencegah Error 1267
-        conn.execute(text("""
-            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_cards_filter (
-                card_id VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci PRIMARY KEY
-            ) ENGINE=MEMORY
-        """))
-        conn.execute(text("""
-            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_emps_filter (
-                emp_code VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci PRIMARY KEY
-            ) ENGINE=MEMORY
-        """))
-        conn.execute(text("TRUNCATE TABLE tmp_cards_filter"))
-        conn.execute(text("TRUNCATE TABLE tmp_emps_filter"))
-
-        if card_set:
-            conn.execute(text("INSERT IGNORE INTO tmp_cards_filter (card_id) VALUES (:cid)"), [{'cid': c} for c in card_set])
-        if emp_set:
-            conn.execute(text("INSERT IGNORE INTO tmp_emps_filter (emp_code) VALUES (:eid)"), [{'eid': e} for e in emp_set])
-
-        att_rows = conn.execute(text("""
+        att_rows = conn.execute(text(f"""
             SELECT ta.card_id, DATE(ta.clocking_date) AS clocking_date, ta.clock_in AS ta_in, ta.clock_out AS ta_out, ta.flag AS ta_flag
             FROM `db-webapps`.TBL_ATTENDANCE ta
-            INNER JOIN tmp_cards_filter tmp ON ta.card_id = tmp.card_id
             WHERE ta.clocking_date >= :start_date AND ta.clocking_date <= :end_date
+            AND ta.card_id IN ({card_in_clause})
         """), {'start_date': prev_day_str, 'end_date': end_date_att}).mappings().fetchall()
 
-        # Query lean tanpa JOIN lambat ke terminal_master
-        raw_rows = conn.execute(text("""
+        raw_rows = conn.execute(text(f"""
             SELECT tt.CARD_ID AS card_id, tt.CLOCKING_DATE AS tap_time, tt.TERMINAL_ID AS terminal_id
             FROM `db-webapps`.TBL_TACTIVITIES tt
-            INNER JOIN tmp_cards_filter tmp ON tt.CARD_ID = tmp.card_id
             WHERE tt.CLOCKING_DATE >= :start_date AND tt.CLOCKING_DATE <= :end_date
+            AND tt.CARD_ID IN ({card_in_clause})
         """), {'start_date': prev_day_str, 'end_date': end_date_tac}).mappings().fetchall()
 
-        ex_rows = conn.execute(text("""
+        ex_rows = conn.execute(text(f"""
             SELECT CAST(e.employee_id AS CHAR) AS emp_code, DATE(e.clocking_date) AS clocking_date, 
                    e.clock_in AS ex_in, e.clock_out AS ex_out, e.reason AS ex_reason, e.deleted_at AS ex_created_at
             FROM attendance_exclusions e
-            INNER JOIN tmp_emps_filter tmp ON CAST(e.employee_id AS CHAR) = tmp.emp_code
             WHERE e.status = 1 AND e.clocking_date >= :start_date AND e.clocking_date <= :end_date 
+            AND CAST(e.employee_id AS CHAR) IN ({emp_in_clause})
         """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
 
-        bac_rows_os = conn.execute(text("""
+        bac_rows_os = conn.execute(text(f"""
             SELECT CAST(b.employee_id AS CHAR) AS emp_code, DATE(b.clock_date) AS clocking_date, b.id AS bac_id, 
                    b.bac_no, b.bac_ket, b.clock_in AS bac_in, b.clock_out AS bac_out, 
                    b.evidence_photo, b.modified_by AS bac_updated_by, b.modified_date AS bac_updated_date
             FROM bac_os b
-            INNER JOIN tmp_emps_filter tmp ON CAST(b.employee_id AS CHAR) = tmp.emp_code
             WHERE b.status = 1 AND b.clock_date >= :start_date AND b.clock_date <= :end_date
+            AND CAST(b.employee_id AS CHAR) IN ({emp_in_clause})
         """), {'start_date': prev_day_str, 'end_date': end_date}).mappings().fetchall()
 
-        bac_rows_ta = conn.execute(text("""
+        bac_rows_ta = conn.execute(text(f"""
             SELECT CAST(t.nrp AS CHAR) AS emp_code, DATE(t.submit_at) AS clocking_date, t.id AS bac_id, 
                    'BAC' AS bac_no, 'BAC (kiosk/backdate)' AS bac_ket, 
                    CASE WHEN t.direction = 0 THEN t.submit_at ELSE NULL END AS bac_in, 
                    CASE WHEN t.direction = 1 THEN t.submit_at ELSE NULL END AS bac_out, 
                    NULL AS evidence_photo, 'system' AS bac_updated_by, t.submit_at AS bac_updated_date
             FROM `db-webapps`.transaksi_absen t
-            INNER JOIN tmp_emps_filter tmp ON CAST(t.nrp AS CHAR) = tmp.emp_code
             WHERE t.status IN (2, 7) AND t.submit_at >= :start_date AND t.submit_at <= :end_date_2359
+            AND CAST(t.nrp AS CHAR) IN ({emp_in_clause})
         """), {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
 
         acc_rows = []
         if active_fallback_config:
-            acc_rows = conn.execute(text("""
+            acc_rows = conn.execute(text(f"""
                 SELECT CAST(v.card_id AS CHAR) AS card_id, v.clocking_date AS tap_time,
                        UPPER(TRIM(COALESCE(v.direction, ''))) AS direction
                 FROM vw_tactitives_non_attendance v
-                INNER JOIN tmp_cards_filter tmp ON v.card_id = tmp.card_id
                 WHERE v.clocking_date >= :start_date AND v.clocking_date <= :end_date_2359 AND v.tags LIKE '%Access%'
+                AND v.card_id IN ({card_in_clause})
             """), {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
-
-        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_cards_filter"))
-        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_emps_filter"))
 
     bac_rows = list(bac_rows_os) + list(bac_rows_ta)
 
@@ -482,6 +463,12 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if not df_bac.empty:
         df_bac['emp_code'] = df_bac['emp_code'].astype(str).str.strip()
         df_bac['clocking_date'] = pd.to_datetime(df_bac['clocking_date']).dt.strftime('%Y-%m-%d')
+        
+        text_cols = ['bac_no', 'bac_ket', 'evidence_photo', 'bac_updated_by']
+        for col in text_cols:
+            if col in df_bac.columns:
+                df_bac[col] = df_bac[col].fillna('')
+
         df_bac = df_bac.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
             'bac_id': 'max', 'bac_no': 'max', 'bac_ket': 'max', 'bac_in': 'max', 'bac_out': 'max',
             'evidence_photo': 'max', 'bac_updated_by': 'max', 'bac_updated_date': 'max'
@@ -712,8 +699,6 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
     if as_dataframe:
         return df_final, total_item
 
-    df_final = df_final.astype(object).replace({np.nan: None, pd.NaT: None})
-
     # -------------------------------------------------------------------------
     # TAHAP 6: LAZY FORMATTING (HANYA MEMFORMAT 20 BARIS UNTUK UI)
     # -------------------------------------------------------------------------
@@ -723,6 +708,10 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_slice = df_final.iloc[start_idx:end_idx].copy()
     else:
         df_slice = df_final.copy()
+
+    del df_final
+    gc.collect()
+    df_slice = df_slice.astype(object).replace({np.nan: None, pd.NaT: None})
 
     formatted_data = []
     for _, r in df_slice.iterrows():

@@ -1,7 +1,10 @@
 from flask import Flask, request, Response
 from datetime import timedelta
+from sqlalchemy.pool import NullPool
+
 from extensions import db
 from config import Config
+
 from routes.auth_bp import auth_bp
 from routes.permission_bp import permission_bp
 from routes.costCenter_bp import costCenter_bp
@@ -32,6 +35,16 @@ from routes.guest_bp import guest_bp
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'poolclass': NullPool,
+    }
+
+    app.config['SQLALCHEMY_BINDS_ENGINE_OPTIONS'] = {
+        'db-hr': {'poolclass': NullPool},
+        'db-it-andreas': {'poolclass': NullPool},
+        'db-webapps': {'poolclass': NullPool}
+    }
 
     ALLOWED_ORIGINS = Config.CORS_ORIGINS
     if isinstance(ALLOWED_ORIGINS, str):
