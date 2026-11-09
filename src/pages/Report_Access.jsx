@@ -235,8 +235,7 @@ const Report_Access = () => {
         <LoadingButton
           loading={isExporting}
           loadingText="Mengunduh..."
-          className="btn btn-sm btn-success shadow-sm"
-          style={{ height: '34px', fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
+          className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExportExcel}
           disabled={isExporting || isFilterDirty}

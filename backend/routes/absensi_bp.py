@@ -358,11 +358,16 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         acc_rows = []
         if active_fallback_config:
             acc_rows = conn.execute(text(f"""
-                SELECT CAST(v.card_id AS CHAR) AS card_id, v.clocking_date AS tap_time,
-                       UPPER(TRIM(COALESCE(v.direction, ''))) AS direction
-                FROM vw_tactitives_non_attendance v
-                WHERE v.clocking_date >= :start_date AND v.clocking_date <= :end_date_2359 AND v.tags LIKE '%Access%'
-                AND v.card_id IN ({card_in_clause})
+                SELECT CAST(act.CARD_ID AS CHAR) AS card_id, 
+                       act.CLOCKING_DATE AS tap_time,
+                       UPPER(TRIM(COALESCE(tm.direction, ''))) AS direction
+                FROM `db-worksync`.`TBL_TACTIVITIES` act
+                JOIN `db-hr`.`terminal_master` tm ON act.TERMINAL_ID = tm.node_id
+                WHERE act.CLOCKING_DATE >= :start_date 
+                  AND act.CLOCKING_DATE <= :end_date_2359 
+                  AND act.CARD_ID IN ({card_in_clause})
+                  AND tm.company_id = '1111'
+                  AND tm.tags LIKE '%access%' COLLATE utf8mb4_general_ci
             """), {'start_date': prev_day_str, 'end_date_2359': f"{end_date} 23:59:59"}).mappings().fetchall()
 
     bac_rows = list(bac_rows_os) + list(bac_rows_ta)

@@ -211,8 +211,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     # ZERO-ZOMBIE POLICY: Tarik Cepat, Tutup Seketika
     with db.engine.connect() as conn:
         df_k = pd.read_sql(text(sql_karyawan), conn, params=params)
-        
-        # Stop komputasi jika filter UI tidak menemukan karyawan satupun
         if df_k.empty: return []
         
         df_k.columns = df_k.columns.str.lower()
@@ -237,12 +235,7 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
                    CONVERT(c.card_number USING utf8mb4) COLLATE utf8mb4_unicode_ci AS card_id 
             FROM os_card c 
             JOIN os_employment e ON e.id = c.employee_id
-            WHERE e.employee_code IN :emp_ids AND c.card_number IS NOT NULL AND c.card_number != ''
-            
-            -- [!] PENTING UNTUK KARYAWAN TETAP: 
-            -- Jika ada tabel khusus riwayat kartu tetap, uncomment baris di bawah:
-            -- UNION 
-            -- SELECT employee_id AS emp_id, old_card_no AS card_id FROM history_kartu_tetap WHERE employee_id IN :emp_ids
+            WHERE e.employee_code IN :emp_ids AND c.card_number IS NOT NULL AND c.card_number != ''            
         """)
         
         # Bentuk Jembatan Mapping (emp_id <-> card_id)
@@ -259,11 +252,21 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         # Menambahkan IN :card_ids mencegah MySQL Full Table Scan!
         # =====================================================================
         sql_absen = text("""
-            SELECT CARD_ID, CLOCKING_DATE, DIRECTION, TAGS, TERMINAL_ID 
-            FROM vw_tactitives_non_attendance
-            WHERE CLOCKING_DATE BETWEEN :start_dt AND :end_dt
-              AND CARD_ID IN :card_ids
-              AND (FIND_IN_SET('access', LOWER(TAGS)) > 0 OR FIND_IN_SET('break', LOWER(TAGS)) > 0)
+            SELECT 
+                act.CARD_ID, 
+                act.CLOCKING_DATE, 
+                tm.direction AS DIRECTION, 
+                tm.tags AS TAGS, 
+                act.TERMINAL_ID 
+            FROM `db-worksync`.`TBL_TACTIVITIES` act
+            JOIN `db-hr`.`terminal_master` tm ON act.TERMINAL_ID = tm.node_id
+            WHERE act.CLOCKING_DATE BETWEEN :start_dt AND :end_dt
+              AND act.CARD_ID IN :card_ids
+              AND tm.company_id = '1111'
+              AND (
+                  tm.tags LIKE '%access%' COLLATE utf8mb4_general_ci OR 
+                  tm.tags LIKE '%break%' COLLATE utf8mb4_general_ci
+              )
         """)
 
         sql_makan = text("""
@@ -290,7 +293,7 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         df_a['clocking_date'] = pd.to_datetime(df_a['clocking_date'])
         df_a['logical_date'] = (df_a['clocking_date'] - pd.Timedelta(hours=5)).dt.strftime('%Y-%m-%d')
         df_a['time_str'] = df_a['clocking_date'].dt.strftime('%H:%M:%S')
-        df_a['is_sat'] = df_a['clocking_date'].dt.dayofweek == 5
+        df_a['is_sat'] = df_a['clocking_date'].dt.dayofweek == 5        
 
         # PANDAS: TIME-WINDOW VECTORIZATION (Pengganti CASE WHEN di SQL)
         m_sat1 = (df_a['time_str'] >= '11:00:00') & (df_a['time_str'] <= '15:00:00')
@@ -302,6 +305,8 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         m_nsat2 = (df_a['time_str'] >= '16:30:00') & (df_a['time_str'] <= '20:30:00')
         m_nsat3 = (df_a['time_str'] >= '02:00:00') & (df_a['time_str'] <= '06:00:00')
         m_nsat_valid = ~df_a['is_sat'] & (m_nsat1 | m_nsat2 | m_nsat3)
+        
+        df_a = df_a.sort_values(['card_id', 'clocking_date'])
 
         is_valid_break_time = m_sat_valid | m_nsat_valid
 
@@ -309,9 +314,7 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         is_acc = df_a['tags'].str.contains('access', case=False, na=False)
         is_brk = df_a['tags'].str.contains('break', case=False, na=False) & is_valid_break_time
         is_in = df_a['direction'].isin(['IN', '0'])
-        is_out = df_a['direction'].isin(['OUT', '1'])
-
-        df_a = df_a.sort_values(['card_id', 'clocking_date'])
+        is_out = df_a['direction'].isin(['OUT', '1'])        
 
         # PANDAS: AGGREGATE EXACT TIMEFRAME & NODE
         df_acc_in = df_a[is_acc & is_in].groupby(['card_id', 'logical_date']).agg(
@@ -378,7 +381,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         return []
 
     # 2. RENDER MASTER TABLE
-    # Base spine di-join dengan Karyawan, Access, Break, dan Kantin
     df_final = pd.merge(df_spine, df_k, on=['emp_id'], how='left')
     
     if not df_acc_in.empty: df_final = pd.merge(df_final, df_acc_in, on=['card_id', 'logical_date'], how='left')
@@ -408,8 +410,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     df_final = df_final.astype(object).where(pd.notnull(df_final), None)
     df_final.rename(columns={'logical_date': 'ref_date'}, inplace=True)
     
-    # UI akan menampilkan data menggunakan 'card_number' dari Master yang merupakan kartu aktif terbaru,
-    # Namun data transaksi yang ditarik adalah kompilasi dari seluruh riwayat kartu historis milik emp_id.
     return df_final.to_dict(orient='records')
 
 # =============================================================================
@@ -483,9 +483,13 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if pd.isna(out_dt) and pd.isna(in_dt) and pd.isna(makan_dt):
             continue
 
-        start_break_dt = out_dt if pd.notna(out_dt) else makan_dt
-        
-        # 3. PERHITUNGAN STATUS & MENIT
+        start_break_dt = out_dt if pd.notna(out_dt) else makan_dt 
+        gender = row.get('gender') if isinstance(row, dict) else row['gender']
+        trans_date = start_break_dt if pd.notna(start_break_dt) else in_dt
+        if hasattr(trans_date, 'date'):
+            trans_date = trans_date.date()
+
+        # --- 3. PERHITUNGAN STATUS & MENIT ---
         total_mins = 0
         status = "Lengkap (Normal)"
         
@@ -504,16 +508,33 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
                 total_mins = 0
             else:
                 total_mins = calculated_mins
-                if total_mins > 90: status = "> 90 Menit"
-                elif total_mins >= 65: status = "> 65 Menit"
-                elif total_mins > 60: status = "> 60 Menit"
-
+                is_friday = trans_date.weekday() == 4 if hasattr(trans_date, 'weekday') else False
+                # is_male = str(gender).strip().upper() in ['L', 'MALE', 'PRIA', '1'] and is_male
+                if is_friday:
+                    if total_mins > 90:
+                        status = "> 90 Menit"
+                    else:
+                        status = "Lengkap (Normal)"
+                else:
+                    if total_mins >= 65:
+                        status = "> 65 Menit"
+                    elif total_mins > 60:
+                        status = "> 60 Menit"
+                    else:
+                        status = "Lengkap (Normal)"
+                    
+        # --- 4. FILTER STATUS ---
         if status_filter != 'all_data':
-            if status_filter == 'lengkap' and status != 'Lengkap (Normal)': continue
-            elif status_filter == 'tidak_lengkap' and not status.startswith('Tidak Lengkap'): continue
-            elif status_filter == 'over60' and total_mins <= 60: continue
-            elif status_filter == 'over65' and total_mins < 65: continue
-            elif status_filter == 'over90' and total_mins <= 90: continue
+            if status_filter == 'lengkap' and status != 'Lengkap (Normal)':
+                continue
+            elif status_filter == 'tidak_lengkap' and not status.startswith('Tidak Lengkap'):
+                continue
+            elif status_filter == 'over60' and status != '> 60 Menit':
+                continue
+            elif status_filter == 'over65' and status != '> 65 Menit':
+                continue
+            elif status_filter == 'over90' and status != '> 90 Menit':
+                continue
 
         seen_records.add(unique_key)
         report_data.append({

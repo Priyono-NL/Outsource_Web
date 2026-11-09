@@ -22,8 +22,21 @@ const Report_Break = () => {
     return `${yyyy}-${mm}-${dd}`;
   };
 
+  const checkIsFridayPeriod = (start, end) => {
+    if (!start || !end) return false;
+    const s = new Date(start);
+    const e = new Date(end);    
+    if (start === end) return s.getDay() === 5;
+    let cur = new Date(s);
+    while (cur <= e) {
+      if (cur.getDay() === 5) return true;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return false;
+  };  
+
   const crud = useCrudPage();
-  const todayStr = getTodayString();
+  const todayStr = getTodayString();  
   const { user } = useAuth();
 
   // Flag Pembatasan Hak Akses SSO
@@ -60,6 +73,7 @@ const Report_Break = () => {
   // --- ACTION LOADING STATES ---
   const [isExporting, setIsExporting]             = useState(false);
   const [isApplyingFilter, setIsApplyingFilter]   = useState(false);
+  const isFriday = checkIsFridayPeriod(startDate, endDate);
 
   useEffect(() => {
     const load = async () => {
@@ -96,6 +110,13 @@ const Report_Break = () => {
     };
     if (user) load();
   }, [user]);
+
+  useEffect(() => {
+    const isValid = statusOptions.some(opt => opt.value === statusInput);
+    if (!isValid) {
+      setStatusInput('all_data');
+    }
+  }, [isFriday]);
 
   const handleFilterChange = (setter, value) => {
     setter(value);
@@ -208,13 +229,14 @@ const Report_Break = () => {
         ...departments.map(d => ({ value: d.id, label: d.org_name })),
       ];
 
+  // --- STATUS OPTIONS DINAMIS ---
   const statusOptions = [
     { value: 'all_data', label: 'Semua Status' },
     { value: 'lengkap', label: 'Lengkap (Normal)' },
     { value: 'tidak_lengkap', label: 'Tidak Lengkap' },
     { value: 'over60', label: '> 60 menit' },    
     { value: 'over65', label: '> 65 menit' },
-    { value: 'over90', label: '> 90 menit (male only)' },
+    ...(isFriday ? [{ value: 'over90', label: '> 90 menit (Khusus Laki-laki Jumat)' }] : [])
   ];
 
   const shiftOptions = [
@@ -248,8 +270,7 @@ const Report_Break = () => {
         <LoadingButton
           loading={isExporting}
           loadingText="Mengunduh..."
-          className="btn btn-sm btn-success shadow-sm"
-          style={{ height: '34px', fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
+          className="btn-app btn-success-app"
           icon="bi bi-file-earmark-excel"
           onClick={handleExportExcel}
           disabled={isExporting || isFilterDirty}
