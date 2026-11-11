@@ -311,23 +311,29 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         is_valid_break_time = m_sat_valid | m_nsat_valid
 
         # PANDAS: DIRECTION & TAGS BOOLEAN MASK
-        is_acc = df_a['tags'].str.contains('access', case=False, na=False)
-        is_brk = df_a['tags'].str.contains('break', case=False, na=False) & is_valid_break_time
         is_in = df_a['direction'].isin(['IN', '0'])
         is_out = df_a['direction'].isin(['OUT', '1'])        
 
-        # PANDAS: AGGREGATE EXACT TIMEFRAME & NODE
+        # 2. Domain Break: Ambil SEMUA terminal yang memiliki tag 'break' di jam istirahat yang sah
+        is_brk = df_a['tags'].str.contains('break', case=False, na=False) & is_valid_break_time
+        
+        # 3. Domain Access: Hanya proses event yang MURNI Access (bukan event Break)
+        # Terminal multi-tag seperti 175 di jam istirahat adalah milik domain Break!
+        is_acc = df_a['tags'].str.contains('access', case=False, na=False) & (~is_brk)
+
+        # Agregasi Break (OUT & IN)
+        df_brk_out = df_a[is_brk & is_out].groupby(['card_id', 'logical_date']).agg(
+            break_out_dt=('clocking_date', 'last'), break_node_out=('terminal_id', 'last')).reset_index()
+
+        df_brk_in = df_a[is_brk & is_in].groupby(['card_id', 'logical_date']).agg(
+            break_in_dt=('clocking_date', 'first'), break_node_in=('terminal_id', 'first')).reset_index()
+
+        # Agregasi Access (Hanya dipakai untuk shift marker / fallback)
         df_acc_in = df_a[is_acc & is_in].groupby(['card_id', 'logical_date']).agg(
             access_in_dt=('clocking_date', 'first'), access_node_in=('terminal_id', 'first')).reset_index()
 
         df_acc_out = df_a[is_acc & is_out].groupby(['card_id', 'logical_date']).agg(
             access_out_dt=('clocking_date', 'last'), access_node_out=('terminal_id', 'last')).reset_index()
-
-        df_brk_out = df_a[is_brk & is_out].groupby(['card_id', 'logical_date']).agg(
-            break_out_dt=('clocking_date', 'first'), break_node_out=('terminal_id', 'first')).reset_index()
-
-        df_brk_in = df_a[is_brk & is_in].groupby(['card_id', 'logical_date']).agg(
-            break_in_dt=('clocking_date', 'last'), break_node_in=('terminal_id', 'last')).reset_index()
     else:
         df_acc_in = df_acc_out = df_brk_out = df_brk_in = pd.DataFrame()
 
@@ -387,18 +393,7 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
     if not df_acc_out.empty: df_final = pd.merge(df_final, df_acc_out, on=['card_id', 'logical_date'], how='left')
     if not df_brk_out.empty: df_final = pd.merge(df_final, df_brk_out, on=['card_id', 'logical_date'], how='left')
     if not df_brk_in.empty: df_final = pd.merge(df_final, df_brk_in, on=['card_id', 'logical_date'], how='left')
-    if not df_m_agg.empty: df_final = pd.merge(df_final, df_m_agg, left_on=['emp_id', 'logical_date'], right_on=['employee_id', 'logical_date'], how='left')
-
-    # =========================================================================
-    # PANDAS: HYBRID NODE CLASH PROTECTOR
-    # =========================================================================
-    if 'break_in_dt' in df_final.columns and 'access_in_dt' in df_final.columns:
-        mask_in_clash = df_final['break_in_dt'] == df_final['access_in_dt']
-        df_final.loc[mask_in_clash, ['break_in_dt', 'break_node_in']] = [pd.NaT, None]
-        
-    if 'break_out_dt' in df_final.columns and 'access_out_dt' in df_final.columns:
-        mask_out_clash = df_final['break_out_dt'] == df_final['access_out_dt']
-        df_final.loc[mask_out_clash, ['break_out_dt', 'break_node_out']] = [pd.NaT, None]
+    if not df_m_agg.empty: df_final = pd.merge(df_final, df_m_agg, left_on=['emp_id', 'logical_date'], right_on=['employee_id', 'logical_date'], how='left')   
 
     expected_cols = [
         'access_in_dt', 'access_out_dt', 'access_node_in', 'access_node_out',
@@ -479,6 +474,12 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if pd.notna(in_dt) and not is_valid_break_window(in_dt, detected_shift, is_saturday):
             in_dt = pd.NaT
             row['break_node_in'] = None
+
+        if pd.notna(out_dt) and pd.notna(makan_dt):
+            gap_menit = (makan_dt - out_dt).total_seconds() / 60
+            if gap_menit > 20 or gap_menit < -10:
+                out_dt = pd.NaT
+                row['break_node_out'] = None
 
         if pd.isna(out_dt) and pd.isna(in_dt) and pd.isna(makan_dt):
             continue
