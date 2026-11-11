@@ -257,9 +257,22 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
                 act.CLOCKING_DATE, 
                 tm.direction AS DIRECTION, 
                 tm.tags AS TAGS, 
-                act.TERMINAL_ID 
+                act.TERMINAL_ID,
+                act.SOURCE,
+                tm.server_loc
             FROM `db-worksync`.`TBL_TACTIVITIES` act
-            JOIN `db-hr`.`terminal_master` tm ON act.TERMINAL_ID = tm.node_id
+            JOIN `db-hr`.`terminal_master` tm 
+              ON act.TERMINAL_ID = tm.node_id
+             AND (
+                 -- 1. Mapping aman untuk site GRD (Blokir mutlak data 'Acc' dan 'CRS')
+                 (tm.server_loc = 'GRD' AND (act.SOURCE IN ('GRD', act.TERMINAL_ID, 'SY') OR act.SOURCE IS NULL OR TRIM(act.SOURCE) = ''))
+                 OR
+                 -- 2. Mapping aman untuk site CRS (Blokir mutlak data 'Acc' dan 'GRD')
+                 (tm.server_loc = 'CRS' AND (act.SOURCE IN ('CRS', act.TERMINAL_ID, 'SY') OR act.SOURCE IS NULL OR TRIM(act.SOURCE) = ''))
+                 OR
+                 -- 3. Fallback untuk site/server_loc lain (Pastikan bukan tap pintu)
+                 (tm.server_loc NOT IN ('GRD', 'CRS') AND COALESCE(act.SOURCE, '') != 'Acc')
+             )
             WHERE act.CLOCKING_DATE BETWEEN :start_dt AND :end_dt
               AND act.CARD_ID IN :card_ids
               AND tm.company_id = '1111'
@@ -318,7 +331,6 @@ def _get_unified_clock_data(start_date, end_date, sub_company_id, department_id,
         is_brk = df_a['tags'].str.contains('break', case=False, na=False) & is_valid_break_time
         
         # 3. Domain Access: Hanya proses event yang MURNI Access (bukan event Break)
-        # Terminal multi-tag seperti 175 di jam istirahat adalah milik domain Break!
         is_acc = df_a['tags'].str.contains('access', case=False, na=False) & (~is_brk)
 
         # Agregasi Break (OUT & IN)
@@ -474,12 +486,6 @@ def _get_break_data(start_date, end_date, sub_company_id, department_id, search_
         if pd.notna(in_dt) and not is_valid_break_window(in_dt, detected_shift, is_saturday):
             in_dt = pd.NaT
             row['break_node_in'] = None
-
-        if pd.notna(out_dt) and pd.notna(makan_dt):
-            gap_menit = (makan_dt - out_dt).total_seconds() / 60
-            if gap_menit > 20 or gap_menit < -10:
-                out_dt = pd.NaT
-                row['break_node_out'] = None
 
         if pd.isna(out_dt) and pd.isna(in_dt) and pd.isna(makan_dt):
             continue
