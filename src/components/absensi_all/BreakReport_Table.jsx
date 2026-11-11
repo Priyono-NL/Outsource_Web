@@ -166,15 +166,15 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                             <th className="text-center">Absence Card No</th>
                             <th>Tipe</th>
                             <th>Shift</th>
-                            {/* {!isSingleDay && <th className="text-center">Tanggal OUT</th>} */}
-                            <th className="text-center">Tanggal OUT</th>
+                            {!isSingleDay && <th className="text-center">Tanggal OUT</th>}
+                            {/* <th className="text-center">Tanggal OUT</th> */}
                             <th className="text-center">Waktu OUT</th>
                             <th className="text-center">Node OUT</th>
-                            {/* {!isSingleDay && <th className="text-center">Tanggal Makan</th>} */}
-                            <th className="text-center">Tanggal OUT</th>
+                            {!isSingleDay && <th className="text-center">Tanggal Makan</th>}
+                            {/* <th className="text-center">Tanggal OUT</th> */}
                             <th className="text-center">Waktu Makan</th>
-                            {/* {!isSingleDay && <th className="text-center">Tanggal IN</th>} */}
-                            <th className="text-center">Tanggal IN</th>
+                            {!isSingleDay && <th className="text-center">Tanggal IN</th>}
+                            {/* <th className="text-center">Tanggal IN</th> */}
                             <th className="text-center">Waktu IN</th>
                             <th className="text-center">Node IN</th>
                             <th className="text-center">Total (Menit)</th>
@@ -206,13 +206,13 @@ const BreakReport_Table = ({ refreshTrigger, subCompany, department, startDate, 
                                     <td>{emp.display_name || '-'}</td>
                                     <td className="text-center">{emp.card_number || '-'}</td>                                    
                                     <td>{emp.tipe_karyawan || '-'}</td>
-                                    <td>{emp.shift || '-'}</td>                                    
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_out) || '-'}</td>
+                                    <td>{emp.shift || '-'}</td>
+                                     {!isSingleDay && <td className="text-center">{formatDisplayDate(emp.tanggal_out) || '-'}</td>}
                                     <td className="text-center">{emp.waktu_out || '-'}</td>
                                     <td className="text-center">{emp.node_out || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_makan) || '-'}</td>
+                                    {!isSingleDay && <td className="text-center">{formatDisplayDate(emp.tanggal_makan) || '-'}</td>}
                                     <td className="text-center">{emp.waktu_makan || '-'}</td>
-                                    <td className="text-center">{formatDisplayDate(emp.tanggal_in) || '-'}</td>
+                                    {!isSingleDay && <td className="text-center">{formatDisplayDate(emp.tanggal_in) || '-'}</td>}
                                     <td className="text-center">{emp.waktu_in || '-'}</td>
                                     <td className="text-center">{emp.node_in || '-'}</td>
                                     <td className="text-center fw-bold text-primary">{emp.total !== undefined ? emp.total : '-'}</td>
