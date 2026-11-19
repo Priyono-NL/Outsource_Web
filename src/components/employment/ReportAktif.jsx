@@ -98,6 +98,7 @@ const ReportAktif_Table = ({
               <th>Employee ID</th>
               <th>Nama</th>
               <th>Gender</th>
+              <th>Date Of Birth</th>
               <th>Sub Company</th>
               <th>Cost Center</th>
               <th>Card No.</th>
@@ -131,6 +132,7 @@ const ReportAktif_Table = ({
                     <td><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{emp.employee_code}</span></td>
                     <td style={{ fontWeight: 500 }}>{emp.person_name}</td>
                     <td>{emp.gender}</td>
+                    <td>{emp.v_dob}</td>
                     <td>{emp.sub_con_name}</td>
                     <td>{emp.cc_name ? emp.cc_name : '-'}</td>
                     <td>{emp.card_number ? emp.card_number : '-'}</td>

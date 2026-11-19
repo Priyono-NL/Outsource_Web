@@ -455,12 +455,26 @@ def get_absensi_hybrid_data(start_date, end_date, status_filter='all_data', shif
         df_att_merged = pd.merge(df_att, master_map, left_on='card_id', right_on='master_card_id', how='inner')
         df_att_merged['is_exact'] = (df_att_merged['clocking_date'] >= df_att_merged['card_valid_from']) & (df_att_merged['clocking_date'] <= df_att_merged['card_valid_to'])
         df_att_merged = df_att_merged[df_att_merged['is_exact'] == True]
-        df_att_merged = df_att_merged.sort_values(by=['emp_code', 'clocking_date', 'source', 'terminal_cc_name', 'is_exact'], ascending=[True, True, True, False, False], na_position='last')
-        df_att = df_att_merged.drop(columns=['master_card_id', 'card_valid_from', 'card_valid_to', 'is_exact', 'source'])
-        if not df_att.empty:
+
+        if not df_att_merged.empty:
+            df_att_merged['is_complete'] = df_att_merged['ta_in'].notna() & df_att_merged['ta_out'].notna()
+            has_complete_day = df_att_merged.groupby(['emp_code', 'clocking_date'])['is_complete'].transform('any')            
+            df_att_merged = df_att_merged[df_att_merged['is_complete'] | (~has_complete_day)].copy()
+            df_att_merged = df_att_merged.sort_values(
+                by=['emp_code', 'clocking_date', 'source', 'ta_in'], 
+                ascending=[True, True, True, True], 
+                na_position='last'
+            )
+            df_att = df_att_merged.drop(columns=['master_card_id', 'card_valid_from', 'card_valid_to', 'is_exact', 'source', 'is_complete'])
+            
             df_att = df_att.groupby(['emp_code', 'clocking_date'], as_index=False).agg({
-                'card_id': 'first', 'ta_in': 'first', 'ta_out': 'first', 'ta_flag': 'first',
-                'terminal_cc_name': 'first', 'terminal_cc_code': 'first', 'terminal_cc_id': 'first'
+                'card_id': 'first',
+                'ta_in': 'min',
+                'ta_out': 'max',
+                'ta_flag': 'first',
+                'terminal_cc_name': 'first',
+                'terminal_cc_code': 'first',
+                'terminal_cc_id': 'first'
             })
             df_att.loc[df_att['ta_in'] == df_att['ta_out'], 'ta_out'] = pd.NaT
 

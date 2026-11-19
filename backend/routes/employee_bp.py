@@ -1249,6 +1249,7 @@ def export():
                 "Employee ID": emp.employee_code or '',
                 "Name": person.name or '',
                 "Gender": person.gender or '',
+                "Date Of Birth": person.dob or '',
                 "Sub Company": sub_con_name or '',
                 "Department": cc_name or '',
                 "Card Number": card_number or '',
