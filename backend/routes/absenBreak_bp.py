@@ -13,16 +13,6 @@ from model.subCompany import SubCompany
 AbsenBreak_bp = Blueprint('AbsenBreak_bp', __name__)
 
 # =============================================================================
-# ZERO-ZOMBIE CONNECTION POLICY (TEARDOWN HOOK)
-# =============================================================================
-@AbsenBreak_bp.teardown_request
-def teardown_request(exception=None):
-    try:
-        db.session.remove()
-    except Exception:
-        pass
-
-# =============================================================================
 # REUSABLE HELPERS (DRY CORE)
 # =============================================================================
 def _format_period_string(start_str, end_str):

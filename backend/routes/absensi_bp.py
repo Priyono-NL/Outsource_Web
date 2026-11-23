@@ -19,13 +19,6 @@ BAC_EVIDENCE_FOLDER = 'static/uploads/bac_evidence'
 if not os.path.exists(BAC_EVIDENCE_FOLDER):
     os.makedirs(BAC_EVIDENCE_FOLDER)
 
-@AbsenOs_bp.teardown_request
-def teardown_request(exception=None):
-    try:
-        db.session.remove()
-    except Exception:
-        pass
-
 # =============================================================================
 # REUSABLE HELPERS & VECTORIZED SHIFT DETERMINER
 # =============================================================================

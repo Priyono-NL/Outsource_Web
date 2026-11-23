@@ -14,16 +14,6 @@ from model.hr_models import User, UserSubcompanyAccess, UserCostCenterAccess
 AbsenReport_bp = Blueprint('AbsenReport_bp', __name__)
 
 # =============================================================================
-# GARANSI PENUTUPAN KONEKSI DATABASE GLOBAL (ZERO-ZOMBIE POLICY)
-# =============================================================================
-@AbsenReport_bp.teardown_request
-def teardown_request(exception=None):
-    try:
-        db.session.remove()
-    except Exception:
-        pass
-
-# =============================================================================
 # REUSABLE HELPERS (DRY & ZERO-ZOMBIE CONTEXT MANAGERS)
 # =============================================================================
 def _export_to_excel(df, sheet_name, filename, include_index=False):
