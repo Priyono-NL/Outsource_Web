@@ -1,36 +1,23 @@
+import os
+import pkgutil
+import importlib
 from flask import Flask, request, Response
-from datetime import timedelta
 from sqlalchemy.pool import NullPool
 
 from extensions import db
 from config import Config
 
-from routes.auth_bp import auth_bp
-from routes.permission_bp import permission_bp
-from routes.costCenter_bp import costCenter_bp
-from routes.subCompany_bp import subCom_bp
-from routes.training_bp import train_bp
-from routes.medical_bp import medical_bp
-from routes.canteen_bp import canteen_bp
-from routes.person_bp import person_bp
-from routes.employee_bp import employee_bp
-from routes.alokasi_bp import alokasi_bp
-from routes.osMedical_bp import osMedical_bp
-from routes.osTraining_bp import osTraining_bp
-from routes.osCard_bp import osCard_bp
-from routes.osCC_bp import osCC_bp
-from routes.osGrade_bp import osGrade_bp
-from routes.blacklist_bp import blacklist_bp
-from routes.osType import osType_bp
-from routes.absensi_bp import AbsenOs_bp
-from routes.terminal_bp import terminal_bp
-from routes.ob_emp_bp import ob_emp_bp
-from routes.periode_bp import periode_bp
-from routes.absenReport_bp import AbsenReport_bp
-from routes.absenBreak_bp import AbsenBreak_bp
-from routes.absenVendor_bp import absenVendor_bp
-from routes.userManagement_bp import userManagement_bp
-from routes.guest_bp import guest_bp
+def register_blueprints_dynamically(app):
+    routes_dir = os.path.join(os.path.dirname(__file__), 'routes')
+    
+    for _, module_name, _ in pkgutil.iter_modules([routes_dir]):
+        module = importlib.import_module(f"routes.{module_name}")
+        
+        for attribute_name in dir(module):
+            attribute = getattr(module, attribute_name)
+            if hasattr(attribute, 'register') and hasattr(attribute, 'import_name'):
+                app.register_blueprint(attribute, url_prefix='/')
+                print(f"Registered blueprint: {attribute_name} from routes.{module_name}")
 
 def create_app():
     app = Flask(__name__)
@@ -76,41 +63,17 @@ def create_app():
     db.init_app(app)
     
     # =========================================================================
-    # 3. GARANSI PEMBERSIHAN SESI DATABASE SETELAH REQUEST SELESAI
+    # GARANSI PEMBERSIHAN SESI DATABASE SETELAH REQUEST SELESAI (DRY GLOBAL)
     # =========================================================================
     @app.teardown_appcontext
     def shutdown_session(exception=None):
         db.session.remove()
     
-    # Registrasi Blueprint
-    app.register_blueprint(auth_bp, url_prefix='/')
-    app.register_blueprint(permission_bp, url_prefix='/')
-    app.register_blueprint(userManagement_bp, url_prefix='/')
+    # =========================================================================
+    # REGISTRASI BLUEPRINT DINAMIS (AUTO-DISCOVERY)
+    # =========================================================================
+    register_blueprints_dynamically(app)
     
-    # Master Data
-    app.register_blueprint(person_bp, url_prefix='/')
-    app.register_blueprint(subCom_bp, url_prefix='/')
-    app.register_blueprint(train_bp, url_prefix='/')
-    app.register_blueprint(medical_bp, url_prefix='/')
-    app.register_blueprint(canteen_bp, url_prefix='/')
-    app.register_blueprint(costCenter_bp, url_prefix='/')
-    app.register_blueprint(employee_bp, url_prefix='/')
-    app.register_blueprint(alokasi_bp, url_prefix='/')
-    app.register_blueprint(osMedical_bp, url_prefix='/')
-    app.register_blueprint(osTraining_bp, url_prefix='/')    
-    app.register_blueprint(osCard_bp, url_prefix='/')
-    app.register_blueprint(osCC_bp, url_prefix='/')
-    app.register_blueprint(osGrade_bp, url_prefix='/')
-    app.register_blueprint(blacklist_bp, url_prefix='/')
-    app.register_blueprint(osType_bp, url_prefix='/')    
-    app.register_blueprint(terminal_bp, url_prefix='/')
-    app.register_blueprint(ob_emp_bp, url_prefix='/')
-    app.register_blueprint(periode_bp, url_prefix='/')    
-    app.register_blueprint(AbsenOs_bp, url_prefix='/')
-    app.register_blueprint(AbsenReport_bp, url_prefix='/')
-    app.register_blueprint(AbsenBreak_bp, url_prefix='/')
-    app.register_blueprint(absenVendor_bp, url_prefix='/')
-    app.register_blueprint(guest_bp, url_prefix='/')    
     return app
 
 if __name__ == '__main__':
