@@ -23,7 +23,7 @@ const SubCompany = lazy(() => import('../pages/SubCompany'));
 const Training_m = lazy(() => import('../pages/Training_m'));
 const Medical_m = lazy(() => import('../pages/Medical_m'));
 const Terminal = lazy(() => import('../pages/Terminal'));
-const PeriodePuasa = lazy(() => import('../pages/periode_puasa'));
+const PeriodePuasa = lazy(() => import('../pages/Periode_puasa'));
 const ObEmployee = lazy(() => import('../pages/ObEmployee'));
 const Absensi = lazy(() => import('../pages/Absensi'));
 const AbsensiVendor = lazy(() => import('../pages/AbsensiVendor'));
