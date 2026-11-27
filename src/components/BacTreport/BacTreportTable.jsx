@@ -1,0 +1,267 @@
+import React, { useState, useEffect } from 'react';
+import api from '../../api/api';
+import PageNav from '../PageNav';
+
+const BacTreportTable = ({ 
+    refreshTrigger, 
+    onEditClick, 
+    searchTerm,
+    department,
+    startDate, 
+    endDate, 
+    statusFilter,
+    shiftFilter,
+    isFilterApplied
+}) => { 
+    
+    const [absensi, setAbsensi] = useState([]);   
+    const [error, setError] = useState(null); 
+    const [loading, setLoading] = useState(false);
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage] = useState(20);
+    const [totalPages, setTotalPages] = useState(0);
+
+    const fetchData = async (signal) => {
+        try {
+            setLoading(true);
+            setError(null);
+            
+            const params = new URLSearchParams({
+                page: currentPage,
+                pageSize: itemsPerPage,
+                search: searchTerm || '',
+                department: department || '',
+                start_date: startDate || '',
+                end_date: endDate || '',
+                status_filter: statusFilter || 'all_data',
+                shift: shiftFilter || '',
+                worker_type: 'tetap'
+            }).toString();
+
+            const response = await api.get(`/absensi?${params}`, { signal });
+            const result = response.data;
+            
+            if (result.status === 'success') { 
+                setAbsensi(Array.isArray(result.data) ? result.data : []);
+                setTotalPages(result.total_page || 0);
+            } else { 
+                throw new Error(result.message || 'Terjadi kesalahan pada data absensi'); 
+            }
+        } catch (err) {
+            if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+            setError(err.response?.data?.message || err.message || 'Gagal terhubung ke server');
+            setAbsensi([]);
+            setTotalPages(0);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (currentPage !== 1) {
+            setCurrentPage(1);
+        }
+    }, [searchTerm, department, startDate, endDate, statusFilter, shiftFilter]);
+    
+    useEffect(() => {
+        if (!startDate || !endDate || !isFilterApplied) return;
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => controller.abort();
+    }, [currentPage, itemsPerPage, refreshTrigger, searchTerm, department, startDate, endDate, statusFilter, shiftFilter, isFilterApplied]);
+
+    const formatTime = (timeStr) => {
+        if (!timeStr || timeStr === 'null' || timeStr === 'None' || timeStr === 'KOSONG') return null;
+        if (timeStr.includes('T')) return timeStr.split('T')[1].substring(0, 5);
+        if (timeStr.includes(' ')) return timeStr.split(' ')[1].substring(0, 5);
+        return timeStr.substring(0, 5);
+    };
+
+    return (
+    <>
+        {error && <div className="alert alert-danger py-2 mb-2" style={{ fontSize: '0.85rem' }}>{error}</div>}        
+        <div className="table-responsive">
+            <table className="app-table">
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Employee Name</th>
+                    <th>Absence Card</th>
+                    <th>Cost Center</th>
+                    <th>Shift</th>
+                    <th>Clocking Date</th>
+                    <th>Clocking In</th>
+                    <th>Clocking Out</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
+                    <th>Updated By</th>
+                    <th>Updated Date</th>
+                    <th style={{ textAlign: 'center' }}>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {!isFilterApplied ? (
+                    <tr>
+                        <td colSpan="12" className="empty-state text-center py-5 text-muted">
+                            <i className="bi bi-funnel d-block mb-2 fs-3 text-primary"></i>
+                            Silakan tentukan parameter di atas lalu klik tombol <strong>Terapkan Filter</strong> untuk menampilkan data.
+                        </td>
+                    </tr>
+                
+                ) : loading ? (
+                    <tr>
+                        <td colSpan="12" className="text-center py-4 text-muted">
+                            <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                            Memuat data absensi...
+                        </td>
+                    </tr>
+                
+                ) : absensi.length > 0 ? (
+                    absensi.map((emp, index) => {
+                        const isAnomaly = emp.is_anomaly === 1;
+
+                        const hasBAC = !!(
+                            emp.bac_id || 
+                            (emp.bac_no && emp.bac_no !== '-') || 
+                            (emp.bac_clock_in && emp.bac_clock_in !== 'null') || 
+                            (emp.bac_clock_out && emp.bac_clock_out !== 'null')
+                        );
+
+                        let displayClockIn = null;
+                        let displayClockOut = null;
+                        let isClockInFromBAC = false;
+                        let isClockOutFromBAC = false;
+
+                        if (emp.bac_clock_in && emp.bac_clock_in !== 'null') {
+                            displayClockIn = formatTime(emp.bac_clock_in);
+                            isClockInFromBAC = true;
+                        } else if (isAnomaly && emp.full_clock_in && emp.full_clock_in !== 'null') {
+                            displayClockIn = formatTime(emp.full_clock_in);
+                        } else {
+                            displayClockIn = formatTime(emp.clock_in);
+                        }
+
+                        if (emp.bac_clock_out && emp.bac_clock_out !== 'null') {
+                            displayClockOut = formatTime(emp.bac_clock_out);
+                            isClockOutFromBAC = true;
+                        } else if (isAnomaly && emp.full_clock_out && emp.full_clock_out !== 'null') {
+                            displayClockOut = formatTime(emp.full_clock_out);
+                        } else {
+                            displayClockOut = formatTime(emp.clock_out);
+                        }
+
+                        let statusElement = null;
+                        let actionElement = null;
+
+                        if (emp.status === 'BAC Found' || hasBAC) {
+                            statusElement = (
+                                <span style={{ fontSize: '12px', color: '#0d6efd', fontWeight: 'bold' }}>
+                                    <i className="bi bi-shield-check me-1"></i> BAC Found
+                                </span>
+                            );                        
+                            actionElement = (
+                                <button 
+                                    className="btn-app border text-primary bg-light" 
+                                    style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '4px' }}
+                                    onClick={() => onEditClick(emp)}
+                                    title="Edit Detail BAC & Foto Bukti"
+                                >
+                                    <i className="bi bi-pencil-square me-1"></i> Edit BAC
+                                </button>
+                            );
+
+                        } else if (emp.status === 'Lengkap') {
+                            statusElement = (
+                                <span style={{ fontSize: '12px', color: '#198754', fontWeight: 'bold' }}>
+                                    <i className="bi bi-check-circle-fill me-1"></i> Lengkap
+                                </span>
+                            );
+                            actionElement = null;
+
+                        } else {
+                            statusElement = (
+                                <span style={{ fontSize: '12px', color: '#dc3545', fontWeight: 'bold' }}>
+                                    <i className="bi bi-exclamation-triangle-fill me-1"></i> Tidak Lengkap
+                                </span>
+                            );
+                            actionElement = (
+                                <button 
+                                    className="btn-app btn-warning-app" 
+                                    style={{ padding: '4px 8px', fontSize: '12px' }}
+                                    onClick={() => onEditClick(emp)}
+                                    title="Koreksi Data Absensi"
+                                >
+                                    <i className="bi bi-pencil-square me-1"></i> Koreksi
+                                </button> 
+                            );
+                        }
+
+                        return (
+                            <tr 
+                                key={`abs-${emp.employee_id}-${emp.clocking_date}-${index}`} 
+                                className={isAnomaly && !hasBAC ? 'table-warning' : ''}
+                            >
+                                <td className="fw-bold text-primary">{emp.employee_code || emp.employee_id}</td>
+                                <td>{emp.employee_name || '-'}</td>
+                                <td>{emp.card || '-'}</td>
+                                <td>{emp.cc || '-'}</td>
+                                <td>
+                                    <span className="badge bg-light text-dark border fw-normal" style={{ fontSize: '0.7rem' }}>
+                                        {emp.shift || 'SHIFT 1'}
+                                    </span>
+                                </td>
+                                <td>{emp.v_clocking_date || emp.clocking_date || '-'}</td>
+
+                                <td style={{ 
+                                    color: !displayClockIn ? '#dc3545' : (isClockInFromBAC ? '#0d6efd' : 'inherit'),
+                                    fontWeight: (isClockInFromBAC || !displayClockIn) ? 'bold' : 'normal'
+                                }}>
+                                    {displayClockIn || 'No Clock In'}
+                                </td>                            
+                                
+                                <td style={{ 
+                                    color: !displayClockOut ? '#dc3545' : (isClockOutFromBAC ? '#0d6efd' : 'inherit'),
+                                    fontWeight: (isClockOutFromBAC || !displayClockOut) ? 'bold' : 'normal'
+                                }}>
+                                    {displayClockOut || 'No Clock Out'}
+                                </td>
+
+                                <td style={{ textAlign: 'center' }}>
+                                    {statusElement}
+                                </td>
+                                <td>{emp.bac_updated_by || '-'}</td>
+                                <td>{emp.bac_updated_date || '-'}</td>
+
+                                <td>
+                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+                                        {actionElement || <span className="text-muted small">-</span>}
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })
+                
+                ) : (
+                    <tr>
+                        <td colSpan="17" className="empty-state text-center py-4 text-muted">
+                            <i className="bi bi-inbox d-block mb-1 fs-4 text-secondary"></i>
+                            Data absensi tidak ditemukan untuk filter tersebut.
+                        </td>
+                    </tr>
+                )}
+            </tbody>
+            </table>
+            
+            {!loading && startDate && endDate && totalPages > 1 && (
+                <PageNav 
+                    currentPage={currentPage} 
+                    totalPages={totalPages} 
+                    onPageChange={(page) => setCurrentPage(page)} 
+                />
+            )}
+        </div>        
+    </>
+    );
+};
+
+export default BacTreportTable;

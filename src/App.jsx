@@ -3,8 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import Sidebar from './components/Sidebar';
 import { componentRegistry } from './utils/menuConfig';
 import { AuthProvider, useAuth } from './utils/useAuth';
+
 const AbsensiVendor = React.lazy(() => import('./pages/AbsensiVendor'));
 const PendingAccess = React.lazy(() => import('./pages/PendingAccess'));
+// 1. Tambahkan lazy import halaman Kiosk BAC ATN
+const KioskBacAtn = React.lazy(() => import('./pages/KioskBacAtn'));
 
 const RouteLoader = () => (
   <div className="d-flex justify-content-center align-items-center py-5 w-100" style={{ minHeight: '300px' }}>
@@ -140,7 +143,7 @@ const MainLayout = () => {
             </button>
           )}
 
-          <span className="topbar-brand">Manajemen OS</span>
+          <span className="topbar-brand">HR Management System</span>
 
           <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
             <div className="topbar-user-name">{user?.nama || user?.email || 'User'}</div>
@@ -219,12 +222,35 @@ const MainLayout = () => {
   );
 };
 
+// 2. Pisahkan jalur Kiosk SEBELUM masuk ke AuthProvider agar bebas cek session SSO
+const AppRoutes = () => {
+  const location = useLocation();
+
+  if (location.pathname.toLowerCase().includes('/kiosk-bac')) {
+    return (
+      <>
+        <EnvBanner />
+        <Suspense fallback={<RouteLoader />}>
+          <Routes>
+            <Route path="/kiosk-bac-atn" element={<KioskBacAtn />} />
+            <Route path="*" element={<KioskBacAtn />} />
+          </Routes>
+        </Suspense>
+      </>
+    );
+  }
+
+  return (
+    <AuthProvider>
+      <MainLayout />
+    </AuthProvider>
+  );
+};
+
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <MainLayout />
-      </AuthProvider>
+      <AppRoutes />
     </Router>
   );
 }

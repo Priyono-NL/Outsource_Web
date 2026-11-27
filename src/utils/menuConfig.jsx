@@ -35,6 +35,7 @@ const Report_MpEmp = lazy(() => import('../pages/Report_MpEmp'));
 const Report_Break = lazy(() => import('../pages/Report_Break'));
 const Report_Access = lazy(() => import('../pages/Report_Access'));
 const ReportAbsenVendor = lazy(() => import('../pages/ReportAbsenVendor'));
+const BacAtn = lazy(() => import('../pages/BacAtn')); 
 const Guest = lazy(() => import('../pages/Guest'));
 
 // Import Halaman Khusus SSO & Approval
@@ -87,6 +88,9 @@ export const componentRegistry = {
   // --- Vendor / Kontraktor ---
   '/absenVendor': <AbsensiVendor />,
   '/ReportAbsenVendor': <ReportAbsenVendor />,
+
+  // --- BAC SPL DWS ---
+  '/bac-atn': <BacAtn />,
 
   // --- Administration Pages ---
   '/role-permission': <RolePermission />,

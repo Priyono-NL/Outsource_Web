@@ -43,7 +43,8 @@ export const AuthProvider = ({ children }) => {
   const MODULE_CODE = import.meta.env.VITE_MODULE_CODE || 'CRSHR';
 
   useEffect(() => {
-    if (window.location.pathname.includes('/auth/callback')) {
+    const currentPath = window.location.pathname.toLowerCase();
+    if (currentPath.includes('/auth/callback') || currentPath.includes('/kiosk-bac')) {
       setLoading(false);
       return;
     }

@@ -419,6 +419,46 @@ def search_employee(emp_id):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@employee_bp.route('/employee/search-ob', methods=['GET'])
+def search_ob():
+    try:
+        query_str = request.args.get('q', '').strip()
+        if len(query_str) < 3:
+            return jsonify({"status": "success", "data": []}), 200
+
+        results_ob = (
+            ObEmployee.query.filter(
+                or_(
+                    ObEmployee.employee_name.ilike(f"%{query_str}%"),
+                    ObEmployee.employee_id.cast(db.String).ilike(f"%{query_str}%"),
+                )
+            )
+            .limit(20)
+            .all()
+        )
+
+        data_result = []
+        for ob in results_ob:
+            dept_val = ob.dept_name or "-"
+            data_result.append({
+                "emp_pk_id": ob.employee_id,
+                "employee_code": ob.employee_id,
+                "name": ob.employee_name,
+                "dept_name": dept_val,
+                "cost_center": ob.cost_center,
+                "card_no": ob.card_no,
+                "grade": ob.grade,
+                "is_active": True,
+                "status_text": "Tetap / Kontrak",
+            })
+
+        return jsonify({"status": "success", "data": data_result}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        db.session.remove()
+
 @employee_bp.route('/employee/submit', methods=['POST'])
 def add():
     try:
